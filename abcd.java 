@@ -5,8 +5,11 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.kafka.support.Acknowledgment;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -31,31 +34,69 @@ public class KafkaConsumerTest {
     @Test
     public void testWriteCsvFile() throws IOException {
         // Set up your test environment, such as setting sourceFilePath and destinationFolderPath
+        String testSourceFilePath = "test_source_file.csv";
+        String testDestinationFolderPath = "test_destination_folder";
+        
+        kafkaConsumer.setSourceFilePath(testSourceFilePath);
+        kafkaConsumer.setDestinationFolderPath(testDestinationFolderPath);
+        
+        // Create a test source file
+        Path testSourcePath = Path.of(testSourceFilePath);
+        Files.createFile(testSourcePath);
+
         kafkaConsumer.writeCsvFile();
 
-        // Add assertions or verify the behavior of writing CSV file
+        // Assert that the file was created in the destination folder
+        Path testDestinationPath = Path.of(testDestinationFolderPath, testSourcePath.getFileName().toString());
+        assertTrue(Files.exists(testDestinationPath));
+
+        // Clean up test files
+        Files.deleteIfExists(testSourcePath);
+        Files.deleteIfExists(testDestinationPath);
     }
 
     @Test
     public void testRetrieveCsvFile() throws IOException {
         // Set up your test environment, such as setting sourceFilePath
+        String testSourceFilePath = "test_source_file.csv";
+        kafkaConsumer.setSourceFilePath(testSourceFilePath);
+        
+        // Create a test CSV file
+        Path testSourcePath = Path.of(testSourceFilePath);
+        Files.createFile(testSourcePath);
+
+        // Mock CSV content to be read
         List<String[]> expectedRows = new ArrayList<>();
-        // Add mock behavior to return expectedRows when FileReader is initialized
-        when(new CSVParser(any(), any())).thenReturn(mock(CSVParser.class));
+        expectedRows.add(new String[]{"data1", "data2"});
+        expectedRows.add(new String[]{"data3", "data4"});
+
+        whenNew(CSVParser.class).withAnyArguments().thenReturn(mock(CSVParser.class));
         when(parser.iterator()).thenReturn(expectedRows.iterator());
 
         List<String[]> rows = kafkaConsumer.retrieveCsvFile();
 
         // Add assertions based on the behavior you expect here
+        assertEquals(2, rows.size());
+        assertArrayEquals(new String[]{"data1", "data2"}, rows.get(0));
+        assertArrayEquals(new String[]{"data3", "data4"}, rows.get(1));
+
+        // Clean up test file
+        Files.deleteIfExists(testSourcePath);
     }
 
     @Test
     public void testDeleteCsvFile() throws IOException {
         // Set up your test environment, such as setting sourceFilePath
-        // Ensure the file exists before calling deleteCsvFile()
+        String testSourceFilePath = "test_source_file.csv";
+        kafkaConsumer.setSourceFilePath(testSourceFilePath);
+        
+        // Create a test file
+        Path testSourcePath = Path.of(testSourceFilePath);
+        Files.createFile(testSourcePath);
 
         kafkaConsumer.deleteCsvFile();
 
-        // Add assertions or verify the behavior of deleting the CSV file
+        // Assert that the file was deleted
+        assertFalse(Files.exists(testSourcePath));
     }
 }
