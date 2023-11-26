@@ -1,0 +1,61 @@
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.kafka.support.Acknowledgment;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+public class KafkaConsumerTest {
+
+    @Mock
+    private FlinkApiController flinkApiController;
+
+    @InjectMocks
+    private KafkaConsumer kafkaConsumer;
+
+    @Test
+    public void testConsume() throws IOException, CsvValidationException {
+        SpaceCollector message = new SpaceCollector(); // create your test message
+        when(flinkApiController.triggerJob(any())).thenReturn("TestResponse");
+
+        kafkaConsumer.consume(message);
+
+        // Add assertions based on the behavior you expect here
+    }
+
+    @Test
+    public void testWriteCsvFile() throws IOException {
+        // Set up your test environment, such as setting sourceFilePath and destinationFolderPath
+        kafkaConsumer.writeCsvFile();
+
+        // Add assertions or verify the behavior of writing CSV file
+    }
+
+    @Test
+    public void testRetrieveCsvFile() throws IOException {
+        // Set up your test environment, such as setting sourceFilePath
+        List<String[]> expectedRows = new ArrayList<>();
+        // Add mock behavior to return expectedRows when FileReader is initialized
+        when(new CSVParser(any(), any())).thenReturn(mock(CSVParser.class));
+        when(parser.iterator()).thenReturn(expectedRows.iterator());
+
+        List<String[]> rows = kafkaConsumer.retrieveCsvFile();
+
+        // Add assertions based on the behavior you expect here
+    }
+
+    @Test
+    public void testDeleteCsvFile() throws IOException {
+        // Set up your test environment, such as setting sourceFilePath
+        // Ensure the file exists before calling deleteCsvFile()
+
+        kafkaConsumer.deleteCsvFile();
+
+        // Add assertions or verify the behavior of deleting the CSV file
+    }
+}
