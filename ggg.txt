@@ -1,0 +1,1 @@
+whenever I type on username it was showing like no such host in known but whenever I type whoami it was showing vdsi\margara now give me the steps to find out the ssh
