@@ -1,1 +1,530 @@
-whenever I type on username it was showing like no such host in known but whenever I type whoami it was showing vdsi\margara now give me the steps to find out the ssh
+# FTP Configuration
+ftp:
+  host: ftp.example.com
+  port: 21
+  username: ftp_user
+  password: ftp_password
+
+# SSH Details
+ssh:
+  username: awse
+  host: 10.134.131.245
+  password: SpedTeam@123
+
+# Kafka Configuration
+spring:
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    properties:
+      # Additional Kafka properties if needed
+
+# Other Spring Boot configurations...
+
+
+
+
+
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    
+    <groupId>com.example</groupId>
+    <artifactId>your-artifact-id</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+    
+    <name>your-project-name</name>
+    <description>Spring Boot project with FTP, SSH, and Kafka integration</description>
+    
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>2.6.2</version>
+        <relativePath/> <!-- lookup parent from repository -->
+    </parent>
+    
+    <properties>
+        <java.version>11</java.version>
+    </properties>
+    
+    <dependencies>
+        <!-- Spring Boot dependencies -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        
+        <!-- FTP dependency -->
+        <dependency>
+            <groupId>commons-net</groupId>
+            <artifactId>commons-net</artifactId>
+            <version>3.8.0</version>
+        </dependency>
+        
+        <!-- SSH dependency -->
+        <dependency>
+            <groupId>com.jcraft</groupId>
+            <artifactId>jsch</artifactId>
+            <version>0.1.55</version>
+        </dependency>
+        
+        <!-- Kafka dependency -->
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
+            <version>2.8.0</version>
+        </dependency>
+        
+        <!-- Other dependencies as needed -->
+    </dependencies>
+    
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+
+
+
+
+filetransferutils.java
+
+import java.io.*;
+
+public class FileTransferUtils {
+
+    // Method to read data from a file
+    public static byte[] readFile(String filePath) {
+        try {
+            File file = new File(filePath);
+            FileInputStream fileInputStream = new FileInputStream(file);
+            byte[] data = new byte[(int) file.length()];
+            fileInputStream.read(data);
+            fileInputStream.close();
+            return data;
+        } catch (IOException e) {
+            // Log the exception using a logger (e.g., log.error("File read error", e);)
+            throw new RuntimeException("File read error", e);
+        }
+    }
+
+    // Method to write data to a file
+    public static void writeFile(String filePath, byte[] data) {
+        try {
+            FileOutputStream fileOutputStream = new FileOutputStream(filePath);
+            fileOutputStream.write(data);
+            fileOutputStream.close();
+        } catch (IOException e) {
+            // Log the exception using a logger (e.g., log.error("File write error", e);)
+            throw new RuntimeException("File write error", e);
+        }
+    }
+
+    // Add more file-related utility methods as needed
+}
+
+
+
+application.java
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class Application {
+
+    public static void main(String[] args) {
+        SpringApplication.run(Application.class, args);
+    }
+}
+
+
+
+
+kafkaService.java
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.stereotype.Service;
+
+@Service
+public class KafkaService {
+
+    private final KafkaTemplate<String, String> kafkaTemplate;
+
+    @Autowired
+    public KafkaService(KafkaTemplate<String, String> kafkaTemplate) {
+        this.kafkaTemplate = kafkaTemplate;
+    }
+
+    public void sendMessage(String topic, String message) {
+        kafkaTemplate.send(topic, message);
+    }
+
+    // Method to produce JSON messages for file transfer success/failure
+    public void produceFileTransferMessage(String topic, String fileType, String filePath) {
+        String jsonMessage = "{\"filetype\":\"" + fileType + "\", \"filepath\":\"" + filePath + "\"}";
+        kafkaTemplate.send(topic, jsonMessage);
+    }
+
+    // Add other Kafka-related methods as needed
+}
+
+
+sshservice.java
+
+import com.jcraft.jsch.ChannelExec;
+import com.jcraft.jsch.JSch;
+import com.jcraft.jsch.JSchException;
+import com.jcraft.jsch.Session;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import java.io.ByteArrayOutputStream;
+
+@Service
+public class SshService {
+
+    @Value("${ssh.username}")
+    private String sshUsername;
+
+    @Value("${ssh.host}")
+    private String sshHost;
+
+    @Value("${ssh.password}")
+    private String sshPassword;
+
+    public byte[] retrieveData(String sshPath) {
+        JSch jsch = new JSch();
+        Session session = null;
+        try {
+            session = jsch.getSession(sshUsername, sshHost, 22);
+            session.setPassword(sshPassword);
+            session.setConfig("StrictHostKeyChecking", "no");
+            session.connect();
+
+            ChannelExec channel = (ChannelExec) session.openChannel("exec");
+            channel.setCommand("cat " + sshPath);
+
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            channel.setOutputStream(outputStream);
+
+            channel.connect();
+
+            while (!channel.isClosed()) {
+                // Wait for the channel to close
+                Thread.sleep(100);
+            }
+
+            channel.disconnect();
+            return outputStream.toByteArray();
+        } catch (JSchException | InterruptedException e) {
+            // Log the exception using a logger (e.g., log.error("SSH retrieve error", e);)
+            throw new RuntimeException("SSH retrieve error", e);
+        } finally {
+            if (session != null && session.isConnected()) {
+                session.disconnect();
+            }
+        }
+    }
+
+    // Implement additional SSH methods if needed
+}
+
+
+
+
+ftpservice.java
+
+import org.apache.commons.net.ftp.FTP;
+import org.apache.commons.net.ftp.FTPClient;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+
+@Service
+public class FtpService {
+
+    @Value("${ftp.host}")
+    private String ftpHost;
+
+    @Value("${ftp.port}")
+    private int ftpPort;
+
+    @Value("${ftp.username}")
+    private String ftpUsername;
+
+    @Value("${ftp.password}")
+    private String ftpPassword;
+
+    public void uploadData(byte[] data, String remoteFilePath) {
+        FTPClient ftpClient = new FTPClient();
+        try {
+            ftpClient.connect(ftpHost, ftpPort);
+            ftpClient.login(ftpUsername, ftpPassword);
+            ftpClient.setFileType(FTP.BINARY_FILE_TYPE);
+
+            ByteArrayInputStream inputStream = new ByteArrayInputStream(data);
+            ftpClient.storeFile(remoteFilePath, inputStream);
+        } catch (IOException e) {
+            // Log the exception using a logger (e.g., log.error("FTP upload error", e);)
+            throw new RuntimeException("FTP upload error", e);
+        } finally {
+            try {
+                if (ftpClient.isConnected()) {
+                    ftpClient.logout();
+                    ftpClient.disconnect();
+                }
+            } catch (IOException e) {
+                // Log the exception using a logger (e.g., log.error("FTP disconnect error", e);)
+                throw new RuntimeException("FTP disconnect error", e);
+            }
+        }
+    }
+
+    // Implement additional FTP methods such as download, connection, etc. if needed
+}
+
+
+
+
+filetransferresponse.java
+
+public class FileTransferResponse {
+
+    private String message;
+
+    // Constructor, getters, and setters
+
+    public FileTransferResponse() {
+        // Default constructor
+    }
+
+    public FileTransferResponse(String message) {
+        this.message = message;
+    }
+
+    public String getMessage() {
+        return message;
+    }
+
+    public void setMessage(String message) {
+        this.message = message;
+    }
+}
+
+
+
+
+filetransferrequest.java
+
+public class FileTransferRequest {
+
+    private String sshPath;
+    private String ftpPath;
+
+    // Constructor, getters, and setters
+
+    public FileTransferRequest() {
+        // Default constructor
+    }
+
+    public FileTransferRequest(String sshPath, String ftpPath) {
+        this.sshPath = sshPath;
+        this.ftpPath = ftpPath;
+    }
+
+    public String getSshPath() {
+        return sshPath;
+    }
+
+    public void setSshPath(String sshPath) {
+        this.sshPath = sshPath;
+    }
+
+    public String getFtpPath() {
+        return ftpPath;
+    }
+
+    public void setFtpPath(String ftpPath) {
+        this.ftpPath = ftpPath;
+    }
+}
+
+
+
+
+filetransfercontroller.java
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class FileTransferController {
+
+    private final SshService sshService;
+    private final FtpService ftpService;
+
+    @Autowired
+    public FileTransferController(SshService sshService, FtpService ftpService) {
+        this.sshService = sshService;
+        this.ftpService = ftpService;
+    }
+
+    @PostMapping("/transfer")
+    public String transferData(@RequestBody FileTransferRequest fileTransferRequest) {
+        try {
+            // Retrieve data from SSH using the provided path
+            byte[] data = sshService.retrieveData(fileTransferRequest.getSshPath());
+
+            // Upload retrieved data to FTP server
+            ftpService.uploadData(data, fileTransferRequest.getFtpPath());
+
+            // Log success or return a success message
+            return "Data transferred successfully!";
+        } catch (Exception e) {
+            // Log the exception using a logger (e.g., log.error("Data transfer error", e);)
+            return "Data transfer failed: " + e.getMessage();
+        }
+    }
+}
+
+
+
+
+SSH configuration.java
+
+import com.jcraft.jsch.JSch;
+import com.jcraft.jsch.JSchException;
+import com.jcraft.jsch.Session;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class SshConfiguration {
+
+    @Value("${ssh.username}")
+    private String sshUsername;
+
+    @Value("${ssh.host}")
+    private String sshHost;
+
+    @Value("${ssh.password}")
+    private String sshPassword;
+
+    @Bean
+    public Session sshSession() {
+        JSch jsch = new JSch();
+        Session session;
+        try {
+            session = jsch.getSession(sshUsername, sshHost, 22);
+            session.setPassword(sshPassword);
+            session.setConfig("StrictHostKeyChecking", "no");
+            session.connect();
+        } catch (JSchException e) {
+            // Log the exception using a logger (e.g., log.error("SSH connection error", e);)
+            throw new RuntimeException("SSH connection error", e);
+        }
+        return session;
+    }
+}
+
+
+
+
+
+kafkaconfiguration.java
+
+import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.common.serialization.StringSerializer;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.kafka.core.DefaultKafkaProducerFactory;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.core.ProducerFactory;
+
+import java.util.HashMap;
+import java.util.Map;
+
+@Configuration
+public class KafkaConfiguration {
+
+    @Value("${spring.kafka.bootstrap-servers}")
+    private String bootstrapServers;
+
+    @Bean
+    public ProducerFactory<String, String> producerFactory() {
+        Map<String, Object> configProps = new HashMap<>();
+        configProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        configProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        configProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        // Other Kafka producer properties can be added here
+
+        return new DefaultKafkaProducerFactory<>(configProps);
+    }
+
+    @Bean
+    public KafkaTemplate<String, String> kafkaTemplate() {
+        return new KafkaTemplate<>(producerFactory());
+    }
+}
+
+
+
+
+
+ftpconfiguration.java
+
+import org.apache.commons.net.ftp.FTP;
+import org.apache.commons.net.ftp.FTPClient;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class FtpConfiguration {
+
+    @Value("${ftp.host}")
+    private String ftpHost;
+
+    @Value("${ftp.port}")
+    private int ftpPort;
+
+    @Value("${ftp.username}")
+    private String ftpUsername;
+
+    @Value("${ftp.password}")
+    private String ftpPassword;
+
+    @Bean
+    public FTPClient ftpClient() {
+        FTPClient ftpClient = new FTPClient();
+        try {
+            ftpClient.connect(ftpHost, ftpPort);
+            boolean loginSuccess = ftpClient.login(ftpUsername, ftpPassword);
+            if (!loginSuccess) {
+                throw new RuntimeException("FTP login failed");
+            }
+            ftpClient.enterLocalPassiveMode();
+            ftpClient.setFileType(FTP.BINARY_FILE_TYPE);
+        } catch (Exception e) {
+            // Log the exception using a logger (e.g., log.error("FTP connection error", e);)
+            throw new RuntimeException("FTP connection error", e);
+        }
+        return ftpClient;
+    }
+}
