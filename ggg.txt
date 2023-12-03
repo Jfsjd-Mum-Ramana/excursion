@@ -674,3 +674,48 @@ public class FileTransferController {
         }
     }
 }
+
+
+
+
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class FileTransferController {
+
+    private final SshService sshService;
+    private final FtpService ftpService;
+    private final KafkaService kafkaService;
+
+    @Value("${file.transfer.type}")
+    private String fileType;
+
+    @Value("${kafka.topic}")
+    private String kafkaTopic;
+
+    @Value("${ftp.path}")
+    private String ftpPath;
+
+    @Autowired
+    public FileTransferController(SshService sshService, FtpService ftpService, KafkaService kafkaService) {
+        this.sshService = sshService;
+        this.ftpService = ftpService;
+        this.kafkaService = kafkaService;
+    }
+
+    @PostMapping("/transfer") // Adjust the endpoint to match your POST request
+    public String transferData() {
+        try {
+            byte[] data = sshService.retrieveData();
+            ftpService.uploadData(data);
+            kafkaService.produceFileTransferMessage(kafkaTopic, fileType, ftpPath);
+            return "Data transferred successfully!";
+        } catch (Exception e) {
+            return "Data transfer failed: " + e.getMessage();
+        }
+    }
+}
+
