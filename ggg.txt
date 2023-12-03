@@ -4,12 +4,14 @@ ftp:
   port: 21
   username: ftp_user
   password: ftp_password
+  path: /uploads/remotefile.txt  # Placeholder for FTP path
 
-# SSH Details
+# SSH Configuration
 ssh:
   username: awse
   host: 10.134.131.245
   password: SpedTeam@123
+  path: /tmp/remotefile.txt  # Placeholder for SSH path
 
 # Kafka Configuration
 spring:
@@ -22,6 +24,7 @@ spring:
       # Additional Kafka properties if needed
 
 # Other Spring Boot configurations...
+
 
 
 
@@ -526,5 +529,148 @@ public class FtpConfiguration {
             throw new RuntimeException("FTP connection error", e);
         }
         return ftpClient;
+    }
+}
+
+
+
+
+
+
+
+import org.apache.commons.net.ftp.FTP;
+import org.apache.commons.net.ftp.FTPClient;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import java.io.ByteArrayInputStream;
+
+@Service
+public class FtpService {
+
+    @Value("${ftp.host}")
+    private String ftpHost;
+
+    @Value("${ftp.port}")
+    private int ftpPort;
+
+    @Value("${ftp.username}")
+    private String ftpUsername;
+
+    @Value("${ftp.password}")
+    private String ftpPassword;
+
+    @Value("${ftp.path}")
+    private String ftpPath;
+
+    public void uploadData(byte[] data) {
+        FTPClient ftpClient = new FTPClient();
+        try {
+            ftpClient.connect(ftpHost, ftpPort);
+            ftpClient.login(ftpUsername, ftpPassword);
+            ftpClient.setFileType(FTP.BINARY_FILE_TYPE);
+
+            ByteArrayInputStream inputStream = new ByteArrayInputStream(data);
+            ftpClient.storeFile(ftpPath, inputStream);
+        } catch (Exception e) {
+            throw new RuntimeException("FTP upload error", e);
+        } finally {
+            try {
+                if (ftpClient.isConnected()) {
+                    ftpClient.logout();
+                    ftpClient.disconnect();
+                }
+            } catch (Exception e) {
+                throw new RuntimeException("FTP disconnect error", e);
+            }
+        }
+    }
+}
+
+
+
+import com.jcraft.jsch.ChannelExec;
+import com.jcraft.jsch.JSch;
+import com.jcraft.jsch.Session;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import java.io.ByteArrayOutputStream;
+
+@Service
+public class SshService {
+
+    @Value("${ssh.username}")
+    private String sshUsername;
+
+    @Value("${ssh.host}")
+    private String sshHost;
+
+    @Value("${ssh.password}")
+    private String sshPassword;
+
+    @Value("${ssh.path}")
+    private String sshPath;
+
+    public byte[] retrieveData() {
+        JSch jsch = new JSch();
+        Session session = null;
+        try {
+            session = jsch.getSession(sshUsername, sshHost, 22);
+            session.setPassword(sshPassword);
+            session.setConfig("StrictHostKeyChecking", "no");
+            session.connect();
+
+            ChannelExec channel = (ChannelExec) session.openChannel("exec");
+            channel.setCommand("cat " + sshPath);
+
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            channel.setOutputStream(outputStream);
+
+            channel.connect();
+
+            while (!channel.isClosed()) {
+                Thread.sleep(100);
+            }
+
+            channel.disconnect();
+            return outputStream.toByteArray();
+        } catch (Exception e) {
+            throw new RuntimeException("SSH retrieve error", e);
+        } finally {
+            if (session != null && session.isConnected()) {
+                session.disconnect();
+            }
+        }
+    }
+}
+
+
+
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class FileTransferController {
+
+    private final SshService sshService;
+    private final FtpService ftpService;
+
+    @Autowired
+    public FileTransferController(SshService sshService, FtpService ftpService) {
+        this.sshService = sshService;
+        this.ftpService = ftpService;
+    }
+
+    @PostMapping("/transfer")
+    public String transferData() {
+        try {
+            byte[] data = sshService.retrieveData();
+            ftpService.uploadData(data);
+            return "Data transferred successfully!";
+        } catch (Exception e) {
+            return "Data transfer failed: " + e.getMessage();
+        }
     }
 }
