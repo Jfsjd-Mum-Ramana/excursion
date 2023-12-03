@@ -719,3 +719,68 @@ public class FileTransferController {
     }
 }
 
+
+
+
+
+
+
+import org.apache.commons.net.ftp.FTP;
+import org.apache.commons.net.ftp.FTPClient;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import java.io.ByteArrayInputStream;
+
+@Service
+public class FtpService {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(FtpService.class);
+
+    @Value("${ftp.host}")
+    private String ftpHost;
+
+    @Value("${ftp.port}")
+    private int ftpPort;
+
+    @Value("${ftp.username}")
+    private String ftpUsername;
+
+    @Value("${ftp.password}")
+    private String ftpPassword;
+
+    @Value("${ftp.path}")
+    private String ftpPath;
+
+    public void uploadData(byte[] data) {
+        FTPClient ftpClient = new FTPClient();
+        try {
+            ftpClient.connect(ftpHost, ftpPort);
+            boolean connected = ftpClient.isConnected();
+            LOGGER.info("FTP server connection status: {}", connected ? "Connected" : "Not connected");
+
+            if (connected) {
+                ftpClient.login(ftpUsername, ftpPassword);
+                ftpClient.setFileType(FTP.BINARY_FILE_TYPE);
+                ByteArrayInputStream inputStream = new ByteArrayInputStream(data);
+                ftpClient.storeFile(ftpPath, inputStream);
+                LOGGER.info("File uploaded successfully to FTP server");
+            }
+        } catch (Exception e) {
+            LOGGER.error("FTP upload error: {}", e.getMessage());
+            throw new RuntimeException("FTP upload error", e);
+        } finally {
+            try {
+                if (ftpClient.isConnected()) {
+                    ftpClient.logout();
+                    ftpClient.disconnect();
+                }
+            } catch (Exception e) {
+                LOGGER.error("Error disconnecting from FTP server: {}", e.getMessage());
+                throw new RuntimeException("Error disconnecting from FTP server", e);
+            }
+        }
+    }
+}
+
