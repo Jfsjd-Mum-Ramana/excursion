@@ -784,3 +784,84 @@ public class FtpService {
     }
 }
 
+
+
+import org.apache.commons.net.ftp.FTP;
+import org.apache.commons.net.ftp.FTPClient;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class FtpConfiguration {
+
+    @Value("${ftp.host}")
+    private String ftpHost;
+
+    @Value("${ftp.port}")
+    private int ftpPort;
+
+    @Value("${ftp.username}")
+    private String ftpUsername;
+
+    @Value("${ftp.password}")
+    private String ftpPassword;
+
+    @Bean
+    public FTPClient ftpClient() {
+        FTPClient ftpClient = new FTPClient();
+        try {
+            ftpClient.connect(ftpHost, ftpPort);
+            ftpClient.login(ftpUsername, ftpPassword);
+            ftpClient.setFileType(FTP.BINARY_FILE_TYPE);
+        } catch (Exception e) {
+            throw new RuntimeException("Error configuring FTP client", e);
+        }
+        return ftpClient;
+    }
+
+    @Value("${ftp.path}")
+    private String ftpPath;
+
+    public String getFtpPath() {
+        return ftpPath;
+    }
+}
+
+
+
+import org.apache.commons.net.ftp.FTPClient;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import java.io.ByteArrayInputStream;
+
+@Service
+public class FtpService {
+
+    private final FTPClient ftpClient;
+    private final FtpConfiguration ftpConfiguration;
+    private final KafkaService kafkaService;
+
+    @Autowired
+    public FtpService(FTPClient ftpClient, FtpConfiguration ftpConfiguration, KafkaService kafkaService) {
+        this.ftpClient = ftpClient;
+        this.ftpConfiguration = ftpConfiguration;
+        this.kafkaService = kafkaService;
+    }
+
+    @Value("${kafka.file-transfer-topic}")
+    private String fileTransferTopic;
+
+    public void uploadData(byte[] data) {
+        try {
+            String ftpPath = ftpConfiguration.getFtpPath();
+            ByteArrayInputStream inputStream = new ByteArrayInputStream(data);
+            ftpClient.storeFile(ftpPath, inputStream);
+            kafkaService.produceFileTransferMessage(fileTransferTopic, "success", ftpPath);
+        } catch (Exception e) {
+            kafkaService.produceFileTransferMessage(fileTransferTopic, "failure", ftpConfiguration.getFtpPath());
+            throw new RuntimeException("FTP upload error", e);
+        }
+    }
+}
