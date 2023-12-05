@@ -102,3 +102,101 @@ ftp:
     - klong
   rootDirectory: "C:\\Users\\margara\\Desktop\\root"
   password: "pw"
+
+
+
+
+
+import org.apache.ftpserver.ftplet.*;
+import org.apache.ftpserver.usermanager.*;
+import org.springframework.boot.*;
+import org.springframework.boot.autoconfigure.*;
+import org.springframework.boot.context.properties.*;
+import org.springframework.context.annotation.*;
+import java.io.*;
+import java.util.*;
+
+@SpringBootApplication
+@EnableConfigurationProperties(FtpserverApplication.FTPProperties.class)
+public class FtpserverApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(FtpserverApplication.class, args);
+    }
+
+    @Bean
+    public ApplicationRunner ftpservice(UserManager userManager, FTPProperties properties) {
+        return args -> {
+            FtpServerFactory serverFactory = new FtpServerFactory();
+            ListenerFactory factory = new ListenerFactory();
+
+            PropertiesUserManagerFactory userManagerFactory = new PropertiesUserManagerFactory();
+            userManagerFactory.setFile(new File(properties.getUsersPropertiesPath()));
+            userManagerFactory.setPasswordEncryptor(new ClearTextPasswordEncryptor());
+
+            initUsers(userManager, userManagerFactory, properties);
+
+            userManager = userManagerFactory.createUserManager();
+            serverFactory.setUserManager(userManager);
+            serverFactory.addListener("default", factory.createListener());
+
+            FtpServer server = serverFactory.createServer();
+            server.start();
+        };
+    }
+
+    private void initUsers(UserManager userManager, PropertiesUserManagerFactory userManagerFactory, FTPProperties properties) throws Exception {
+        File root = new File(properties.getRootDirectory());
+        for (String userName : properties.getUsernames()) {
+            BaseUser user = new BaseUser();
+            user.setEnabled(true);
+            user.setName(userName);
+            user.setPassword(properties.getPassword());
+            user.authorize(new WritePermission("/"));
+            user.setHomeDirectory(root.getAbsolutePath());
+            userManager.save(user);
+        }
+    }
+
+    @ConfigurationProperties(prefix = "ftp")
+    public static class FTPProperties {
+        private String usersPropertiesPath;
+        private List<String> usernames;
+        private String rootDirectory;
+        private String password;
+
+        // Getters and Setters for properties
+
+        public String getUsersPropertiesPath() {
+            return usersPropertiesPath;
+        }
+
+        public void setUsersPropertiesPath(String usersPropertiesPath) {
+            this.usersPropertiesPath = usersPropertiesPath;
+        }
+
+        public List<String> getUsernames() {
+            return usernames;
+        }
+
+        public void setUsernames(List<String> usernames) {
+            this.usernames = usernames;
+        }
+
+        public String getRootDirectory() {
+            return rootDirectory;
+        }
+
+        public void setRootDirectory(String rootDirectory) {
+            this.rootDirectory = rootDirectory;
+        }
+
+        public String getPassword() {
+            return password;
+        }
+
+        public void setPassword(String password) {
+            this.password = password;
+        }
+    }
+}
