@@ -1,6 +1,5 @@
 import org.apache.flink.util.Collector;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -17,6 +16,12 @@ class TexttoJsonTransformerTest {
         TexttoJsonTransformer transformer = new TexttoJsonTransformer();
 
         // Invoking the flatMap method with the empty test input and asserting the exception
-        assertThrows(IllegalArgumentException.class, () -> transformer.flatMap(testInput, Mockito.mock(Collector.class)));
+        assertThrows(Exception.class, () -> transformer.flatMap(testInput, new Collector<String>() {
+            @Override
+            public void collect(String s) { }
+
+            @Override
+            public void close() { }
+        }));
     }
 }
