@@ -1,0 +1,278 @@
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.Producer;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.serialization.StringSerializer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
+import java.util.Properties;
+
+public class FileProcessor {
+    private static final Logger LOGGER = LoggerFactory.getLogger(FileProcessor.class);
+
+    private final String kafkaTopic;
+    private final String kafkaServer;
+
+    public FileProcessor(String kafkaTopic, String kafkaServer) {
+        this.kafkaTopic = kafkaTopic;
+        this.kafkaServer = kafkaServer;
+    }
+
+    public void processFile(String filePath) {
+        // Create properties for Kafka connection
+        Properties properties = new Properties();
+        properties.put("bootstrap.servers", kafkaServer); // Set Kafka server
+        properties.put("key.serializer", StringSerializer.class.getName()); // Set key serializer
+        properties.put("value.serializer", StringSerializer.class.getName()); // Set value serializer
+
+        try (BufferedReader br = new BufferedReader(new FileReader(filePath))) {
+            String line;
+            // Initialize a KafkaProducer with provided properties
+            Producer<String, String> producer = new KafkaProducer<>(properties);
+
+            while ((line = br.readLine()) != null) {
+                // Convert 'line' to JSON format if needed (not implemented in this code)
+                // Example: JSONObject jsonObject = new JSONObject().put("content", line);
+                // String jsonContent = jsonObject.toString();
+
+                // Send the JSON message to Kafka
+                producer.send(new ProducerRecord<>(kafkaTopic, line),
+                        (metadata, exception) -> {
+                            if (exception != null) {
+                                LOGGER.error("Error sending message to Kafka: {}", exception.getMessage());
+                            } else {
+                                LOGGER.info("Message sent to Kafka, offset: {}", metadata.offset());
+                            }
+                        });
+            }
+            // Close the Kafka producer after processing all lines in the file
+            producer.close();
+        } catch (IOException e) {
+            // Handle file reading exceptions
+            LOGGER.error("Error reading file: {}", e.getMessage());
+        }
+    }
+}
+
+
+
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.Producer;
+import org.apache.kafka.common.serialization.StringSerializer;
+
+import java.util.Properties;
+
+public class KafkaConfig {
+    private final String kafkaServer;
+
+    public KafkaConfig(String kafkaServer) {
+        this.kafkaServer = kafkaServer;
+    }
+
+    public Producer<String, String> createKafkaProducer() {
+        Properties properties = new Properties();
+        properties.put("bootstrap.servers", kafkaServer);
+        properties.put("key.serializer", StringSerializer.class.getName());
+        properties.put("value.serializer", StringSerializer.class.getName());
+
+        return new KafkaProducer<>(properties);
+    }
+}
+
+
+
+
+
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
+import org.mockito.Spy;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.stream.Stream;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+public class FileProcessorTest {
+
+    @Mock
+    private KafkaProducer<String, String> mockProducer;
+
+    @Spy
+    private FileProcessor fileProcessorSpy;
+
+    private Path tempFile;
+    private static final String TEST_TOPIC = "test_topic";
+    private static final String TEST_SERVER = "localhost:9092";
+
+    @BeforeEach
+    public void setUp() throws IOException {
+        MockitoAnnotations.openMocks(this);
+        fileProcessorSpy = spy(new FileProcessor(TEST_TOPIC, TEST_SERVER));
+        tempFile = Files.createTempFile("temp", ".txt");
+        Files.write(tempFile, "Line 1\nLine 2\nLine 3\n".getBytes());
+    }
+
+    @AfterEach
+    public void tearDown() throws IOException {
+        Files.deleteIfExists(tempFile);
+    }
+
+    @Test
+    public void processFile_SuccessfullySendsMessages() throws IOException {
+        doReturn(mockProducer).when(fileProcessorSpy).createKafkaProducer();
+
+        fileProcessorSpy.processFile(tempFile.toString());
+
+        verify(mockProducer, times(3)).send(any(ProducerRecord.class), any());
+    }
+
+    @Test
+    public void processFile_FileDoesNotExist() {
+        String nonExistentFile = "non_existent_file.txt";
+
+        fileProcessorSpy.processFile(nonExistentFile);
+
+        verify(fileProcessorSpy, times(1)).processFile(nonExistentFile);
+        // Ideally, a log or some feedback should be provided if the file does not exist.
+    }
+
+    @Test
+    public void processFile_IOExceptionDuringReading() throws IOException {
+        doThrow(IOException.class).when(fileProcessorSpy).createKafkaProducer();
+
+        fileProcessorSpy.processFile(tempFile.toString());
+
+        verify(fileProcessorSpy, times(1)).processFile(tempFile.toString());
+        // Ideally, a log or some feedback should be provided if an IOException occurs during file reading.
+    }
+}
+
+
+
+
+
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.Producer;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.serialization.StringSerializer;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
+
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.stream.Collectors;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+class FileProcessorTest {
+
+    @Mock
+    private KafkaProducer<String, String> kafkaProducer;
+
+    @InjectMocks
+    private FileProcessor fileProcessor;
+
+    private final String TEST_TOPIC = "testTopic";
+    private final String TEST_SERVER = "localhost:9092";
+    private Path tempFile;
+
+    @BeforeEach
+    void setUp() throws IOException {
+        MockitoAnnotations.initMocks(this);
+        fileProcessor = new FileProcessor(TEST_TOPIC, TEST_SERVER);
+        tempFile = createTempFileWithData("Line 1\nLine 2\nLine 3\n");
+    }
+
+    private Path createTempFileWithData(String content) throws IOException {
+        Path tempFile = Files.createTempFile("temp", ".txt");
+        Files.write(tempFile, content.getBytes());
+        return tempFile;
+    }
+
+    @Test
+    void processFile_SuccessfullySendsMessages() throws IOException {
+        doReturn(kafkaProducer).when(fileProcessor).createKafkaProducer();
+
+        fileProcessor.processFile(tempFile.toString());
+
+        verify(kafkaProducer, times(3)).send(any(ProducerRecord.class), any());
+    }
+
+    @Test
+    void processFile_FileDoesNotExist() {
+        String nonExistentFile = "non_existent_file.txt";
+
+        fileProcessor.processFile(nonExistentFile);
+
+        verify(fileProcessor, times(1)).processFile(nonExistentFile);
+        // Ideally, a log or some feedback should be provided if the file does not exist.
+    }
+
+    @Test
+    void processFile_IOExceptionDuringReading() throws IOException {
+        doThrow(IOException.class).when(fileProcessor).createKafkaProducer();
+
+        fileProcessor.processFile(tempFile.toString());
+
+        verify(fileProcessor, times(1)).processFile(tempFile.toString());
+        // Ideally, a log or some feedback should be provided if an IOException occurs during file reading.
+    }
+
+    @Test
+    void processFile_CreatesValidProducerRecord() throws IOException {
+        doReturn(kafkaProducer).when(fileProcessor).createKafkaProducer();
+        String expectedContent = "Line 1";
+
+        fileProcessor.processFile(tempFile.toString());
+
+        verify(kafkaProducer).send(argThat(record -> {
+            String actualContent = record.value();
+            return actualContent.equals(expectedContent);
+        }));
+    }
+
+    @Test
+    void processFile_ClosesProducer() throws IOException {
+        doReturn(kafkaProducer).when(fileProcessor).createKafkaProducer();
+
+        fileProcessor.processFile(tempFile.toString());
+
+        verify(kafkaProducer).close();
+    }
+
+    @Test
+    void processFile_HandlesIOException() throws IOException {
+        doThrow(new IOException("Error reading file")).when(kafkaProducer).send(any(ProducerRecord.class), any());
+
+        fileProcessor.processFile(tempFile.toString());
+
+        // Ideally, a log or some feedback should be provided if an IOException occurs during sending messages to Kafka.
+    }
+}
+
+
+
+kafka:
+  server: localhost:9092
+  topic: your_topic_name_here
+
+file:
+  path: classpath:yourfile.txt
