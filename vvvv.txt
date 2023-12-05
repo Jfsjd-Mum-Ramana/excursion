@@ -1,70 +1,104 @@
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.ApplicationRunner;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
+import org.apache.ftpserver.ftplet.*;
+import org.apache.ftpserver.usermanager.*;
+import org.springframework.boot.*;
+import org.springframework.boot.autoconfigure.*;
+import org.springframework.boot.context.properties.*;
+import org.springframework.context.annotation.*;
+import java.io.*;
+import java.util.*;
 
-import java.io.File;
+@SpringBootApplication
+@EnableConfigurationProperties(FtpserverApplication.FTPProperties.class)
+public class FtpserverApplication {
 
-@Configuration
-public class FtpConfiguration {
-
-    @Value("${ftp.users}")
-    private List<Map<String, String>> users;
-
-    @Value("${ftp.root-directory}")
-    private String rootDirectory;
-
-    @Value("${ftp.users-properties-path}")
-    private String usersPropertiesPath;
+    public static void main(String[] args) {
+        SpringApplication.run(FtpserverApplication.class, args);
+    }
 
     @Bean
-    ApplicationRunner ftpService() {
+    public ApplicationRunner ftpservice(UserManager userManager, FTPProperties properties) {
         return args -> {
             FtpServerFactory serverFactory = new FtpServerFactory();
             ListenerFactory factory = new ListenerFactory();
-            PropertiesUserManagerFactory userManagerFactory = new PropertiesUserManagerFactory();
 
-            userManagerFactory.setFile(new File(usersPropertiesPath));
+            PropertiesUserManagerFactory userManagerFactory = new PropertiesUserManagerFactory();
+            userManagerFactory.setFile(new File(properties.getUsersPropertiesPath()));
             userManagerFactory.setPasswordEncryptor(new ClearTextPasswordEncryptor());
 
-            UserManager userManager = userManagerFactory.createUserManager();
+            initUsers(userManager, userManagerFactory, properties);
+
+            userManager = userManagerFactory.createUserManager();
             serverFactory.setUserManager(userManager);
-
             serverFactory.addListener("default", factory.createListener());
+
             FtpServer server = serverFactory.createServer();
-
             server.start();
-
-            initUsers(userManager);
         };
     }
 
-    private void initUsers(UserManager userManager) throws Exception {
-        var root = new File(rootDirectory);
-        for (Map<String, String> userMap : users) {
-            var userName = userMap.get("username");
-            var password = userMap.get("password");
-
-            var user = new BaseUser();
+    private void initUsers(UserManager userManager, PropertiesUserManagerFactory userManagerFactory, FTPProperties properties) throws Exception {
+        File root = new File(properties.getRootDirectory());
+        for (String userName : properties.getUsernames()) {
+            BaseUser user = new BaseUser();
             user.setEnabled(true);
             user.setName(userName);
-            user.setPassword(password);
+            user.setPassword(properties.getPassword());
             user.setAuthorities(List.of(new WritePermission("/")));
             user.setHomeDirectory(root.getAbsolutePath());
             userManager.save(user);
+        }
+    }
+
+    @ConfigurationProperties(prefix = "ftp")
+    public static class FTPProperties {
+        private String usersPropertiesPath;
+        private List<String> usernames;
+        private String rootDirectory;
+        private String password;
+
+        // Getters and Setters for properties
+
+        public String getUsersPropertiesPath() {
+            return usersPropertiesPath;
+        }
+
+        public void setUsersPropertiesPath(String usersPropertiesPath) {
+            this.usersPropertiesPath = usersPropertiesPath;
+        }
+
+        public List<String> getUsernames() {
+            return usernames;
+        }
+
+        public void setUsernames(List<String> usernames) {
+            this.usernames = usernames;
+        }
+
+        public String getRootDirectory() {
+            return rootDirectory;
+        }
+
+        public void setRootDirectory(String rootDirectory) {
+            this.rootDirectory = rootDirectory;
+        }
+
+        public String getPassword() {
+            return password;
+        }
+
+        public void setPassword(String password) {
+            this.password = password;
         }
     }
 }
 
 
 
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-
-@SpringBootApplication
-public class FtpServerApplication {
-
-    public static void main(String[] args) {
-        SpringApplication.run(FtpServerApplication.class, args);
-    }
-}
+ftp:
+  usersPropertiesPath: "C:\\Projects Rmn\\Projects\\custom-collectors\\ftpsshserver\\src\\main\\resources\\users.properties"
+  usernames: 
+    - jlong
+    - flong
+    - klong
+  rootDirectory: "C:\\Users\\margara\\Desktop\\root"
+  password: "pw"
