@@ -50,3 +50,5 @@ class TexttoJsonTransformerTest {
         Mockito.verifyNoInteractions(collector);
     }
 }
+
+gsh
