@@ -97,3 +97,4 @@ class TexttoJsonTransformerTest {
         assertThrows(Exception.class, () -> transformer.flatMap(testInput, Mockito.mock(Collector.class)));
     }
 }
+
