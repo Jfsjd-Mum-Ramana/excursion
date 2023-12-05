@@ -333,3 +333,39 @@ file:
     </build>
 </project>
 
+
+
+
+
+<dependency>
+        <groupId>org.junit.jupiter</groupId>
+        <artifactId>junit-jupiter-api</artifactId>
+        <version>5.8.2</version>
+        <scope>test</scope>
+    </dependency>
+    <dependency>
+        <groupId>org.junit.jupiter</groupId>
+        <artifactId>junit-jupiter-engine</artifactId>
+        <version>5.8.2</version>
+        <scope>test</scope>
+    </dependency>
+
+    <!-- Mockito for mocking -->
+    <dependency>
+        <groupId>org.mockito</groupId>
+        <artifactId>mockito-core</artifactId>
+        <version>3.12.4</version>
+        <scope>test</scope>
+    </dependency>
+</dependencies>
+This includes JUnit 5 (junit-jupiter-api and junit-jupiter-engine) for testing and Mockito (mockito-core) for mocking objects during tests. Adjust versions as needed based on compatibility and preference. These dependencies are specified with a test scope to ensure they are only used for testing purposes.
+
+
+
+
+
+
+Message ChatGPT…
+
+ChatGPT can make mistakes. Consider checking important information.
+
