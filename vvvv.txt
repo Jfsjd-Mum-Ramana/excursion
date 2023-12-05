@@ -1,0 +1,70 @@
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.ApplicationRunner;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+import java.io.File;
+
+@Configuration
+public class FtpConfiguration {
+
+    @Value("${ftp.users}")
+    private List<Map<String, String>> users;
+
+    @Value("${ftp.root-directory}")
+    private String rootDirectory;
+
+    @Value("${ftp.users-properties-path}")
+    private String usersPropertiesPath;
+
+    @Bean
+    ApplicationRunner ftpService() {
+        return args -> {
+            FtpServerFactory serverFactory = new FtpServerFactory();
+            ListenerFactory factory = new ListenerFactory();
+            PropertiesUserManagerFactory userManagerFactory = new PropertiesUserManagerFactory();
+
+            userManagerFactory.setFile(new File(usersPropertiesPath));
+            userManagerFactory.setPasswordEncryptor(new ClearTextPasswordEncryptor());
+
+            UserManager userManager = userManagerFactory.createUserManager();
+            serverFactory.setUserManager(userManager);
+
+            serverFactory.addListener("default", factory.createListener());
+            FtpServer server = serverFactory.createServer();
+
+            server.start();
+
+            initUsers(userManager);
+        };
+    }
+
+    private void initUsers(UserManager userManager) throws Exception {
+        var root = new File(rootDirectory);
+        for (Map<String, String> userMap : users) {
+            var userName = userMap.get("username");
+            var password = userMap.get("password");
+
+            var user = new BaseUser();
+            user.setEnabled(true);
+            user.setName(userName);
+            user.setPassword(password);
+            user.setAuthorities(List.of(new WritePermission("/")));
+            user.setHomeDirectory(root.getAbsolutePath());
+            userManager.save(user);
+        }
+    }
+}
+
+
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class FtpServerApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(FtpServerApplication.class, args);
+    }
+}
