@@ -52,3 +52,48 @@ class TexttoJsonTransformerTest {
 }
 
 gsh
+
+
+
+
+
+
+
+import org.apache.flink.util.Collector;
+import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
+
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+class TexttoJsonTransformerTest {
+
+    @Test
+    void flatMap_Success() throws Exception {
+        // Mocking the Collector
+        Collector<String> collector = Mockito.mock(Collector.class);
+
+        // Creating a test input string
+        String testInput = "value1,value2,value3";
+
+        // Creating an instance of the TexttoJsonTransformer
+        TexttoJsonTransformer transformer = new TexttoJsonTransformer();
+
+        // Invoking the flatMap method with the test input
+        transformer.flatMap(testInput, collector);
+
+        // Verifying that the collector collects the expected JSON string
+        Mockito.verify(collector).collect("{\"key1\":\"value1\",\"key2\":\"value2\",\"key3\":\"value3\"}");
+    }
+
+    @Test
+    void flatMap_Failure() {
+        // Creating a test input string with incorrect format
+        String testInput = "value1,value2"; // Less elements than expected
+
+        // Creating an instance of the TexttoJsonTransformer
+        TexttoJsonTransformer transformer = new TexttoJsonTransformer();
+
+        // Invoking the flatMap method with the test input and asserting the exception
+        assertThrows(Exception.class, () -> transformer.flatMap(testInput, Mockito.mock(Collector.class)));
+    }
+}
