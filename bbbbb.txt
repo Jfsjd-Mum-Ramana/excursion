@@ -44,3 +44,60 @@ class MainTest {
 
     // Add more test cases as needed...
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
+
+import java.io.FileNotFoundException;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+class MainTest {
+
+    @Test
+    void testMainMethodRunsSuccessfullyWithoutInput() {
+        String[] args = {};
+
+        assertDoesNotThrow(() -> Main.main(args));
+    }
+
+    @Test
+    void testMainMethodThrowsFileNotFoundException() {
+        String[] args = {"--input", "invalidPath"};
+
+        assertThrows(FileNotFoundException.class, () -> Main.main(args));
+    }
+
+    @Test
+    void testFileSourceBuildThrowsException() {
+        FileSource mockedFileSource = mock(FileSource.class);
+        when(mockedFileSource.build()).thenThrow(Exception.class);
+
+        assertThrows(Exception.class, mockedFileSource::build);
+    }
+
+    @Test
+    void testKafkaSinkThrowsException() {
+        KafkaSink mockedKafkaSink = mock(KafkaSink.class);
+        when(mockedKafkaSink.setBootstrapServers(any())).thenThrow(Exception.class);
+
+        assertThrows(Exception.class, () -> mockedKafkaSink.setBootstrapServers("bootstrapServers"));
+    }
+
+    // Add more test cases as needed...
+}
