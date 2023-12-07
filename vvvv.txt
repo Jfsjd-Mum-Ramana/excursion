@@ -1,77 +1,38 @@
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
-
-import java.io.File;
-import java.io.FileNotFoundException;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 class MainTest {
 
     @Test
-    void testMainMethodWithValidInput() throws Exception {
-        String[] args = {"--input", "validPath", "--bootstarpServer", "server", "--Topic", "testTopic"};
+    void testMainMethodWithValidInput() {
+        // Simulating a valid input scenario
+        String[] args = {"--input", "path/to/valid/file", "--bootstarpServer", "server", "--Topic", "testTopic"};
 
         assertDoesNotThrow(() -> Main.main(args));
     }
 
     @Test
     void testMainMethodThrowsFileNotFoundException() {
+        // Simulating a scenario where the input file doesn't exist
         String[] args = {"--input", "nonExistingPath"};
 
         assertThrows(FileNotFoundException.class, () -> Main.main(args));
     }
 
     @Test
-    void testMainMethodWithMockedFileSource() throws Exception {
-        String[] args = {"--input", "somePath", "--bootstarpServer", "server", "--Topic", "testTopic"};
+    void testMainMethodWithNullInput() {
+        // Simulating a scenario where the input parameter is missing
+        String[] args = {"--bootstarpServer", "server", "--Topic", "testTopic"};
 
-        FileSource mockedFileSource = mock(FileSource.class);
-        when(mockedFileSource.build()).thenReturn(mockedFileSource);
-        Mockito.when(FileSource.forRecordStreamFormat(any(), any())).thenReturn(mockedFileSource);
-
-        assertDoesNotThrow(() -> Main.main(args));
+        assertThrows(IllegalArgumentException.class, () -> Main.main(args));
     }
 
     @Test
-    void testMainMethodWithMockedKafkaSink() throws Exception {
-        String[] args = {"--input", "somePath", "--bootstarpServer", "server", "--Topic", "testTopic"};
+    void testMainMethodRunsSuccessfullyWithoutInput() {
+        // Simulating a scenario where no arguments are provided
+        String[] args = {};
 
-        KafkaSink mockedKafkaSink = mock(KafkaSink.class);
-        when(mockedKafkaSink.setBootstrapServers(any())).thenReturn(mockedKafkaSink);
-        when(mockedKafkaSink.setRecordSerializer(any())).thenReturn(mockedKafkaSink);
-        when(mockedKafkaSink.setDeliveryGuarantee(any())).thenReturn(mockedKafkaSink);
         assertDoesNotThrow(() -> Main.main(args));
     }
 }
-
-
-
-
-
-<dependencies>
-    <!-- JUnit 5 -->
-    <dependency>
-        <groupId>org.junit.jupiter</groupId>
-        <artifactId>junit-jupiter-api</artifactId>
-        <version>5.8.1</version>
-        <scope>test</scope>
-    </dependency>
-    <dependency>
-        <groupId>org.junit.jupiter</groupId>
-        <artifactId>junit-jupiter-engine</artifactId>
-        <version>5.8.1</version>
-        <scope>test</scope>
-    </dependency>
-    
-    <!-- Mockito -->
-    <dependency>
-        <groupId>org.mockito</groupId>
-        <artifactId>mockito-core</artifactId>
-        <version>4.0.0</version>
-        <scope>test</scope>
-    </dependency>
-</dependencies>
