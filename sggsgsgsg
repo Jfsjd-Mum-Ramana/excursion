@@ -1,0 +1,57 @@
+import org.junit.jupiter.api.*;
+import org.apache.sshd.client.SshClient;
+import org.apache.sshd.client.session.ClientSession;
+import org.apache.sshd.common.keyprovider.SimpleGeneratorHostKeyProvider;
+import java.io.IOException;
+import static org.junit.jupiter.api.Assertions.*;
+
+class SSHServerSimulatorTest {
+
+    private SSHServerSimulator sshServer;
+
+    @BeforeEach
+    void setUp() {
+        sshServer = new SSHServerSimulator();
+    }
+
+    @AfterEach
+    void tearDown() {
+        // Stop the server after each test
+        stopServer();
+    }
+
+    @Test
+    void testStartServer() {
+        assertDoesNotThrow(() -> sshServer.startServer());
+    }
+
+    @Test
+    void testSSHServerConnection() {
+        startServer();
+
+        assertDoesNotThrow(() -> {
+            SshClient client = SshClient.setUpDefaultClient();
+            client.start();
+
+            try (ClientSession session = client.connect("Uname", "localhost", 22).verify().getSession()) {
+                session.addPasswordIdentity("Password");
+                session.auth().verify();
+                assertTrue(session.isAuthenticated());
+            } finally {
+                client.stop();
+            }
+        });
+    }
+
+    private void startServer() {
+        try {
+            sshServer.start();
+        } catch (IOException e) {
+            fail("Failed to start the SSH server: " + e.getMessage());
+        }
+    }
+
+    private void stopServer() {
+        // Implement server stop logic here if available
+    }
+}
