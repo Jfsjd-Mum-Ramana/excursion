@@ -1,0 +1,31 @@
+import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
+import java.io.IOException;
+import org.slf4j.Logger;
+
+import static org.mockito.Mockito.*;
+
+class SSHServerSimulatorTest {
+
+    @Test
+    void testStartServerSuccessfully() throws IOException {
+        SSHServerSimulator sshServerSimulator = new SSHServerSimulator();
+        Logger mockLogger = Mockito.mock(Logger.class);
+        sshServerSimulator.setLogger(mockLogger);
+
+        assertDoesNotThrow(() -> sshServerSimulator.startServer());
+
+        verify(mockLogger).info("SSH Server started on localhost @port 22");
+    }
+
+    @Test
+    void testStartServerThrowsIOException() throws IOException {
+        SSHServerSimulator sshServerSimulator = new SSHServerSimulator();
+        Logger mockLogger = Mockito.mock(Logger.class);
+        sshServerSimulator.setLogger(mockLogger);
+
+        doThrow(IOException.class).when(mockLogger).info("SSH Server started on localhost @port 22");
+
+        assertThrows(IOException.class, () -> sshServerSimulator.startServer());
+    }
+}
