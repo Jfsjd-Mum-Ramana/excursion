@@ -60,3 +60,103 @@
 
 </body>
 </html>
+
+
+
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modak Form</title>
+    <!-- Include Bootstrap CSS for styling -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <!-- Include jQuery -->
+    <script src="https://code.jquery.com/jquery-3.3.1.min.js"></script>
+</head>
+<body>
+
+    <div class="container mt-5">
+        <h2>Modak Form</h2>
+
+        <form id="modakForm">
+            <div class="form-group">
+                <label for="age">Age:</label>
+                <input type="number" class="form-control" id="age" name="age" required>
+            </div>
+
+            <div class="form-group">
+                <label for="date">Date:</label>
+                <input type="date" class="form-control" id="date" name="date" required>
+            </div>
+
+            <div class="form-group">
+                <label for="organization">Organization:</label>
+                <select class="form-control" id="organization" name="organization" required>
+                    <option value="company1">Company 1</option>
+                    <option value="company2">Company 2</option>
+                    <option value="company3">Company 3</option>
+                </select>
+            </div>
+
+            <button type="button" class="btn btn-primary" onclick="saveFormData()">Save</button>
+        </form>
+
+        <div class="mt-4">
+            <h3>Stored Data</h3>
+            <div id="dataGrid" class="row"></div>
+        </div>
+    </div>
+
+    <script>
+        function saveFormData() {
+            const age = $('#age').val();
+            const date = $('#date').val();
+            const organization = $('#organization').val();
+
+            const payload = {
+                age: age,
+                date: date,
+                organization: organization
+            };
+
+            // Simulate sending data to a dummy endpoint
+            $.ajax({
+                type: 'POST',
+                url: 'https://dummy-endpoint.com',
+                contentType: 'application/json',
+                data: JSON.stringify(payload),
+                success: function (data) {
+                    console.log('Request payload:', data);
+                    displayData(data);
+                    alert('Data saved successfully!');
+                },
+                error: function (error) {
+                    console.error('Error:', error);
+                    alert('Error saving data. Please try again.');
+                }
+            });
+        }
+
+        function displayData(data) {
+            const dataGrid = $('#dataGrid');
+            const newRow = $('<div class="col-md-4 mb-3"></div>');
+
+            newRow.append(`<p><strong>Age:</strong> ${data.age}</p>`);
+            newRow.append(`<p><strong>Date:</strong> ${data.date}</p>`);
+            newRow.append(`<p><strong>Organization:</strong> ${data.organization}</p>`);
+
+            dataGrid.prepend(newRow);
+        }
+    </script>
+
+    <!-- Include Bootstrap JS for button styling -->
+    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
+
+</body>
+</html>
