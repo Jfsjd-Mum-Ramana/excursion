@@ -4,74 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Modak Form</title>
-</head>
-<body>
-
-    <h2>Modak Form</h2>
-
-    <form id="modakForm">
-        <label for="age">Age:</label>
-        <input type="number" id="age" name="age" required>
-
-        <label for="date">Date:</label>
-        <input type="date" id="date" name="date" required>
-
-        <label for="organization">Organization:</label>
-        <select id="organization" name="organization" required>
-            <option value="company1">Company 1</option>
-            <option value="company2">Company 2</option>
-            <option value="company3">Company 3</option>
-        </select>
-
-        <button type="button" onclick="saveFormData()">Save</button>
-    </form>
-
-    <script>
-        function saveFormData() {
-            const age = document.getElementById('age').value;
-            const date = document.getElementById('date').value;
-            const organization = document.getElementById('organization').value;
-
-            const payload = {
-                age: age,
-                date: date,
-                organization: organization
-            };
-
-            // Simulate sending data to a dummy endpoint
-            fetch('https://dummy-endpoint.com', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(payload)
-            })
-            .then(response => response.json())
-            .then(data => {
-                console.log('Request payload:', data);
-                alert('Data saved successfully!');
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('Error saving data. Please try again.');
-            });
-        }
-    </script>
-
-</body>
-</html>
-
-
-
-
-
-
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Modak Form</title>
     <!-- Include Bootstrap CSS for styling -->
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
     <!-- Include jQuery -->
@@ -112,7 +44,7 @@
     </div>
 
     <script>
-        function saveFormData() {
+        async function saveFormData() {
             const age = $('#age').val();
             const date = $('#date').val();
             const organization = $('#organization').val();
@@ -123,22 +55,28 @@
                 organization: organization
             };
 
-            // Simulate sending data to a dummy endpoint
-            $.ajax({
-                type: 'POST',
-                url: 'https://dummy-endpoint.com',
-                contentType: 'application/json',
-                data: JSON.stringify(payload),
-                success: function (data) {
-                    console.log('Request payload:', data);
-                    displayData(data);
-                    alert('Data saved successfully!');
-                },
-                error: function (error) {
-                    console.error('Error:', error);
-                    alert('Error saving data. Please try again.');
+            try {
+                // Simulate sending data to a dummy endpoint using fetch
+                const response = await fetch('https://dummy-endpoint.com', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
                 }
-            });
+
+                const data = await response.json();
+                console.log('Request payload:', data);
+                displayData(data);
+                alert('Data saved successfully!');
+            } catch (error) {
+                console.error('Error:', error.message);
+                alert('Error saving data. Please try again.');
+            }
         }
 
         function displayData(data) {
