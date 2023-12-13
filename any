@@ -17,12 +17,12 @@
         <form id="modakForm">
             <div class="form-group">
                 <label for="age">Age:</label>
-                <input type="number" class="form-control" id="age" name="age" required>
+                <input type="number" class="form-control" id="age" name="age" value="25" required>
             </div>
 
             <div class="form-group">
                 <label for="date">Date:</label>
-                <input type="date" class="form-control" id="date" name="date" required>
+                <input type="date" class="form-control" id="date" name="date" value="2023-01-01" required>
             </div>
 
             <div class="form-group">
@@ -44,7 +44,7 @@
     </div>
 
     <script>
-        async function saveFormData() {
+        function saveFormData() {
             const age = $('#age').val();
             const date = $('#date').val();
             const organization = $('#organization').val();
@@ -55,28 +55,16 @@
                 organization: organization
             };
 
-            try {
-                // Simulate sending data to a dummy endpoint using fetch
-                const response = await fetch('https://dummy-endpoint.com', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(payload)
-                });
+            // Simulate a successful response locally
+            const simulatedResponse = {
+                age: payload.age,
+                date: payload.date,
+                organization: payload.organization
+            };
 
-                if (!response.ok) {
-                    throw new Error(`HTTP error! Status: ${response.status}`);
-                }
-
-                const data = await response.json();
-                console.log('Request payload:', data);
-                displayData(data);
-                alert('Data saved successfully!');
-            } catch (error) {
-                console.error('Error:', error.message);
-                alert('Error saving data. Please try again.');
-            }
+            console.log('Simulated Response:', simulatedResponse);
+            displayData(simulatedResponse);
+            alert('Data saved successfully!');
         }
 
         function displayData(data) {
