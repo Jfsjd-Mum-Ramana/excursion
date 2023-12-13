@@ -10,9 +10,9 @@
     <link rel="stylesheet" href="https://kendo.cdn.telerik.com/2022.3.1109/styles/kendo.common.min.css">
     <link rel="stylesheet" href="https://kendo.cdn.telerik.com/2022.3.1109/styles/kendo.default.min.css">
     <!-- Include jQuery -->
-    <script src="https://code.jquery.com/jquery-3.3.1.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.3.1.min.js" defer></script>
     <!-- Include Kendo UI Core JS -->
-    <script src="https://kendo.cdn.telerik.com/2022.3.1109/js/kendo.all.min.js"></script>
+    <script src="https://kendo.cdn.telerik.com/2022.3.1109/js/kendo.all.min.js" defer></script>
 </head>
 <body>
 
