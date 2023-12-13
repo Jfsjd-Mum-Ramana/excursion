@@ -6,8 +6,13 @@
     <title>Modak Form</title>
     <!-- Include Bootstrap CSS for styling -->
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <!-- Include Kendo UI Core CSS -->
+    <link rel="stylesheet" href="https://kendo.cdn.telerik.com/2022.3.1109/styles/kendo.common.min.css">
+    <link rel="stylesheet" href="https://kendo.cdn.telerik.com/2022.3.1109/styles/kendo.default.min.css">
     <!-- Include jQuery -->
     <script src="https://code.jquery.com/jquery-3.3.1.min.js"></script>
+    <!-- Include Kendo UI Core JS -->
+    <script src="https://kendo.cdn.telerik.com/2022.3.1109/js/kendo.all.min.js"></script>
 </head>
 <body>
 
@@ -37,10 +42,7 @@
             <button type="button" class="btn btn-primary" onclick="saveFormData()">Save</button>
         </form>
 
-        <div class="mt-4">
-            <h3>Stored Data</h3>
-            <div id="dataGrid" class="row"></div>
-        </div>
+        <div class="mt-4" id="gridContainer"></div>
     </div>
 
     <script>
@@ -65,17 +67,34 @@
             console.log('Simulated Response:', simulatedResponse);
             displayData(simulatedResponse);
             alert('Data saved successfully!');
+
+            // Hide the form after saving data
+            $('#modakForm').hide();
         }
 
         function displayData(data) {
-            const dataGrid = $('#dataGrid');
-            const newRow = $('<div class="col-md-4 mb-3"></div>');
+            const dataGrid = $('#gridContainer');
 
-            newRow.append(`<p><strong>Age:</strong> ${data.age}</p>`);
-            newRow.append(`<p><strong>Date:</strong> ${data.date}</p>`);
-            newRow.append(`<p><strong>Organization:</strong> ${data.organization}</p>`);
-
-            dataGrid.prepend(newRow);
+            // Initialize Kendo UI Grid
+            dataGrid.kendoGrid({
+                dataSource: {
+                    data: [data],
+                    schema: {
+                        model: {
+                            fields: {
+                                age: { type: 'number' },
+                                date: { type: 'date' },
+                                organization: { type: 'string' }
+                            }
+                        }
+                    }
+                },
+                columns: [
+                    { field: 'age', title: 'Age' },
+                    { field: 'date', title: 'Date', format: '{0:MM/dd/yyyy}' },
+                    { field: 'organization', title: 'Organization' }
+                ]
+            });
         }
     </script>
 
