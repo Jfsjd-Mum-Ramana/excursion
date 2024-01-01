@@ -1,0 +1,139 @@
+import org.apache.flink.api.common.ExecutionConfig;
+import org.apache.flink.api.common.functions.RichMapFunction;
+import org.apache.flink.api.java.utils.ParameterTool;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.connectors.kafka.KafkaRecordSerializationSchema;
+import org.apache.flink.streaming.connectors.kafka.Kafkasink;
+import org.apache.flink.streaming.connectors.kafka.internals.KeyedSerializationSchemaWrapper;
+import org.apache.flink.util.Collector;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.json.JSONObject;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.HashMap;
+import java.util.Map;
+
+public class XmlTransformerApplication {
+
+    public static void main(String[] args) throws Exception {
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+
+        // Enable checkpointing for fault tolerance (optional but recommended)
+        env.enableCheckpointing(5000);
+
+        // Get parameters from the Flink job submission
+        final ParameterTool parameters = ParameterTool.fromArgs(args);
+        env.getConfig().setGlobalJobParameters(parameters);
+
+        DataStream<String> xmlDataStream = env.addSource(...); // Define your data source here
+
+        DataStream<String> jsonStream = xmlDataStream.map(new XmlToJsonMapper());
+
+        Kafkasink<ProducerRecord<byte[], byte[]>> kafkaSink = new Kafkasink<>(
+                parameters.getRequired("bootstrap.servers"),
+                new KeyedSerializationSchemaWrapper<>(new KafkaRecordSerializationSchema<>()),
+                new KafkaProducerSemantic()
+        );
+
+        jsonStream.addSink(kafkaSink);
+
+        env.execute("XML to Kafka");
+    }
+
+    private static class XmlToJsonMapper extends RichMapFunction<String, String> {
+        private String jobId;
+        private String jarId;
+
+        @Override
+        public void open(Configuration parameters) throws Exception {
+            super.open(parameters);
+
+            // Retrieve jobId and jarId automatically from Flink job parameters
+            jobId = getRuntimeContext().getExecutionConfig().getGlobalJobParameters().toMap().get("jobId");
+            jarId = getRuntimeContext().getExecutionConfig().getGlobalJobParameters().toMap().get("jarId");
+        }
+
+        @Override
+        public String map(String xmlData) {
+            Map<String, String> extractedFields = parseXml(xmlData);
+
+            String finalJson;
+            if (extractedFields.isEmpty()) {
+                // File conversion failed
+                finalJson = createFailureJson(jobId, jarId);
+            } else {
+                finalJson = convertXmlToJson(
+                        extractedFields.get("file_name"),
+                        extractedFields.get("date_received"),
+                        extractedFields.get("date_processed"),
+                        Integer.parseInt(extractedFields.get("total_records")),
+                        Integer.parseInt(extractedFields.get("records_processed")),
+                        Integer.parseInt(extractedFields.get("records_failed")),
+                        "Success", // Assuming job status is successful here
+                        jobId,
+                        jarId,
+                        ""
+                );
+            }
+
+            return finalJson;
+        }
+
+        // Method to parse XML and extract required fields
+        private Map<String, String> parseXml(String xmlData) {
+            // Your logic to parse XML and extract fields like 'file_name', 'date_received', etc.
+            // Read file metadata directly from the file, extract fields and return as a Map
+            Map<String, String> extractedFields = new HashMap<>();
+            try {
+                File file = new File("path_to_your_file");
+                extractedFields.put("file_name", file.getName());
+                // Extract date-related information from the file attributes or content
+                //...
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            // Simulating failure scenario
+            // extractedFields.clear(); // Uncomment to simulate file conversion failure
+            return extractedFields;
+        }
+
+        // Method to create JSON for failure scenario
+        private String createFailureJson(String jobId, String jarId) {
+            return convertXmlToJson(
+                    "",
+                    "",
+                    "",
+                    0,
+                    0,
+                    0,
+                    "Failure", // Job status is set as failure here
+                    jobId,
+                    jarId,
+                    "File conversion failed"
+            );
+        }
+
+        // Method to convert extracted fields to JSON
+        private String convertXmlToJson(String fileName, String dateReceived, String dateProcessed,
+                                        int totalRecords, int recordsProcessed, int recordsFailed,
+                                        String jobStatus, String jobId, String jarId, String exceptions) {
+            JSONObject jsonOutput = new JSONObject();
+            jsonOutput.put("file_name", fileName);
+            jsonOutput.put("date_received", dateReceived);
+            jsonOutput.put("date_processed", dateProcessed);
+            jsonOutput.put("no_of_records_in_the_file", totalRecords);
+            jsonOutput.put("no_of_records_processed", recordsProcessed);
+            jsonOutput.put("no_of_records_failed", recordsFailed);
+            jsonOutput.put("job_status", jobStatus);
+            jsonOutput.put("job_id", jobId);
+            jsonOutput.put("jar_id", jarId);
+            jsonOutput.put("exceptions", exceptions);
+            return jsonOutput.toString();
+        }
+    }
+}
