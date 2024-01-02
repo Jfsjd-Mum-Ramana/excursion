@@ -1,79 +1,57 @@
-import org.w3c.dom.*;
-import org.xml.sax.InputSource;
-
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-import java.io.BufferedReader;
-import java.io.FileReader;
-import java.util.Properties;
-import org.apache.kafka.clients.producer.*;
+import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.connectors.kafka.KafkaRecordSerializationSchema;
+import org.apache.flink.streaming.connectors.kafka.KafkaSink;
+import org.apache.flink.streaming.connectors.kafka.delivery.DeliveryGuarantee;
+import org.apache.flink.streaming.connectors.kafka.serialization.KafkaSerializationSchema;
+import org.apache.flink.streaming.util.serialization.SimpleStringSchema;
 import org.json.JSONObject;
+import java.io.File;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 
-public class XMLToKafka {
-    public static void main(String[] args) {
-        // File path to your XML file
-        String filePath = "path_to_your_xml_file.xml";
+public class KafkaMessagePublisher {
+
+    public static void publishToAuditQueue(
+            String bootstrapServer, String auditTopic, String filePath,
+            int totalRecords, int processedRecords, int failedRecords) {
 
         try {
-            // XML Parsing
-            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-            DocumentBuilder builder = factory.newDocumentBuilder();
-            Document document = builder.parse(new InputSource(new FileReader(filePath)));
+            StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
-            // Create JSON Object
+            // Read file name from the file path
+            String fileName = new File(filePath).getName();
+
+            // Get current date for date_received and date_processed
+            SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+            String dateReceived = dateFormat.format(new Date());
+            String dateProcessed = dateReceived; // Assuming processing time = received time
+
             JSONObject jsonMessage = new JSONObject();
+            jsonMessage.put("file_name", fileName);
+            jsonMessage.put("date_received", dateReceived);
+            jsonMessage.put("date_processed", dateProcessed);
+            jsonMessage.put("no_of_records_in_the_file", totalRecords);
+            jsonMessage.put("no_of_records_processed", processedRecords);
+            jsonMessage.put("no_of_records_failed", failedRecords);
 
-            // Extracting data dynamically from XML
-            Element rootElement = document.getDocumentElement();
-            NodeList nodeList = rootElement.getChildNodes();
-            for (int i = 0; i < nodeList.getLength(); i++) {
-                Node node = nodeList.item(i);
-                if (node.getNodeType() == Node.ELEMENT_NODE) {
-                    String nodeName = node.getNodeName();
-                    String nodeValue = node.getTextContent();
-                    jsonMessage.put(nodeName, nodeValue);
-                }
-            }
+            KafkaSerializationSchema<String> kafkaSerializationSchema = KafkaRecordSerializationSchema
+                    .builder()
+                    .setTopic(auditTopic)
+                    .setValueSerializationSchema(new SimpleStringSchema())
+                    .build();
 
-            // Automatically extract and add fields as described in XML
-            String jobStatus = document.getElementsByTagName("job_status").item(0).getTextContent();
-            String jobId = document.getElementsByTagName("job_id").item(0).getTextContent();
-            String jarId = document.getElementsByTagName("jar_id").item(0).getTextContent();
-            String exceptions = document.getElementsByTagName("exceptions").item(0).getTextContent();
+            KafkaSink<String> sink = KafkaSink.<String>builder()
+                    .setBootstrapServers(bootstrapServer)
+                    .setRecordSerializer(kafkaSerializationSchema)
+                    .setDeliveryGuarantee(DeliveryGuarantee.AT_LEAST_ONCE)
+                    .build();
 
-            jsonMessage.put("job_status", jobStatus);
-            jsonMessage.put("job_id", jobId);
-            jsonMessage.put("jar_id", jarId);
-            jsonMessage.put("exceptions", exceptions);
-            // Add other fields automatically extracted here...
+            DataStream<String> messageStream = env.fromElements(jsonMessage.toString());
+            messageStream.sinkTo(sink);
 
-            // Convert JSON Object to String
-            String jsonString = jsonMessage.toString();
+            env.execute("Publish to Audit Queue Job");
 
-            // Kafka Producer Configuration
-            Properties props = new Properties();
-            props.put("bootstrap.servers", "localhost:9092");
-            props.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer");
-            props.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");
-
-            // Kafka Producer
-            Producer<String, String> producer = new KafkaProducer<>(props);
-
-            // Kafka Message
-            ProducerRecord<String, String> record = new ProducerRecord<>("3459-COLLECTION-AUDIT-QUEUE", jsonString);
-
-            // Send message to Kafka
-            producer.send(record, new Callback() {
-                public void onCompletion(RecordMetadata metadata, Exception e) {
-                    if (e != null) {
-                        e.printStackTrace();
-                    } else {
-                        System.out.println("Message sent successfully to Kafka.");
-                    }
-                }
-            });
-
-            producer.close();
         } catch (Exception e) {
             e.printStackTrace();
         }
