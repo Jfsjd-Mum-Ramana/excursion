@@ -1,59 +1,132 @@
-import org.apache.flink.streaming.api.datastream.DataStream;
-import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.connectors.kafka.KafkaRecordSerializationSchema;
-import org.apache.flink.streaming.connectors.kafka.KafkaSink;
-import org.apache.flink.streaming.connectors.kafka.delivery.DeliveryGuarantee;
-import org.apache.flink.streaming.connectors.kafka.serialization.KafkaSerializationSchema;
-import org.apache.flink.streaming.util.serialization.SimpleStringSchema;
-import org.json.JSONObject;
-import java.io.File;
+import org.apache.flink.api.common.functions.FlatMapFunction;
+import org.apache.flink.util.Collector;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+// Other necessary imports
 
-public class KafkaMessagePublisher {
+public class XmlTransformerApplication {
+    
+    private int successCount = 0;
+    private int failureCount = 0;
 
-    public static void publishToAuditQueue(
-            String bootstrapServer, String auditTopic, String filePath,
-            int totalRecords, int processedRecords, int failedRecords) {
+    public int getSuccessCount() {
+        return successCount;
+    }
 
-        try {
-            StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+    public int getFailureCount() {
+        return failureCount;
+    }
 
-            // Read file name from the file path
-            String fileName = new File(filePath).getName();
+    public static void main(String[] args) throws Exception {
+        // Your main method code here for Flink setup and processing
+        // ...
 
-            // Get current date for date_received and date_processed
-            SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-            String dateReceived = dateFormat.format(new Date());
-            String dateProcessed = dateReceived; // Assuming processing time = received time
+        // Flink pipeline setup, Kafka connection, and execution
+        // ...
 
-            JSONObject jsonMessage = new JSONObject();
-            jsonMessage.put("file_name", fileName);
-            jsonMessage.put("date_received", dateReceived);
-            jsonMessage.put("date_processed", dateProcessed);
-            jsonMessage.put("no_of_records_in_the_file", totalRecords);
-            jsonMessage.put("no_of_records_processed", processedRecords);
-            jsonMessage.put("no_of_records_failed", failedRecords);
+        // Your code for reading XML records and processing
+        // ...
 
-            KafkaSerializationSchema<String> kafkaSerializationSchema = KafkaRecordSerializationSchema
-                    .builder()
-                    .setTopic(auditTopic)
-                    .setValueSerializationSchema(new SimpleStringSchema())
-                    .build();
+        // Use flatMap to transform XML to JSON and handle success/failure counts
+        DataStream<String> xmlDataStream = ...; // Your XML data stream
 
-            KafkaSink<String> sink = KafkaSink.<String>builder()
-                    .setBootstrapServers(bootstrapServer)
-                    .setRecordSerializer(kafkaSerializationSchema)
-                    .setDeliveryGuarantee(DeliveryGuarantee.AT_LEAST_ONCE)
-                    .build();
+        xmlDataStream.flatMap(new XmlToJsonTransformer()).addSink(/* Kafka sink */);
 
-            DataStream<String> messageStream = env.fromElements(jsonMessage.toString());
-            messageStream.sinkTo(sink);
+        env.execute("XmlTransformerApplication");
+    }
 
-            env.execute("Publish to Audit Queue Job");
+    public static class XmlToJsonTransformer implements FlatMapFunction<String, String> {
 
-        } catch (Exception e) {
-            e.printStackTrace();
+        private final SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+
+        @Override
+        public void flatMap(String xmlRecord, Collector<String> out) throws Exception {
+            try {
+                String jsonRecord = transformXmlToJson(xmlRecord); // Implement XML to JSON conversion
+                out.collect(jsonRecord);
+
+                successCount++;
+
+                if (successCount == 10) { // Assuming 10 records
+                    pushSuccessMessageToKafka();
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                failureCount++;
+
+                if (failureCount == 10) { // All records failed
+                    pushFailureMessageToKafka();
+                } else if (successCount > 0 && failureCount > 0) { // Partial success
+                    pushPartialSuccessMessageToKafka();
+                }
+            }
+        }
+
+        private String transformXmlToJson(String xmlRecord) {
+            // Implement XML to JSON conversion logic here
+            // ...
+
+            return ""; // Placeholder, replace with actual JSON result
+        }
+
+        private void pushSuccessMessageToKafka() {
+            try {
+                Date dateProcessed = new Date();
+                String formattedDate = sdf.format(dateProcessed);
+
+                JSONObject successMessage = new JSONObject();
+                successMessage.put("no_of_records_processed", 10);
+                successMessage.put("no_of_records_failed", 0);
+                successMessage.put("job_status", "Success");
+                successMessage.put("date_processed", formattedDate); // Adding date processed field
+                
+                // Code to push successMessage to Kafka audit queue (replace placeholders with your Kafka configuration)
+                // kafkaProducer.send(new ProducerRecord<>(auditTopic, successMessage.toString()));
+
+            } catch (Exception e) {
+                e.printStackTrace();
+                // Handle errors in pushing message to Kafka
+            }
+        }
+
+        private void pushFailureMessageToKafka() {
+            try {
+                Date dateProcessed = new Date();
+                String formattedDate = sdf.format(dateProcessed);
+
+                JSONObject failureMessage = new JSONObject();
+                failureMessage.put("no_of_records_processed", 0);
+                failureMessage.put("no_of_records_failed", 10);
+                failureMessage.put("job_status", "Failure");
+                failureMessage.put("date_processed", formattedDate); // Adding date processed field
+                
+                // Code to push failureMessage to Kafka audit queue (replace placeholders with your Kafka configuration)
+                // kafkaProducer.send(new ProducerRecord<>(auditTopic, failureMessage.toString()));
+
+            } catch (Exception e) {
+                e.printStackTrace();
+                // Handle errors in pushing message to Kafka
+            }
+        }
+
+        private void pushPartialSuccessMessageToKafka() {
+            try {
+                Date dateProcessed = new Date();
+                String formattedDate = sdf.format(dateProcessed);
+
+                JSONObject partialSuccessMessage = new JSONObject();
+                partialSuccessMessage.put("no_of_records_processed", successCount);
+                partialSuccessMessage.put("no_of_records_failed", failureCount);
+                partialSuccessMessage.put("job_status", "Partial Success");
+                partialSuccessMessage.put("date_processed", formattedDate); // Adding date processed field
+                
+                // Code to push partialSuccessMessage to Kafka audit queue (replace placeholders with your Kafka configuration)
+                // kafkaProducer.send(new ProducerRecord<>(auditTopic, partialSuccessMessage.toString()));
+
+            } catch (Exception e) {
+                e.printStackTrace();
+                // Handle errors in pushing message to Kafka
+            }
         }
     }
 }
