@@ -1,132 +1,86 @@
-import org.apache.flink.api.common.functions.FlatMapFunction;
-import org.apache.flink.util.Collector;
-import java.text.SimpleDateFormat;
-import java.util.Date;
-// Other necessary imports
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
-public class XmlTransformerApplication {
-    
-    private int successCount = 0;
-    private int failureCount = 0;
+public class XmlTransformerApplicationTest {
 
-    public int getSuccessCount() {
-        return successCount;
+    @Test
+    public void testAllRecordsSuccessfullyProcessed() {
+        XmlTransformerApplication app = new XmlTransformerApplication();
+        app.processRecords(10, 0);
+        assertEquals(10, app.getSuccessCount());
+        assertEquals(0, app.getFailureCount());
+
+        KafkaProducer kafkaProducerMock = mock(KafkaProducer.class);
+        app.setKafkaProducer(kafkaProducerMock);
+
+        app.pushSuccessMessageToKafka();
+        verify(kafkaProducerMock, times(1)).sendMessage("auditTopic", "Success: Processed 10 records successfully");
     }
 
-    public int getFailureCount() {
-        return failureCount;
+   @Test
+    public void testExceptionThrownAndPushFailureMessage() {
+        XmlTransformerApplication app = new XmlTransformerApplication();
+
+        KafkaProducer kafkaProducerMock = mock(KafkaProducer.class);
+        app.setKafkaProducer(kafkaProducerMock);
+
+        assertThrows(RuntimeException.class, app::throwExceptionInTransformation);
+        assertEquals(0, app.getSuccessCount());
+        assertEquals(0, app.getFailureCount());
+
+        app.pushFailureMessageToKafka();
+        verify(kafkaProducerMock, times(1)).sendMessage("auditTopic", "Failure: Transformation failed");
     }
 
-    public static void main(String[] args) throws Exception {
-        // Your main method code here for Flink setup and processing
-        // ...
+    @Test
+    public void testPartialSuccessAndFailure() {
+        XmlTransformerApplication app = new XmlTransformerApplication();
+        app.processRecords(6, 4);
+        assertEquals(6, app.getSuccessCount());
+        assertEquals(4, app.getFailureCount());
 
-        // Flink pipeline setup, Kafka connection, and execution
-        // ...
+        KafkaProducer kafkaProducerMock = mock(KafkaProducer.class);
+        app.setKafkaProducer(kafkaProducerMock);
 
-        // Your code for reading XML records and processing
-        // ...
-
-        // Use flatMap to transform XML to JSON and handle success/failure counts
-        DataStream<String> xmlDataStream = ...; // Your XML data stream
-
-        xmlDataStream.flatMap(new XmlToJsonTransformer()).addSink(/* Kafka sink */);
-
-        env.execute("XmlTransformerApplication");
+        app.pushPartialSuccessMessageToKafka();
+        verify(kafkaProducerMock, times(1)).sendMessage("auditTopic", "Partial Success: 6 records processed successfully, 4 records failed");
     }
 
-    public static class XmlToJsonTransformer implements FlatMapFunction<String, String> {
+    @Test
+    public void testExceptionThrownAndPushFailureMessage() {
+        XmlTransformerApplication app = new XmlTransformerApplication();
+        KafkaProducer kafkaProducerMock = mock(KafkaProducer.class);
+        app.setKafkaProducer(kafkaProducerMock);
 
-        private final SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+        assertThrows(RuntimeException.class, app::throwExceptionInTransformation);
+        assertEquals(0, app.getSuccessCount());
+        assertEquals(0, app.getFailureCount());
 
-        @Override
-        public void flatMap(String xmlRecord, Collector<String> out) throws Exception {
-            try {
-                String jsonRecord = transformXmlToJson(xmlRecord); // Implement XML to JSON conversion
-                out.collect(jsonRecord);
+        app.pushFailureMessageToKafka();
+        verify(kafkaProducerMock, times(1)).sendMessage("auditTopic", "Failure: Transformation failed");
+    }
 
-                successCount++;
+    @Test
+    public void testInputFileNotPresent() {
+        XmlTransformerApplication app = new XmlTransformerApplication();
+        KafkaProducer kafkaProducerMock = mock(KafkaProducer.class);
+        app.setKafkaProducer(kafkaProducerMock);
 
-                if (successCount == 10) { // Assuming 10 records
-                    pushSuccessMessageToKafka();
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-                failureCount++;
+        app.simulateInputFileNotPresent();
+        // Implement assertions or further verifications as per your application's behavior
+    }
 
-                if (failureCount == 10) { // All records failed
-                    pushFailureMessageToKafka();
-                } else if (successCount > 0 && failureCount > 0) { // Partial success
-                    pushPartialSuccessMessageToKafka();
-                }
-            }
-        }
+    @Test
+    public void testOutputTopicNotAccessible() {
+        XmlTransformerApplication app = new XmlTransformerApplication();
+        KafkaProducer kafkaProducerMock = mock(KafkaProducer.class);
+        app.setKafkaProducer(kafkaProducerMock);
 
-        private String transformXmlToJson(String xmlRecord) {
-            // Implement XML to JSON conversion logic here
-            // ...
-
-            return ""; // Placeholder, replace with actual JSON result
-        }
-
-        private void pushSuccessMessageToKafka() {
-            try {
-                Date dateProcessed = new Date();
-                String formattedDate = sdf.format(dateProcessed);
-
-                JSONObject successMessage = new JSONObject();
-                successMessage.put("no_of_records_processed", 10);
-                successMessage.put("no_of_records_failed", 0);
-                successMessage.put("job_status", "Success");
-                successMessage.put("date_processed", formattedDate); // Adding date processed field
-                
-                // Code to push successMessage to Kafka audit queue (replace placeholders with your Kafka configuration)
-                // kafkaProducer.send(new ProducerRecord<>(auditTopic, successMessage.toString()));
-
-            } catch (Exception e) {
-                e.printStackTrace();
-                // Handle errors in pushing message to Kafka
-            }
-        }
-
-        private void pushFailureMessageToKafka() {
-            try {
-                Date dateProcessed = new Date();
-                String formattedDate = sdf.format(dateProcessed);
-
-                JSONObject failureMessage = new JSONObject();
-                failureMessage.put("no_of_records_processed", 0);
-                failureMessage.put("no_of_records_failed", 10);
-                failureMessage.put("job_status", "Failure");
-                failureMessage.put("date_processed", formattedDate); // Adding date processed field
-                
-                // Code to push failureMessage to Kafka audit queue (replace placeholders with your Kafka configuration)
-                // kafkaProducer.send(new ProducerRecord<>(auditTopic, failureMessage.toString()));
-
-            } catch (Exception e) {
-                e.printStackTrace();
-                // Handle errors in pushing message to Kafka
-            }
-        }
-
-        private void pushPartialSuccessMessageToKafka() {
-            try {
-                Date dateProcessed = new Date();
-                String formattedDate = sdf.format(dateProcessed);
-
-                JSONObject partialSuccessMessage = new JSONObject();
-                partialSuccessMessage.put("no_of_records_processed", successCount);
-                partialSuccessMessage.put("no_of_records_failed", failureCount);
-                partialSuccessMessage.put("job_status", "Partial Success");
-                partialSuccessMessage.put("date_processed", formattedDate); // Adding date processed field
-                
-                // Code to push partialSuccessMessage to Kafka audit queue (replace placeholders with your Kafka configuration)
-                // kafkaProducer.send(new ProducerRecord<>(auditTopic, partialSuccessMessage.toString()));
-
-            } catch (Exception e) {
-                e.printStackTrace();
-                // Handle errors in pushing message to Kafka
-            }
-        }
+        app.simulateOutputTopicNotAccessible();
+        // Implement assertions or further verifications as per your application's behavior
     }
 }
+
+
+
