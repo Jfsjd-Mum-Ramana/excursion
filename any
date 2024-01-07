@@ -1,175 +1,337 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Login/Signup</title>
-  <link rel="stylesheet" href="style.css">
+    <meta charset="UTF-8">
+    <title>Login & Signup</title>
+    <!-- Include CSS files -->
+    <link rel="stylesheet" href="styles/style.css">
 </head>
 <body>
-  <div class="container">
-    <h1>Login/Signup</h1>
 
     <!-- Login form -->
-    <div id="loginForm" class="form">
-      <h2>Login</h2>
-      <input type="email" id="loginEmail" placeholder="Email">
-      <input type="password" id="loginPassword" placeholder="Password">
-      <button onclick="login()">Login</button>
+    <div id="loginForm">
+        <h1>Login</h1>
+        <form id="loginForm">
+            <label for="loginUsername">Username:</label>
+            <input type="text" id="loginUsername" placeholder="Enter Username">
+            <br>
+            <label for="loginPassword">Password:</label>
+            <input type="password" id="loginPassword" placeholder="Enter Password">
+            <br>
+            <button type="submit">Login</button>
+            <button type="reset">Reset</button>
+        </form>
     </div>
 
     <!-- Signup form -->
-    <div id="signupForm" class="form" style="display: none;">
-      <h2>Signup</h2>
-      <input type="text" id="signupName" placeholder="Name">
-      <input type="email" id="signupEmail" placeholder="Email">
-      <input type="password" id="signupPassword" placeholder="Password">
-      <button onclick="signup()">Signup</button>
+    <div id="signupForm" style="display: none;">
+        <h1>Sign Up</h1>
+        <form id="signupForm">
+            <label for="signupUsername">Username:</label>
+            <input type="text" id="signupUsername" placeholder="Enter Username">
+            <br>
+            <label for="signupPassword">Password:</label>
+            <input type="password" id="signupPassword" placeholder="Enter Password">
+            <br>
+            <button type="submit">Sign Up</button>
+            <button type="reset">Reset</button>
+        </form>
     </div>
 
-    <div class="link">
-      <p>Don't have an account? <a href="#" onclick="toggleSignup()">Signup here</a></p>
+    <!-- Password reset form -->
+    <div id="passwordResetForm" style="display: none;">
+        <h1>Password Reset</h1>
+        <form id="passwordResetForm">
+            <label for="resetUsername">Username:</label>
+            <input type="text" id="resetUsername" placeholder="Enter Username">
+            <br>
+            <label for="newPassword">New Password:</label>
+            <input type="password" id="newPassword" placeholder="Enter New Password">
+            <br>
+            <label for="retypeNewPassword">Retype New Password:</label>
+            <input type="password" id="retypeNewPassword" placeholder="Retype New Password">
+            <br>
+            <button type="submit">Reset Password</button>
+            <button type="reset">Reset</button>
+        </form>
     </div>
-  </div>
 
-  <script src="main.js" defer></script>
+    <!-- Include JavaScript files -->
+    <script src="scripts/login.js"></script>
+    <script src="scripts/signup.js"></script>
+    <script src="scripts/passwordReset.js"></script>
 </body>
 </html>
 
 
 
 
+/* General styles */
 
 body {
-  font-family: Arial, sans-serif;
-  background-color: #f0f0f0;
-  margin: 0;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
-}
-
-.container {
-  max-width: 400px;
-  padding: 20px;
-  background-color: #fff;
-  border-radius: 8px;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #f0f0f0; /* Default background color */
+    color: #333; /* Default text color */
 }
 
 h1 {
-  text-align: center;
-  margin-bottom: 20px;
+    text-align: center;
 }
 
-.form {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-input[type="email"],
-input[type="password"],
-input[type="text"],
-button {
-  width: 100%;
-  margin-bottom: 15px;
-  padding: 10px;
-  border-radius: 5px;
-  border: 1px solid #ccc;
-  transition: background-color 0.3s, color 0.3s;
-}
-
-button {
-  cursor: pointer;
-  background-color: #007bff;
-  color: #fff;
-  border: none;
-}
-
-button:hover {
-  background-color: #0056b3;
-}
+/* Login page specific styles */
 
 #loginForm {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 20px;
-  background-color: #d9f1ff;
-  border-radius: 8px;
+    width: 300px;
+    margin: 100px auto;
+    background-color: #fff; /* Login form background color */
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
 }
+
+#loginForm label {
+    display: block;
+    margin-bottom: 5px;
+}
+
+#loginForm input[type="text"],
+#loginForm input[type="password"] {
+    width: calc(100% - 12px);
+    padding: 8px;
+    margin-bottom: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+#loginForm button {
+    width: 100%;
+    padding: 10px;
+    border: none;
+    border-radius: 4px;
+    background-color: #3498db; /* Default button background color */
+    color: #fff;
+    cursor: pointer;
+}
+
+#loginForm button:hover {
+    background-color: #2980b9; /* Button background color on hover */
+}
+
+/* Signup page specific styles */
 
 #signupForm {
-  display: none;
-  flex-direction: column;
-  align-items: center;
-  padding: 20px;
-  background-color: #e8ffed;
-  border-radius: 8px;
+    width: 300px;
+    margin: 100px auto;
+    background-color: #f9f9f9; /* Signup form background color */
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
 }
 
-.link {
-  text-align: center;
-  margin-top: 10px;
+/* Password reset page specific styles */
+
+#passwordResetForm {
+    width: 300px;
+    margin: 100px auto;
+    background-color: #eaeaea; /* Password reset form background color */
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
 }
 
-.link a {
-  color: #007bff;
-  text-decoration: none;
-}
-
-.link a:hover {
-  text-decoration: underline;
-  color: #0056b3;
-}
+/* Add more specific styles for each form as needed */
 
 
 
 
-let users = [];
+document.addEventListener('DOMContentLoaded', function() {
+    const loginForm = document.getElementById('loginForm');
+    const usernameInput = document.getElementById('username');
+    const passwordInput = document.getElementById('password');
+    const submitBtn = document.getElementById('submitBtn');
+    const resetBtn = document.getElementById('resetBtn');
 
-function login() {
-  const email = document.getElementById('loginEmail').value;
-  const password = document.getElementById('loginPassword').value;
+    // Event listener for form submission
+    loginForm.addEventListener('submit', function(event) {
+        event.preventDefault(); // Prevent default form submission behavior
+        
+        const username = usernameInput.value.trim();
+        const password = passwordInput.value.trim();
 
-  const user = users.find(u => u.email === email && u.password === password);
-  if (user) {
-    // Redirect to another page or display a success message
-    window.location.href = "success.html"; // Redirects to success.html
-  } else {
-    alert('Invalid email or password.');
-  }
-}
+        // Check if username and password are empty
+        if (username === '' || password === '') {
+            alert('Username and password are mandatory');
+            // Set focus on the first empty field
+            if (username === '') {
+                usernameInput.focus();
+            } else {
+                passwordInput.focus();
+            }
+            return;
+        }
 
-function signup() {
-  const name = document.getElementById('signupName').value;
-  const email = document.getElementById('signupEmail').value;
-  const password = document.getElementById('signupPassword').value;
+        // Log username and password data in the console
+        console.log(`Username: ${username}, Password: ${password}`);
 
-  if (name && email && password) {
-    const existingUser = users.find(u => u.email === email);
-    if (existingUser) {
-      alert('Email already exists. Please use a different email.');
-    } else {
-      const newUser = { name, email, password };
-      users.push(newUser);
-      window.location.href = "success.html"; // Redirects to success.html after signup
+        // Create user object and log in JSON format
+        const userObject = { userName: username, pwd: password };
+        console.log('User Object:', JSON.stringify(userObject));
+    });
+
+    // Event listener for reset button to clear fields
+    resetBtn.addEventListener('click', function() {
+        usernameInput.value = '';
+        passwordInput.value = '';
+    });
+
+    // Validate empty fields on blur
+    usernameInput.addEventListener('blur', function() {
+        if (usernameInput.value.trim() === '') {
+            usernameInput.style.borderColor = 'red';
+        } else {
+            usernameInput.style.borderColor = '';
+        }
+    });
+
+    passwordInput.addEventListener('blur', function() {
+        if (passwordInput.value.trim() === '') {
+            passwordInput.style.borderColor = 'red';
+        } else {
+            passwordInput.style.borderColor = '';
+        }
+    });
+});
+
+
+
+document.addEventListener('DOMContentLoaded', function() {
+    const signupForm = document.getElementById('signupForm');
+    const usernameInput = document.getElementById('username');
+    const passwordInput = document.getElementById('password');
+    const submitBtn = document.getElementById('submitBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const storageResetBtn = document.getElementById('storageResetBtn');
+
+    // Event listener for form submission
+    signupForm.addEventListener('submit', function(event) {
+        event.preventDefault(); // Prevent default form submission behavior
+        
+        const username = usernameInput.value.trim();
+        const password = passwordInput.value.trim();
+
+        // Check if username and password are empty
+        if (username === '' || password === '') {
+            alert('Username and password are mandatory');
+            // Set focus on the first empty field
+            if (username === '') {
+                usernameInput.focus();
+            } else {
+                passwordInput.focus();
+            }
+            return;
+        }
+
+        // Log username and password data in the console
+        console.log(`Username: ${username}, Password: ${password}`);
+
+        // Create user object and log in JSON format
+        const userObject = { userName: username, pwd: password };
+        console.log('User Object:', JSON.stringify(userObject));
+
+        // Store user data in localStorage
+        let userList = JSON.parse(localStorage.getItem('users')) || [];
+        userList.push(userObject);
+        localStorage.setItem('users', JSON.stringify(userList));
+    });
+
+    // Event listener for reset button to clear fields
+    resetBtn.addEventListener('click', function() {
+        usernameInput.value = '';
+        passwordInput.value = '';
+    });
+
+    // Event listener for storage reset button
+    storageResetBtn.addEventListener('click', function() {
+        localStorage.removeItem('users');
+        alert('Local storage cleared!');
+    });
+
+    // Validate empty fields on blur
+    usernameInput.addEventListener('blur', function() {
+        if (usernameInput.value.trim() === '') {
+            usernameInput.style.borderColor = 'red';
+        } else {
+            usernameInput.style.borderColor = '';
+        }
+    });
+
+    passwordInput.addEventListener('blur', function() {
+        if (passwordInput.value.trim() === '') {
+            passwordInput.style.borderColor = 'red';
+        } else {
+            passwordInput.style.borderColor = '';
+        }
+    });
+});
+
+
+
+document.addEventListener('DOMContentLoaded', function() {
+    const passwordResetForm = document.getElementById('passwordResetForm');
+    const usernameInput = document.getElementById('username');
+    const newPasswordInput = document.getElementById('newPassword');
+    const retypePasswordInput = document.getElementById('retypePassword');
+    const submitBtn = document.getElementById('submitBtn');
+
+    // Event listener for form submission
+    passwordResetForm.addEventListener('submit', function(event) {
+        event.preventDefault(); // Prevent default form submission behavior
+        
+        const username = usernameInput.value.trim();
+        const newPassword = newPasswordInput.value.trim();
+        const retypePassword = retypePasswordInput.value.trim();
+
+        // Check if any field is empty
+        if (username === '' || newPassword === '' || retypePassword === '') {
+            alert('All fields are mandatory');
+            return;
+        }
+
+        // Check if new password and retype password match
+        if (newPassword !== retypePassword) {
+            alert('New password and retype password do not match');
+            return;
+        }
+
+        // Check for password criteria
+        if (!validatePassword(newPassword)) {
+            alert('Password criteria not met');
+            return;
+        }
+
+        // Check if username exists in local storage
+        const userList = JSON.parse(localStorage.getItem('users')) || [];
+        const existingUser = userList.find(user => user.userName === username);
+        if (!existingUser) {
+            alert('Username not present');
+            return;
+        }
+
+        // Update password in local storage
+        userList.forEach(user => {
+            if (user.userName === username) {
+                user.pwd = newPassword;
+            }
+        });
+        localStorage.setItem('users', JSON.stringify(userList));
+        alert('Password reset successful');
+    });
+
+    // Password criteria validation function
+    function validatePassword(password) {
+        const passwordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*[!@#$%^&*]).{8,}$/;
+        return passwordPattern.test(password);
     }
-  } else {
-    alert('Please fill in all fields.');
-  }
-}
-
-function toggleSignup() {
-  const loginForm = document.getElementById('loginForm');
-  const signupForm = document.getElementById('signupForm');
-
-  if (loginForm.style.display !== 'none') {
-    loginForm.style.display = 'none';
-    signupForm.style.display = 'block';
-  } else {
-    loginForm.style.display = 'block';
-    signupForm.style.display = 'none';
-  }
-}
+});
