@@ -1,34 +1,124 @@
-@Test
-void testConsume() throws IOException {
-    SpaceCollector sp = getSpaceCollector();
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Login/Signup</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="main.js" defer></script>
+</head>
+<body>
+  <h1>Login/Signup</h1>
 
-    File file = new File(sp.getInputFilePath());
-    file.createNewFile();
+  <!-- Login form -->
+  <div id="loginForm">
+    <h2>Login</h2>
+    <input type="email" id="loginEmail" placeholder="Email">
+    <input type="password" id="loginPassword" placeholder="Password">
+    <button onclick="login()">Login</button>
+  </div>
 
-    String type = kafkaConsumer.getExtension(sp.getInputFilePath());
+  <!-- Signup form -->
+  <div id="signupForm" style="display: none;">
+    <h2>Signup</h2>
+    <input type="text" id="signupName" placeholder="Name">
+    <input type="email" id="signupEmail" placeholder="Email">
+    <input type="password" id="signupPassword" placeholder="Password">
+    <button onclick="signup()">Signup</button>
+  </div>
 
-    // Check if kafkaConsumer or type is null before proceeding
-    assertNotNull(kafkaConsumer);
-    assertNotNull(type);
+  <!-- User details -->
+  <div id="userDetails" style="display: none;">
+    <h2>User Details</h2>
+    <p>Name: <span id="userName"></span></p>
+    <p>Email: <span id="userEmail"></span></p>
+  </div>
+</body>
+</html>
 
-    try (BufferedWriter writer = new BufferedWriter(new FileWriter(file, true))) {
-        StringBuilder sb = new StringBuilder()
-                .append("test1 test2 test3")
-                .append(System.lineSeparator())
-                .append("test4|test5|test6");
 
-        writer.append(sb);
-    } catch (IOException e) {
-        // Handle or log the IOException
-        e.printStackTrace();
-    }
+// Simulating user data storage
+let users = [];
 
-    when(FlinkApi.triggerJob(sp, type)).thenReturn("success");
+function login() {
+  const email = document.getElementById('loginEmail').value;
+  const password = document.getElementById('loginPassword').value;
 
-    // Ensure kafkaConsumer is not null before invoking consume method
-    assertNotNull(kafkaConsumer);
+  const user = users.find(u => u.email === email && u.password === password);
+  if (user) {
+    document.getElementById('loginForm').style.display = 'none';
+    document.getElementById('signupForm').style.display = 'none';
+    document.getElementById('userDetails').style.display = 'block';
+    document.getElementById('userName').innerText = user.name;
+    document.getElementById('userEmail').innerText = user.email;
+  } else {
+    alert('Invalid email or password.');
+  }
+}
 
-    assertAll(() -> kafkaConsumer.consume(new ObjectMapper().writeValueAsString(sp)));
+function signup() {
+  const name = document.getElementById('signupName').value;
+  const email = document.getElementById('signupEmail').value;
+  const password = document.getElementById('signupPassword').value;
 
-    kafkaConsumer.deleteFile(sp.getInputFilePath());
+  if (name && email && password) {
+    const newUser = { name, email, password };
+    users.push(newUser);
+
+    document.getElementById('loginForm').style.display = 'none';
+    document.getElementById('signupForm').style.display = 'none';
+    document.getElementById('userDetails').style.display = 'block';
+    document.getElementById('userName').innerText = newUser.name;
+    document.getElementById('userEmail').innerText = newUser.email;
+  } else {
+    alert('Please fill in all fields.');
+  }
+}
+
+
+
+body {
+  font-family: Arial, sans-serif;
+  background-color: #f0f0f0;
+  margin: 0;
+  padding: 20px;
+}
+
+h1, h2 {
+  text-align: center;
+}
+
+#loginForm, #signupForm, #userDetails {
+  max-width: 400px;
+  margin: 20px auto;
+  padding: 20px;
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+input[type="email"],
+input[type="password"],
+input[type="text"],
+button {
+  display: block;
+  width: 100%;
+  margin-bottom: 10px;
+  padding: 8px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+}
+
+button {
+  background-color: #007bff;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+}
+
+button:hover {
+  background-color: #0056b3;
+}
+
+#userDetails p {
+  margin-bottom: 5px;
 }
