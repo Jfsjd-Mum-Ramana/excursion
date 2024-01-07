@@ -1,0 +1,78 @@
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+public class XmlToJsonConverterTest {
+
+    @Mock
+    KafkaProducerService kafkaProducerServiceMock;
+
+    @BeforeEach
+    public void setup() {
+        MockitoAnnotations.initMocks(this);
+    }
+
+    @Test
+    public void testConstructor() {
+        XmlToJsonConverter converter = new XmlToJsonConverter();
+        assertNotNull(converter);
+
+        XmlToJsonConverter paramConverter = new XmlToJsonConverter("primaryKey", "filePath", "bootstrapServer", "auditTopic");
+        assertNotNull(paramConverter);
+    }
+
+    @Test
+    public void testFlatMapPrimaryKeyNotFound() throws Exception {
+        XmlToJsonConverter converter = new XmlToJsonConverter("primaryKey", "filePath", "bootstrapServer", "auditTopic");
+        assertNotNull(converter);
+
+        String xmlData = "<root><key>value</key></root>";
+
+        // Simulate the behavior of KafkaProducerService
+        doNothing().when(kafkaProducerServiceMock).writeMessage(anyString(), anyString(), anyString());
+
+        // Call flatMap with XML data that doesn't contain the specified primaryKey
+        converter.flatMap(xmlData, mock(Collector.class));
+
+        // Assert that the primary key is not found and audit message is sent
+        // ...
+    }
+
+    @Test
+    public void testFlatMapWithValidData() throws Exception {
+        XmlToJsonConverter converter = new XmlToJsonConverter("primaryKey", "filePath", "bootstrapServer", "auditTopic");
+        assertNotNull(converter);
+
+        String xmlData = "<root><primaryKey>value</primaryKey></root>";
+
+        // Simulate the behavior of KafkaProducerService
+        doNothing().when(kafkaProducerServiceMock).writeMessage(anyString(), anyString(), anyString());
+
+        // Call flatMap with valid XML data
+        converter.flatMap(xmlData, mock(Collector.class));
+
+       
+    }
+@Test
+    public void testFlatMapMinOnePrimaryKeyNotObjectOrArray() throws Exception {
+        XmlToJsonConverter converter = new XmlToJsonConverter("primaryKey", "filePath", "bootstrapServer", "auditTopic");
+        assertNotNull(converter);
+
+        String xmlData = "<root><primaryKey>value</primaryKey></root>";
+
+        // Simulate the behavior of KafkaProducerService
+        doNothing().when(kafkaProducerServiceMock).writeMessage(anyString(), anyString(), anyString());
+
+        // Call flatMap with valid XML data but set one primary key as a string, not an object or array
+        converter.flatMap(xmlData, mock(Collector.class));
+}
+    
+
+}
