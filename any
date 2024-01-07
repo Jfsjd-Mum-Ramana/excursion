@@ -107,3 +107,31 @@ Feature: XML to JSON Transformation
     Given the XMLTransformerApplication is running
     When missing or empty program arguments are provided
     Then the application should log an error about missing or empty arguments
+
+
+
+
+
+<dependencies>
+    <!-- Cucumber dependencies -->
+    <dependency>
+        <groupId>io.cucumber</groupId>
+        <artifactId>cucumber-java</artifactId>
+        <version>7.3.1</version> <!-- Use the latest version -->
+        <scope>test</scope>
+    </dependency>
+    <dependency>
+        <groupId>io.cucumber</groupId>
+        <artifactId>cucumber-junit</artifactId>
+        <version>7.3.1</version> <!-- Use the same version as cucumber-java -->
+        <scope>test</scope>
+    </dependency>
+    
+    <!-- JUnit dependency (needed for running Cucumber tests) -->
+    <dependency>
+        <groupId>junit</groupId>
+        <artifactId>junit</artifactId>
+        <version>4.13.2</version> <!-- Use the latest version -->
+        <scope>test</scope>
+    </dependency>
+</dependencies>
