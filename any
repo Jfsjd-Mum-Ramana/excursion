@@ -1,3 +1,136 @@
+/* General styles */
+
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #f0f0f0; /* Default background color */
+    color: #333; /* Default text color */
+}
+
+h1 {
+    text-align: center;
+}
+
+/* Login form styles */
+
+#loginForm {
+    width: 300px;
+    margin: 20px auto;
+    background-color: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+#loginForm label {
+    display: block;
+    margin-bottom: 5px;
+}
+
+#loginForm input[type="text"],
+#loginForm input[type="password"] {
+    width: calc(100% - 12px);
+    padding: 8px;
+    margin-bottom: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+#loginForm button {
+    width: 100%;
+    padding: 10px;
+    border: none;
+    border-radius: 4px;
+    background-color: #3498db; /* Default button background color */
+    color: #fff;
+    cursor: pointer;
+}
+
+#loginForm button:hover {
+    background-color: #2980b9; /* Button background color on hover */
+}
+
+/* Signup form styles */
+
+#signupForm {
+    width: 300px;
+    margin: 20px auto;
+    background-color: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+#signupForm label {
+    display: block;
+    margin-bottom: 5px;
+}
+
+#signupForm input[type="text"],
+#signupForm input[type="password"] {
+    width: calc(100% - 12px);
+    padding: 8px;
+    margin-bottom: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+#signupForm button {
+    width: 100%;
+    padding: 10px;
+    border: none;
+    border-radius: 4px;
+    background-color: #27ae60; /* Default button background color */
+    color: #fff;
+    cursor: pointer;
+}
+
+#signupForm button:hover {
+    background-color: #219a52; /* Button background color on hover */
+}
+
+/* Password reset form styles */
+
+#passwordResetForm {
+    width: 300px;
+    margin: 20px auto;
+    background-color: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+#passwordResetForm label {
+    display: block;
+    margin-bottom: 5px;
+}
+
+#passwordResetForm input[type="text"],
+#passwordResetForm input[type="password"] {
+    width: calc(100% - 12px);
+    padding: 8px;
+    margin-bottom: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+#passwordResetForm button {
+    width: 100%;
+    padding: 10px;
+    border: none;
+    border-radius: 4px;
+    background-color: #e67e22; /* Default button background color */
+    color: #fff;
+    cursor: pointer;
+}
+
+#passwordResetForm button:hover {
+    background-color: #ca6b1c; /* Button background color on hover */
+}
+
+
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -12,11 +145,11 @@
     <div id="loginForm">
         <h1>Login</h1>
         <form id="loginForm">
-            <label for="loginUsername">Username:</label>
-            <input type="text" id="loginUsername" placeholder="Enter Username">
+            <label for="username">Username:</label>
+            <input type="text" id="username" placeholder="Enter Username">
             <br>
-            <label for="loginPassword">Password:</label>
-            <input type="password" id="loginPassword" placeholder="Enter Password">
+            <label for="password">Password:</label>
+            <input type="password" id="password" placeholder="Enter Password">
             <br>
             <button type="submit">Login</button>
             <button type="reset">Reset</button>
@@ -62,276 +195,3 @@
     <script src="scripts/passwordReset.js"></script>
 </body>
 </html>
-
-
-
-
-/* General styles */
-
-body {
-    font-family: Arial, sans-serif;
-    margin: 0;
-    padding: 0;
-    background-color: #f0f0f0; /* Default background color */
-    color: #333; /* Default text color */
-}
-
-h1 {
-    text-align: center;
-}
-
-/* Login page specific styles */
-
-#loginForm {
-    width: 300px;
-    margin: 100px auto;
-    background-color: #fff; /* Login form background color */
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-}
-
-#loginForm label {
-    display: block;
-    margin-bottom: 5px;
-}
-
-#loginForm input[type="text"],
-#loginForm input[type="password"] {
-    width: calc(100% - 12px);
-    padding: 8px;
-    margin-bottom: 10px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-}
-
-#loginForm button {
-    width: 100%;
-    padding: 10px;
-    border: none;
-    border-radius: 4px;
-    background-color: #3498db; /* Default button background color */
-    color: #fff;
-    cursor: pointer;
-}
-
-#loginForm button:hover {
-    background-color: #2980b9; /* Button background color on hover */
-}
-
-/* Signup page specific styles */
-
-#signupForm {
-    width: 300px;
-    margin: 100px auto;
-    background-color: #f9f9f9; /* Signup form background color */
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-}
-
-/* Password reset page specific styles */
-
-#passwordResetForm {
-    width: 300px;
-    margin: 100px auto;
-    background-color: #eaeaea; /* Password reset form background color */
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-}
-
-/* Add more specific styles for each form as needed */
-
-
-
-
-document.addEventListener('DOMContentLoaded', function() {
-    const loginForm = document.getElementById('loginForm');
-    const usernameInput = document.getElementById('username');
-    const passwordInput = document.getElementById('password');
-    const submitBtn = document.getElementById('submitBtn');
-    const resetBtn = document.getElementById('resetBtn');
-
-    // Event listener for form submission
-    loginForm.addEventListener('submit', function(event) {
-        event.preventDefault(); // Prevent default form submission behavior
-        
-        const username = usernameInput.value.trim();
-        const password = passwordInput.value.trim();
-
-        // Check if username and password are empty
-        if (username === '' || password === '') {
-            alert('Username and password are mandatory');
-            // Set focus on the first empty field
-            if (username === '') {
-                usernameInput.focus();
-            } else {
-                passwordInput.focus();
-            }
-            return;
-        }
-
-        // Log username and password data in the console
-        console.log(`Username: ${username}, Password: ${password}`);
-
-        // Create user object and log in JSON format
-        const userObject = { userName: username, pwd: password };
-        console.log('User Object:', JSON.stringify(userObject));
-    });
-
-    // Event listener for reset button to clear fields
-    resetBtn.addEventListener('click', function() {
-        usernameInput.value = '';
-        passwordInput.value = '';
-    });
-
-    // Validate empty fields on blur
-    usernameInput.addEventListener('blur', function() {
-        if (usernameInput.value.trim() === '') {
-            usernameInput.style.borderColor = 'red';
-        } else {
-            usernameInput.style.borderColor = '';
-        }
-    });
-
-    passwordInput.addEventListener('blur', function() {
-        if (passwordInput.value.trim() === '') {
-            passwordInput.style.borderColor = 'red';
-        } else {
-            passwordInput.style.borderColor = '';
-        }
-    });
-});
-
-
-
-document.addEventListener('DOMContentLoaded', function() {
-    const signupForm = document.getElementById('signupForm');
-    const usernameInput = document.getElementById('username');
-    const passwordInput = document.getElementById('password');
-    const submitBtn = document.getElementById('submitBtn');
-    const resetBtn = document.getElementById('resetBtn');
-    const storageResetBtn = document.getElementById('storageResetBtn');
-
-    // Event listener for form submission
-    signupForm.addEventListener('submit', function(event) {
-        event.preventDefault(); // Prevent default form submission behavior
-        
-        const username = usernameInput.value.trim();
-        const password = passwordInput.value.trim();
-
-        // Check if username and password are empty
-        if (username === '' || password === '') {
-            alert('Username and password are mandatory');
-            // Set focus on the first empty field
-            if (username === '') {
-                usernameInput.focus();
-            } else {
-                passwordInput.focus();
-            }
-            return;
-        }
-
-        // Log username and password data in the console
-        console.log(`Username: ${username}, Password: ${password}`);
-
-        // Create user object and log in JSON format
-        const userObject = { userName: username, pwd: password };
-        console.log('User Object:', JSON.stringify(userObject));
-
-        // Store user data in localStorage
-        let userList = JSON.parse(localStorage.getItem('users')) || [];
-        userList.push(userObject);
-        localStorage.setItem('users', JSON.stringify(userList));
-    });
-
-    // Event listener for reset button to clear fields
-    resetBtn.addEventListener('click', function() {
-        usernameInput.value = '';
-        passwordInput.value = '';
-    });
-
-    // Event listener for storage reset button
-    storageResetBtn.addEventListener('click', function() {
-        localStorage.removeItem('users');
-        alert('Local storage cleared!');
-    });
-
-    // Validate empty fields on blur
-    usernameInput.addEventListener('blur', function() {
-        if (usernameInput.value.trim() === '') {
-            usernameInput.style.borderColor = 'red';
-        } else {
-            usernameInput.style.borderColor = '';
-        }
-    });
-
-    passwordInput.addEventListener('blur', function() {
-        if (passwordInput.value.trim() === '') {
-            passwordInput.style.borderColor = 'red';
-        } else {
-            passwordInput.style.borderColor = '';
-        }
-    });
-});
-
-
-
-document.addEventListener('DOMContentLoaded', function() {
-    const passwordResetForm = document.getElementById('passwordResetForm');
-    const usernameInput = document.getElementById('username');
-    const newPasswordInput = document.getElementById('newPassword');
-    const retypePasswordInput = document.getElementById('retypePassword');
-    const submitBtn = document.getElementById('submitBtn');
-
-    // Event listener for form submission
-    passwordResetForm.addEventListener('submit', function(event) {
-        event.preventDefault(); // Prevent default form submission behavior
-        
-        const username = usernameInput.value.trim();
-        const newPassword = newPasswordInput.value.trim();
-        const retypePassword = retypePasswordInput.value.trim();
-
-        // Check if any field is empty
-        if (username === '' || newPassword === '' || retypePassword === '') {
-            alert('All fields are mandatory');
-            return;
-        }
-
-        // Check if new password and retype password match
-        if (newPassword !== retypePassword) {
-            alert('New password and retype password do not match');
-            return;
-        }
-
-        // Check for password criteria
-        if (!validatePassword(newPassword)) {
-            alert('Password criteria not met');
-            return;
-        }
-
-        // Check if username exists in local storage
-        const userList = JSON.parse(localStorage.getItem('users')) || [];
-        const existingUser = userList.find(user => user.userName === username);
-        if (!existingUser) {
-            alert('Username not present');
-            return;
-        }
-
-        // Update password in local storage
-        userList.forEach(user => {
-            if (user.userName === username) {
-                user.pwd = newPassword;
-            }
-        });
-        localStorage.setItem('users', JSON.stringify(userList));
-        alert('Password reset successful');
-    });
-
-    // Password criteria validation function
-    function validatePassword(password) {
-        const passwordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*[!@#$%^&*]).{8,}$/;
-        return passwordPattern.test(password);
-    }
-});
