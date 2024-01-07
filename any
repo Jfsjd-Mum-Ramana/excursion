@@ -4,41 +4,38 @@
   <meta charset="UTF-8">
   <title>Login/Signup</title>
   <link rel="stylesheet" href="style.css">
-  <script src="main.js" defer></script>
 </head>
 <body>
-  <h1>Login/Signup</h1>
+  <div class="container">
+    <h1>Login/Signup</h1>
 
-  <!-- Login form -->
-  <div id="loginForm">
-    <h2>Login</h2>
-    <input type="email" id="loginEmail" placeholder="Email">
-    <input type="password" id="loginPassword" placeholder="Password">
-    <button onclick="login()">Login</button>
+    <!-- Login form -->
+    <div id="loginForm" class="form">
+      <h2>Login</h2>
+      <input type="email" id="loginEmail" placeholder="Email">
+      <input type="password" id="loginPassword" placeholder="Password">
+      <button onclick="login()">Login</button>
+    </div>
+
+    <!-- Signup form -->
+    <div id="signupForm" class="form" style="display: none;">
+      <h2>Signup</h2>
+      <input type="text" id="signupName" placeholder="Name">
+      <input type="email" id="signupEmail" placeholder="Email">
+      <input type="password" id="signupPassword" placeholder="Password">
+      <button onclick="signup()">Signup</button>
+    </div>
+
+    <div class="link">
+      <p>Don't have an account? <a href="#" onclick="toggleSignup()">Signup here</a></p>
+    </div>
   </div>
 
-  <!-- Signup form -->
-  <div id="signupForm" style="display: none;">
-    <h2>Signup</h2>
-    <input type="text" id="signupName" placeholder="Name">
-    <input type="email" id="signupEmail" placeholder="Email">
-    <input type="password" id="signupPassword" placeholder="Password">
-    <button onclick="signup()">Signup</button>
-  </div>
-
-  <!-- User details -->
-  <div id="userDetails" style="display: none;">
-    <h2>User Details</h2>
-    <p>Name: <span id="userName"></span></p>
-    <p>Email: <span id="userEmail"></span></p>
-  </div>
-
-  <!-- Signup link -->
-  <div>
-    <p>Don't have an account? <a href="#" onclick="toggleSignup()">Signup here</a></p>
-  </div>
+  <script src="main.js" defer></script>
 </body>
 </html>
+
+
 
 
 
@@ -46,7 +43,6 @@ body {
   font-family: Arial, sans-serif;
   background-color: #f0f0f0;
   margin: 0;
-  padding: 20px;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -66,8 +62,10 @@ h1 {
   margin-bottom: 20px;
 }
 
-h2 {
-  margin-bottom: 15px;
+.form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 input[type="email"],
@@ -79,18 +77,36 @@ button {
   padding: 10px;
   border-radius: 5px;
   border: 1px solid #ccc;
+  transition: background-color 0.3s, color 0.3s;
 }
 
 button {
+  cursor: pointer;
   background-color: #007bff;
   color: #fff;
   border: none;
-  cursor: pointer;
-  transition: background-color 0.3s ease;
 }
 
 button:hover {
   background-color: #0056b3;
+}
+
+#loginForm {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px;
+  background-color: #d9f1ff;
+  border-radius: 8px;
+}
+
+#signupForm {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px;
+  background-color: #e8ffed;
+  border-radius: 8px;
 }
 
 .link {
@@ -111,7 +127,6 @@ button:hover {
 
 
 
-// Simulating user data storage
 let users = [];
 
 function login() {
@@ -120,11 +135,8 @@ function login() {
 
   const user = users.find(u => u.email === email && u.password === password);
   if (user) {
-    document.getElementById('loginForm').style.display = 'none';
-    document.getElementById('signupForm').style.display = 'none';
-    document.getElementById('userDetails').style.display = 'block';
-    document.getElementById('userName').innerText = user.name;
-    document.getElementById('userEmail').innerText = user.email;
+    // Redirect to another page or display a success message
+    window.location.href = "success.html"; // Redirects to success.html
   } else {
     alert('Invalid email or password.');
   }
@@ -136,14 +148,14 @@ function signup() {
   const password = document.getElementById('signupPassword').value;
 
   if (name && email && password) {
-    const newUser = { name, email, password };
-    users.push(newUser);
-
-    document.getElementById('loginForm').style.display = 'none';
-    document.getElementById('signupForm').style.display = 'none';
-    document.getElementById('userDetails').style.display = 'block';
-    document.getElementById('userName').innerText = newUser.name;
-    document.getElementById('userEmail').innerText = newUser.email;
+    const existingUser = users.find(u => u.email === email);
+    if (existingUser) {
+      alert('Email already exists. Please use a different email.');
+    } else {
+      const newUser = { name, email, password };
+      users.push(newUser);
+      window.location.href = "success.html"; // Redirects to success.html after signup
+    }
   } else {
     alert('Please fill in all fields.');
   }
