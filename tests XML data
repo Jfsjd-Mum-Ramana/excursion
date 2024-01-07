@@ -1,17 +1,80 @@
-@Test
-public void testFlatMapMinOnePrimaryKeyNotObjectOrArray() throws Exception {
-    XmlToJsonConverter converter = new XmlToJsonConverter("primaryKey", "filePath", "bootstrapServer", "auditTopic");
-    assertNotNull(converter);
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
 
-    String xmlData = "<root><primaryKey>value</primaryKey></root>";
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
-    // Mock KafkaProducerService
-    KafkaProducerService kafkaProducerServiceMock = mock(KafkaProducerService.class);
-    doNothing().when(kafkaProducerServiceMock).writeMessage(anyString(), anyString(), anyString());
+public class XmlToJsonConverterTest {
 
-    // Set the mocked KafkaProducerService in the converter
-    Whitebox.setInternalState(converter, "kProducerService", kafkaProducerServiceMock);
+    @Mock
+    private KafkaProducerService kafkaProducerServiceMock;
 
-    // Call flatMap with valid XML data but set one primary key as a string, not an object or array
-    converter.flatMap(xmlData, mock(Collector.class));
+    private XmlToJsonConverter converter;
+
+    @BeforeEach
+    public void setup() {
+        MockitoAnnotations.initMocks(this);
+        converter = new XmlToJsonConverter("primaryKey", "filePath", "bootstrapServer", "auditTopic");
+        converter.setKafkaProducerService(kafkaProducerServiceMock);
+    }
+
+    @Test
+    public void testConstructorDefault() {
+        XmlToJsonConverter defaultConverter = new XmlToJsonConverter();
+        assertNotNull(defaultConverter);
+        assertNull(defaultConverter.getPrimaryKey());
+        // Add more assertions for default values or behavior if needed
+    }
+
+    @Test
+    public void testConstructorWithParameters() {
+        assertEquals("primaryKey", converter.getPrimaryKey());
+        // Add assertions for other constructor parameters
+        assertEquals("filePath", converter.getFilePath());
+        assertEquals("bootstrapServer", converter.getBootstrapServer());
+        assertEquals("auditTopic", converter.getAuditTopic());
+    }
+
+    @Test
+    public void testFlatMapWithValidXML() throws Exception {
+        String xmlData = "<root><primaryKey>value</primaryKey></root>";
+
+        // Mock behavior for KafkaProducerService
+        doNothing().when(kafkaProducerServiceMock).writeMessage(anyString(), anyString(), anyString());
+
+        // Execute converter.flatMap(xmlData);
+        converter.flatMap(xmlData);
+
+        // Add assertions or verifications based on expected behavior
+        // For example:
+        verify(kafkaProducerServiceMock, times(1)).writeMessage(anyString(), anyString(), anyString());
+        // assert something about the converter state or behavior after flatMap is called
+    }
+
+    @Test
+    public void testFlatMapWithInvalidXML() {
+        String invalidXmlData = "<invalidXML>";
+
+        // Mock behavior for KafkaProducerService
+        doNothing().when(kafkaProducerServiceMock).writeMessage(anyString(), anyString(), anyString());
+
+        // Execute converter.flatMap(invalidXmlData);
+        assertThrows(Exception.class, () -> converter.flatMap(invalidXmlData));
+    }
+
+    // Add more test methods for different scenarios
+
+    @Test
+    public void testEdgeCases() {
+        // Test edge cases and exceptional scenarios
+    }
+
+    @Test
+    public void testMockingAndStubbing() {
+        // Test interactions with mocked dependencies
+    }
+
+    // Add more test cases covering different parts of the logic
 }
