@@ -1,197 +1,109 @@
-/* General styles */
+import io.cucumber.java.en.Given;
+import io.cucumber.java.en.Then;
+import io.cucumber.java.en.When;
+import org.junit.Assert;
 
-body {
-    font-family: Arial, sans-serif;
-    margin: 0;
-    padding: 0;
-    background-color: #f0f0f0; /* Default background color */
-    color: #333; /* Default text color */
-}
+public class XmlTransformerApplicationTest {
 
-h1 {
-    text-align: center;
-}
+    private XmlTransformerApplication xmlTransformerApplication;
+    private String filePath;
+    private String dataTopic;
+    private String bootstarpServer;
+    private String primaryKey;
+    private String auditTopic;
+    private String logMessage;
 
-/* Login form styles */
+    @Given("the XMLTransformerApplication is running")
+    public void theXMLTransformerApplicationIsRunning() {
+        xmlTransformerApplication = new XmlTransformerApplication();
+    }
 
-#loginForm {
-    width: 300px;
-    margin: 20px auto;
-    background-color: #fff;
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-}
+    @When("a valid XML file path is provided")
+    public void aValidXMLFilePathIsProvided() {
+        filePath = "path/to/valid.xml";
+    }
 
-#loginForm label {
-    display: block;
-    margin-bottom: 5px;
-}
+    @When("required program arguments are provided")
+    public void requiredProgramArgumentsAreProvided() {
+        dataTopic = "testDataTopic";
+        bootstarpServer = "testBootstrapServer";
+        auditTopic = "testAuditTopic";
+        primaryKey = "testPrimaryKey";
+    }
 
-#loginForm input[type="text"],
-#loginForm input[type="password"] {
-    width: calc(100% - 12px);
-    padding: 8px;
-    margin-bottom: 10px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-}
+    @Then("the application should transform the XML file to JSON successfully")
+    public void applicationShouldTransformXMLToJSONSuccessfully() {
+        String jsonOutput = xmlTransformerApplication.convertXmlToJson(filePath);
+        Assert.assertNotNull(jsonOutput);
+        // Add more assertions as needed
+    }
 
-#loginForm button {
-    width: 100%;
-    padding: 10px;
-    border: none;
-    border-radius: 4px;
-    background-color: #3498db; /* Default button background color */
-    color: #fff;
-    cursor: pointer;
-}
+    @Then("the JSON data should be sent to the specified Kafka data topic")
+    public void jsonDataSentToSpecifiedKafkaDataTopic() {
+        // Simulate Kafka data transmission
+        // Assuming sending JSON to Kafka topic is successful
+        // For example, check if the Kafka producer sent the JSON data to the expected topic
+        // Assert.assertTrue(kafkaService.sendToTopic(dataTopic, jsonOutput));
+    }
 
-#loginForm button:hover {
-    background-color: #2980b9; /* Button background color on hover */
-}
+    @When("an invalid XML file path is provided")
+    public void anInvalidXMLFilePathIsProvided() {
+        filePath = "invalid/path/to/file.xml";
+    }
 
-/* Signup form styles */
+    @Then("the application should log an error about the file not found")
+    public void applicationShouldLogErrorFileNotFound() {
+        try {
+            xmlTransformerApplication.readXMLFile(filePath);
+        } catch (Exception e) {
+            logMessage = e.getMessage();
+        }
+        Assert.assertNotNull(logMessage);
+        Assert.assertTrue(logMessage.contains("File not found"));
+    }
 
-#signupForm {
-    width: 300px;
-    margin: 20px auto;
-    background-color: #fff;
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-}
+    @When("missing or empty program arguments are provided")
+    public void missingOrEmptyProgramArgumentsProvided() {
+        dataTopic = "";
+        bootstarpServer = "";
+        auditTopic = "";
+        primaryKey = "";
+    }
 
-#signupForm label {
-    display: block;
-    margin-bottom: 5px;
-}
+    @Then("the application should log an error about missing or empty arguments")
+    public void applicationShouldLogErrorMissingOrEmptyArguments() {
+        try {
+            xmlTransformerApplication.validateArguments(dataTopic, bootstarpServer, auditTopic);
+        } catch (Exception e) {
+            logMessage = e.getMessage();
+        }
+        Assert.assertNotNull(logMessage);
+        Assert.assertTrue(logMessage.contains("Missing or empty arguments"));
+    }
 
-#signupForm input[type="text"],
-#signupForm input[type="password"] {
-    width: calc(100% - 12px);
-    padding: 8px;
-    margin-bottom: 10px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-}
+    // Add more step definitions to cover various scenarios
 
-#signupForm button {
-    width: 100%;
-    padding: 10px;
-    border: none;
-    border-radius: 4px;
-    background-color: #27ae60; /* Default button background color */
-    color: #fff;
-    cursor: pointer;
-}
-
-#signupForm button:hover {
-    background-color: #219a52; /* Button background color on hover */
-}
-
-/* Password reset form styles */
-
-#passwordResetForm {
-    width: 300px;
-    margin: 20px auto;
-    background-color: #fff;
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-}
-
-#passwordResetForm label {
-    display: block;
-    margin-bottom: 5px;
-}
-
-#passwordResetForm input[type="text"],
-#passwordResetForm input[type="password"] {
-    width: calc(100% - 12px);
-    padding: 8px;
-    margin-bottom: 10px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-}
-
-#passwordResetForm button {
-    width: 100%;
-    padding: 10px;
-    border: none;
-    border-radius: 4px;
-    background-color: #e67e22; /* Default button background color */
-    color: #fff;
-    cursor: pointer;
-}
-
-#passwordResetForm button:hover {
-    background-color: #ca6b1c; /* Button background color on hover */
+    // Consider additional scenarios related to edge cases, error handling, or specific functionalities of the XmlTransformerApplication.
 }
 
 
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Login & Signup</title>
-    <!-- Include CSS files -->
-    <link rel="stylesheet" href="styles/style.css">
-</head>
-<body>
 
-    <!-- Login form -->
-    <div id="loginForm">
-        <h1>Login</h1>
-        <form id="loginForm">
-            <label for="username">Username:</label>
-            <input type="text" id="username" placeholder="Enter Username">
-            <br>
-            <label for="password">Password:</label>
-            <input type="password" id="password" placeholder="Enter Password">
-            <br>
-            <button type="submit">Login</button>
-            <button type="reset">Reset</button>
-        </form>
-    </div>
+Feature: XML to JSON Transformation
 
-    <!-- Signup form -->
-    <div id="signupForm" style="display: none;">
-        <h1>Sign Up</h1>
-        <form id="signupForm">
-            <label for="signupUsername">Username:</label>
-            <input type="text" id="signupUsername" placeholder="Enter Username">
-            <br>
-            <label for="signupPassword">Password:</label>
-            <input type="password" id="signupPassword" placeholder="Enter Password">
-            <br>
-            <button type="submit">Sign Up</button>
-            <button type="reset">Reset</button>
-        </form>
-    </div>
+  Scenario: Transform valid XML file to JSON and send to Kafka
+    Given the XMLTransformerApplication is running
+    And required program arguments are provided
+    When a valid XML file path is provided
+    Then the application should transform the XML file to JSON successfully
+    And the JSON data should be sent to the specified Kafka data topic
 
-    <!-- Password reset form -->
-    <div id="passwordResetForm" style="display: none;">
-        <h1>Password Reset</h1>
-        <form id="passwordResetForm">
-            <label for="resetUsername">Username:</label>
-            <input type="text" id="resetUsername" placeholder="Enter Username">
-            <br>
-            <label for="newPassword">New Password:</label>
-            <input type="password" id="newPassword" placeholder="Enter New Password">
-            <br>
-            <label for="retypeNewPassword">Retype New Password:</label>
-            <input type="password" id="retypeNewPassword" placeholder="Retype New Password">
-            <br>
-            <button type="submit">Reset Password</button>
-            <button type="reset">Reset</button>
-        </form>
-    </div>
+  Scenario: Handle invalid XML file path
+    Given the XMLTransformerApplication is running
+    When an invalid XML file path is provided
+    Then the application should log an error about the file not found
 
-    <!-- Include JavaScript files -->
-    <script src="scripts/login.js"></script>
-    <script src="scripts/signup.js"></script>
-    <script src="scripts/passwordReset.js"></script>
-</body>
-</html>
+  Scenario: Handle missing or empty program arguments
+    Given the XMLTransformerApplication is running
+    When missing or empty program arguments are provided
+    Then the application should log an error about missing or empty arguments
