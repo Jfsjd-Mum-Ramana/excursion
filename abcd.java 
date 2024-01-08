@@ -1,102 +1,21 @@
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.kafka.support.Acknowledgment;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+1 Create a Password Reset Screen with User Name and Reset Button which will open on clicking of Password Reset Button from the Login Page
 
-@ExtendWith(MockitoExtension.class)
-public class KafkaConsumerTest {
+2 Add a place holder in the User Name box as Enter the User Name
 
-    @Mock
-    private FlinkApiController flinkApiController;
+3. Disable the Reset Button if User Name Field is empty
 
-    @InjectMocks
-    private KafkaConsumer kafkaConsumer;
+4 Once the User Name is entered Check if the entered username is present in the Local Storage
 
-    @Test
-    public void testConsume() throws IOException, CsvValidationException {
-        SpaceCollector message = new SpaceCollector(); // create your test message
-        when(flinkApiController.triggerJob(any())).thenReturn("TestResponse");
+5 Add Validation not to enter paste special characters in User Name
 
-        kafkaConsumer.consume(message);
+6 If Present the Open a Pop Up Modal with Name as Password Reset Modal which will contain Non Editable User Name and New Password and Retype New Password Fields and a Subrat Button
 
-        // Add assertions based on the behavior you expect here
-    }
+7 On Click of the Submit Button in Password Reset Modal find the username and set this new password for the username in local storage B Add Validation to check if Password has 8 Characters, Min 1 Lower Case, Min 1 Upper Case and Min 1 Special Character
 
-    @Test
-    public void testWriteCsvFile() throws IOException {
-        // Set up your test environment, such as setting sourceFilePath and destinationFolderPath
-        String testSourceFilePath = "test_source_file.csv";
-        String testDestinationFolderPath = "test_destination_folder";
-        
-        kafkaConsumer.setSourceFilePath(testSourceFilePath);
-        kafkaConsumer.setDestinationFolderPath(testDestinationFolderPath);
-        
-        // Create a test source file
-        Path testSourcePath = Path.of(testSourceFilePath);
-        Files.createFile(testSourcePath);
+9 Allowed Special Characters in Password (@#$%^) and anything out of this then throw an Error Message stating that the Special Character should be within this Right Click on Password Field.
 
-        kafkaConsumer.writeCsvFile();
+10 Disable Copy, Paste using ShortCuts and On Click of the Submit Button in Password Reset Modal check if New Password and Reset Password Values marich and if not and show BootStrap Success alert in the Modal Stating 11 "Password does not match" on the Top of Password Reset Screen
 
-        // Assert that the file was created in the destination folder
-        Path testDestinationPath = Path.of(testDestinationFolderPath, testSourcePath.getFileName().toString());
-        assertTrue(Files.exists(testDestinationPath));
+12 BootStrap alert should have a X Mark to close also the message should disappear automatically in 5 seconds or by clicking the X Mark
 
-        // Clean up test files
-        Files.deleteIfExists(testSourcePath);
-        Files.deleteIfExists(testDestinationPath);
-    }
-
-    @Test
-    public void testRetrieveCsvFile() throws IOException {
-        // Set up your test environment, such as setting sourceFilePath
-        String testSourceFilePath = "test_source_file.csv";
-        kafkaConsumer.setSourceFilePath(testSourceFilePath);
-        
-        // Create a test CSV file
-        Path testSourcePath = Path.of(testSourceFilePath);
-        Files.createFile(testSourcePath);
-
-        // Mock CSV content to be read
-        List<String[]> expectedRows = new ArrayList<>();
-        expectedRows.add(new String[]{"data1", "data2"});
-        expectedRows.add(new String[]{"data3", "data4"});
-
-        whenNew(CSVParser.class).withAnyArguments().thenReturn(mock(CSVParser.class));
-        when(parser.iterator()).thenReturn(expectedRows.iterator());
-
-        List<String[]> rows = kafkaConsumer.retrieveCsvFile();
-
-        // Add assertions based on the behavior you expect here
-        assertEquals(2, rows.size());
-        assertArrayEquals(new String[]{"data1", "data2"}, rows.get(0));
-        assertArrayEquals(new String[]{"data3", "data4"}, rows.get(1));
-
-        // Clean up test file
-        Files.deleteIfExists(testSourcePath);
-    }
-
-    @Test
-    public void testDeleteCsvFile() throws IOException {
-        // Set up your test environment, such as setting sourceFilePath
-        String testSourceFilePath = "test_source_file.csv";
-        kafkaConsumer.setSourceFilePath(testSourceFilePath);
-        
-        // Create a test file
-        Path testSourcePath = Path.of(testSourceFilePath);
-        Files.createFile(testSourcePath);
-
-        kafkaConsumer.deleteCsvFile();
-
-        // Assert that the file was deleted
-        assertFalse(Files.exists(testSourcePath));
-    }
-}
+13 If all Validations are good then close the Password Reset Modal and show BootStrap Success alert in the Modal Stating "User Password Reset Success" on the Top of Login Screen
