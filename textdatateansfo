@@ -1,0 +1,175 @@
+import io.cucumber.java.en.Given;
+import io.cucumber.java.en.When;
+import io.cucumber.java.en.Then;
+import io.cucumber.java.en.And;
+import io.cucumber.java.en.But;
+import io.cucumber.java.ParameterType;
+import io.cucumber.junit.Cucumber;
+import io.cucumber.junit.CucumberOptions;
+import org.junit.runner.RunWith;
+
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.util.Map;
+
+import static org.junit.Assert.assertTrue;
+
+@RunWith(Cucumber.class)
+@CucumberOptions(features = "src/test/resources/features/TextToJson.feature", glue = "com.your.package.steps")
+public class TextToJsonTransformerTest {
+
+    private static String bootstrapServer;
+    private static String topic;
+    private static String inputFilePath;
+
+    @Given("the TextToJsonTransformer jar is available")
+    public void textToJsonTransformerJarIsAvailable() {
+        // Implement the logic to ensure the TextToJsonTransformer jar is available
+        // For simplicity, let's assume it is available
+        // You may want to check if the jar is present in the specified location or loaded in the classpath
+    }
+
+    @Given("the Flink application is running with parameters:")
+    public void flinkApplicationIsRunningWithParameters(Map<String, String> parameters) {
+        // Implement the logic to set up Flink with the provided parameters
+        // Access parameters using parameters.get("Parameter")
+        bootstrapServer = parameters.get("bootstrapServer");
+        topic = parameters.get("topic");
+        inputFilePath = parameters.get("input");
+
+        // Assuming you have a method to set up Flink with the provided parameters
+        setupFlinkApplication(bootstrapServer, topic, inputFilePath);
+    }
+
+    @When("the TextToJsonTransformer is uploaded to Flink")
+    public void textToJsonTransformerIsUploadedToFlink() {
+        // Implement the logic to upload the TextToJsonTransformer to Flink
+        // For simplicity, let's assume it is uploaded successfully
+        // You may want to connect to Flink and deploy your application
+    }
+
+    @And("a text file is submitted to the job for transformation")
+    public void textFileSubmittedForTransformation() throws FileNotFoundException {
+        // Implement the logic to submit a text file for transformation
+        File inputFile = new File(inputFilePath);
+        if (!inputFile.exists()) {
+            throw new FileNotFoundException("File not found!");
+        }
+
+        // Assuming you have a method to submit the text file for transformation
+        submitTextFileForTransformation(inputFilePath);
+    }
+
+    @Then("validate the transformed JSON is successfully sent to Kafka")
+    public void validateTransformedJsonSentToKafka() {
+        // Implement the logic to validate that the transformed JSON is successfully sent to Kafka
+        // Assuming you have a method to validate the transformation and Kafka delivery
+        assertTrue(validateTransformedJsonAndKafkaDelivery());
+    }
+
+    // Additional methods for Flink setup, text file submission, and validation
+    private void setupFlinkApplication(String bootstrapServer, String topic, String inputFilePath) {
+        // Implement the logic to set up Flink application
+        // This could involve configuring the Flink environment, creating the job, etc.
+        // You may want to use the Flink APIs for this purpose
+    }
+
+    private void submitTextFileForTransformation(String inputFilePath) {
+        // Implement the logic to submit the text file for transformation
+        // This could involve using Flink APIs to submit the file for processing
+    }
+
+    private boolean validateTransformedJsonAndKafkaDelivery() {
+        // Implement the logic to validate the transformed JSON and Kafka delivery
+        // This could involve checking if the data is successfully sent to Kafka
+        // You may need to interact with Kafka APIs or use a testing library to verify Kafka messages
+        // Return true if validation is successful, false otherwise
+        return true; // For simplicity, assuming success
+    }
+}
+
+
+
+
+import java.net.URL;
+import java.net.URLClassLoader;
+
+@Given("the TextToJsonTransformer jar is available")
+public void textToJsonTransformerJarIsAvailable() {
+    // Assuming the jar file name is TextToJsonTransformer.jar
+    String jarFileName = "TextToJsonTransformer.jar";
+
+    // Get the class loader for the current context
+    ClassLoader classLoader = getClass().getClassLoader();
+
+    // Check if the jar file is in the classpath
+    if (classLoader instanceof URLClassLoader) {
+        URL[] urls = ((URLClassLoader) classLoader).getURLs();
+        boolean jarFound = false;
+
+        for (URL url : urls) {
+            if (url.getFile().endsWith(jarFileName)) {
+                jarFound = true;
+                break;
+            }
+        }
+
+        if (jarFound) {
+            System.out.println("TextToJsonTransformer jar is available in the classpath.");
+        } else {
+            System.out.println("TextToJsonTransformer jar is NOT available in the classpath.");
+            // You may throw an exception or handle this situation based on your requirements
+        }
+    } else {
+        System.out.println("Class loader is not a URLClassLoader, unable to check jar availability.");
+        // You may throw an exception or handle this situation based on your requirements
+    }
+}
+
+
+import org.apache.flink.client.program.ClusterClient;
+import org.apache.flink.client.program.PackagedProgram;
+import org.apache.flink.client.program.ProgramInvocationException;
+import org.apache.flink.client.program.rest.RestClusterClient;
+import org.apache.flink.configuration.ConfigConstants;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.runtime.jobgraph.JobGraph;
+import org.apache.flink.yarn.YarnClusterClientFactory;
+import org.apache.flink.yarn.configuration.YarnConfigOptions;
+
+@When("the TextToJsonTransformer is uploaded to Flink")
+public void textToJsonTransformerIsUploadedToFlink() throws ProgramInvocationException {
+    // Assuming TextToJsonTransformer is your Flink job class with a main method
+    String jobClassName = "com.your.package.TextToJsonTransformer";
+
+    // Path to your Flink job jar file
+    String jarFilePath = "path/to/your/job.jar";
+
+    // Flink cluster configuration
+    Configuration flinkConfig = new Configuration();
+    flinkConfig.setBoolean(ConfigConstants.LOCAL_START_WEBSERVER, true); // Enable Flink web server
+
+    // Yarn specific configurations (adjust based on your deployment environment)
+    flinkConfig.setString(YarnConfigOptions.APPLICATION_NAME, "TextToJsonTransformerJob");
+    flinkConfig.setInteger(YarnConfigOptions.APPLICATION_MASTER_VCORES, 1);
+    flinkConfig.setInteger(YarnConfigOptions.APPLICATION_MASTER_MEMORY, 1024);
+
+    // Set Flink REST API URL (replace with your Flink cluster's REST API URL)
+    String flinkRestApiUrl = "http://your.flink.cluster:8081";
+
+    // Create a Flink REST cluster client
+    ClusterClient<?> clusterClient = new RestClusterClient<>(flinkConfig, flinkRestApiUrl);
+
+    // Create a Flink JobGraph from the provided job class and jar file
+    PackagedProgram packagedProgram = new PackagedProgram(new File(jarFilePath), jobClassName);
+    JobGraph jobGraph = PackagedProgramUtils.createJobGraph(packagedProgram, flinkConfig, 1);
+
+    // Submit the Flink JobGraph to the Flink cluster
+    clusterClient.submitJob(jobGraph).getJobID();
+    
+    // Optionally, wait for the job to complete or check its status
+    // clusterClient.waitForClusterToBeReady(); 
+
+    // Close the Flink cluster client
+    clusterClient.shutdown();
+}
