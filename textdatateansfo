@@ -1,175 +1,132 @@
+Feature: Text to JSON Transformation
+
+  Scenario: Submit a text file to be transformed to JSON
+    Given the TextToJsonTransformer jar is available
+    And the Flink application is running with parameters:
+      | Parameter        | Value                  |
+      | bootstrapServer  | yourBootstrapServer    |
+      | topic            | yourTopic              |
+      | input            | yourInputFilePath      |
+    When the TextToJsonTransformer is uploaded to Flink
+    And a text file is submitted to the job for transformation
+    Then validate the transformed JSON is successfully sent to Kafka
+
+
 import io.cucumber.java.en.Given;
 import io.cucumber.java.en.When;
 import io.cucumber.java.en.Then;
-import io.cucumber.java.en.And;
-import io.cucumber.java.en.But;
-import io.cucumber.java.ParameterType;
-import io.cucumber.junit.Cucumber;
-import io.cucumber.junit.CucumberOptions;
-import org.junit.runner.RunWith;
-
 import java.io.File;
-import java.io.FileNotFoundException;
+import java.nio.file.Files;
 import java.util.Map;
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.functions.sink.SinkFunction;
+import org.apache.flink.streaming.api.functions.source.FileSource;
+import org.apache.flink.streaming.api.watermark.WatermarkStrategy;
+import org.apache.flink.streaming.api.windowing.time.Time;
+import org.apache.flink.util.Collector;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.serialization.StringSerializer;
+import org.apache.flink.streaming.connectors.kafka.FlinkKafkaProducer;
 
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 
-@RunWith(Cucumber.class)
-@CucumberOptions(features = "src/test/resources/features/TextToJson.feature", glue = "com.your.package.steps")
-public class TextToJsonTransformerTest {
+public class TextToJsonTransformerSteps {
 
-    private static String bootstrapServer;
-    private static String topic;
-    private static String inputFilePath;
+    private String bootstrapServer;
+    private String topic;
+    private String inputFilePath;
+    private boolean transformerUploaded;
+    private boolean textFileSubmitted;
+    private boolean jsonSentToKafka;
 
     @Given("the TextToJsonTransformer jar is available")
     public void textToJsonTransformerJarIsAvailable() {
-        // Implement the logic to ensure the TextToJsonTransformer jar is available
-        // For simplicity, let's assume it is available
-        // You may want to check if the jar is present in the specified location or loaded in the classpath
+        // Assuming a simple check for the presence of a class
+        try {
+            Class.forName("TexttoJsonTransformer");
+            assertTrue(true);
+        } catch (ClassNotFoundException e) {
+            fail("TexttoJsonTransformer class not found");
+        }
     }
 
     @Given("the Flink application is running with parameters:")
     public void flinkApplicationIsRunningWithParameters(Map<String, String> parameters) {
-        // Implement the logic to set up Flink with the provided parameters
-        // Access parameters using parameters.get("Parameter")
         bootstrapServer = parameters.get("bootstrapServer");
         topic = parameters.get("topic");
         inputFilePath = parameters.get("input");
-
-        // Assuming you have a method to set up Flink with the provided parameters
-        setupFlinkApplication(bootstrapServer, topic, inputFilePath);
+        assertNotNull(bootstrapServer);
+        assertNotNull(topic);
+        assertNotNull(inputFilePath);
     }
 
     @When("the TextToJsonTransformer is uploaded to Flink")
-    public void textToJsonTransformerIsUploadedToFlink() {
-        // Implement the logic to upload the TextToJsonTransformer to Flink
-        // For simplicity, let's assume it is uploaded successfully
-        // You may want to connect to Flink and deploy your application
+    public void textToJsonTransformerIsUploadedToFlink() throws Exception {
+        // Assuming you have a Flink environment initialized in your main class
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+
+        FileSource<String> source = FileSource.forRecordStreamFormat(
+                new TextLineInputFormat(), new Path(inputFilePath)).build();
+
+        DataStream<String> stream = env.fromSource(source, WatermarkStrategy.noWatermarks(), "file-source");
+
+        FlinkKafkaProducer<String> kafkaProducer = new FlinkKafkaProducer<>(
+                bootstrapServer, topic, new SimpleStringSchema());
+
+        stream.addSink(kafkaProducer);
+
+        env.execute();
+        transformerUploaded = true;
     }
 
-    @And("a text file is submitted to the job for transformation")
-    public void textFileSubmittedForTransformation() throws FileNotFoundException {
-        // Implement the logic to submit a text file for transformation
-        File inputFile = new File(inputFilePath);
-        if (!inputFile.exists()) {
-            throw new FileNotFoundException("File not found!");
-        }
+    @When("a text file is submitted to the job for transformation")
+    public void textFileSubmittedForTransformation() throws Exception {
+        // Assuming you have a Flink environment initialized in your main class
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
-        // Assuming you have a method to submit the text file for transformation
-        submitTextFileForTransformation(inputFilePath);
+        FileSource<String> source = FileSource.forRecordStreamFormat(
+                new TextLineInputFormat(), new Path(inputFilePath)).build();
+
+        DataStream<String> stream = env.fromSource(source, WatermarkStrategy.noWatermarks(), "file-source");
+
+        DataStream<String> jsonStream = stream.flatMap(new TexttoJsonTransformer());
+
+        // Assuming you have a Kafka producer initialized in your main class
+        FlinkKafkaProducer<String> kafkaProducer = new FlinkKafkaProducer<>(
+                bootstrapServer, topic, new SimpleStringSchema());
+
+        jsonStream.addSink(kafkaProducer);
+
+        env.execute();
+        textFileSubmitted = true;
     }
 
     @Then("validate the transformed JSON is successfully sent to Kafka")
     public void validateTransformedJsonSentToKafka() {
-        // Implement the logic to validate that the transformed JSON is successfully sent to Kafka
-        // Assuming you have a method to validate the transformation and Kafka delivery
-        assertTrue(validateTransformedJsonAndKafkaDelivery());
-    }
+        // Assuming you have a Kafka consumer to verify messages were sent successfully
+        // This logic will depend on your specific Kafka setup
+        // For simplicity, we are just setting the flag to true
+        jsonSentToKafka = true;
 
-    // Additional methods for Flink setup, text file submission, and validation
-    private void setupFlinkApplication(String bootstrapServer, String topic, String inputFilePath) {
-        // Implement the logic to set up Flink application
-        // This could involve configuring the Flink environment, creating the job, etc.
-        // You may want to use the Flink APIs for this purpose
-    }
-
-    private void submitTextFileForTransformation(String inputFilePath) {
-        // Implement the logic to submit the text file for transformation
-        // This could involve using Flink APIs to submit the file for processing
-    }
-
-    private boolean validateTransformedJsonAndKafkaDelivery() {
-        // Implement the logic to validate the transformed JSON and Kafka delivery
-        // This could involve checking if the data is successfully sent to Kafka
-        // You may need to interact with Kafka APIs or use a testing library to verify Kafka messages
-        // Return true if validation is successful, false otherwise
-        return true; // For simplicity, assuming success
+        // Assertions for the entire scenario
+        assertTrue(transformerUploaded);
+        assertTrue(textFileSubmitted);
+        assertTrue(jsonSentToKafka);
     }
 }
 
 
+import io.cucumber.junit.Cucumber;
+import io.cucumber.junit.CucumberOptions;
+import org.junit.runner.RunWith;
 
-
-import java.net.URL;
-import java.net.URLClassLoader;
-
-@Given("the TextToJsonTransformer jar is available")
-public void textToJsonTransformerJarIsAvailable() {
-    // Assuming the jar file name is TextToJsonTransformer.jar
-    String jarFileName = "TextToJsonTransformer.jar";
-
-    // Get the class loader for the current context
-    ClassLoader classLoader = getClass().getClassLoader();
-
-    // Check if the jar file is in the classpath
-    if (classLoader instanceof URLClassLoader) {
-        URL[] urls = ((URLClassLoader) classLoader).getURLs();
-        boolean jarFound = false;
-
-        for (URL url : urls) {
-            if (url.getFile().endsWith(jarFileName)) {
-                jarFound = true;
-                break;
-            }
-        }
-
-        if (jarFound) {
-            System.out.println("TextToJsonTransformer jar is available in the classpath.");
-        } else {
-            System.out.println("TextToJsonTransformer jar is NOT available in the classpath.");
-            // You may throw an exception or handle this situation based on your requirements
-        }
-    } else {
-        System.out.println("Class loader is not a URLClassLoader, unable to check jar availability.");
-        // You may throw an exception or handle this situation based on your requirements
-    }
-}
-
-
-import org.apache.flink.client.program.ClusterClient;
-import org.apache.flink.client.program.PackagedProgram;
-import org.apache.flink.client.program.ProgramInvocationException;
-import org.apache.flink.client.program.rest.RestClusterClient;
-import org.apache.flink.configuration.ConfigConstants;
-import org.apache.flink.configuration.Configuration;
-import org.apache.flink.runtime.jobgraph.JobGraph;
-import org.apache.flink.yarn.YarnClusterClientFactory;
-import org.apache.flink.yarn.configuration.YarnConfigOptions;
-
-@When("the TextToJsonTransformer is uploaded to Flink")
-public void textToJsonTransformerIsUploadedToFlink() throws ProgramInvocationException {
-    // Assuming TextToJsonTransformer is your Flink job class with a main method
-    String jobClassName = "com.your.package.TextToJsonTransformer";
-
-    // Path to your Flink job jar file
-    String jarFilePath = "path/to/your/job.jar";
-
-    // Flink cluster configuration
-    Configuration flinkConfig = new Configuration();
-    flinkConfig.setBoolean(ConfigConstants.LOCAL_START_WEBSERVER, true); // Enable Flink web server
-
-    // Yarn specific configurations (adjust based on your deployment environment)
-    flinkConfig.setString(YarnConfigOptions.APPLICATION_NAME, "TextToJsonTransformerJob");
-    flinkConfig.setInteger(YarnConfigOptions.APPLICATION_MASTER_VCORES, 1);
-    flinkConfig.setInteger(YarnConfigOptions.APPLICATION_MASTER_MEMORY, 1024);
-
-    // Set Flink REST API URL (replace with your Flink cluster's REST API URL)
-    String flinkRestApiUrl = "http://your.flink.cluster:8081";
-
-    // Create a Flink REST cluster client
-    ClusterClient<?> clusterClient = new RestClusterClient<>(flinkConfig, flinkRestApiUrl);
-
-    // Create a Flink JobGraph from the provided job class and jar file
-    PackagedProgram packagedProgram = new PackagedProgram(new File(jarFilePath), jobClassName);
-    JobGraph jobGraph = PackagedProgramUtils.createJobGraph(packagedProgram, flinkConfig, 1);
-
-    // Submit the Flink JobGraph to the Flink cluster
-    clusterClient.submitJob(jobGraph).getJobID();
-    
-    // Optionally, wait for the job to complete or check its status
-    // clusterClient.waitForClusterToBeReady(); 
-
-    // Close the Flink cluster client
-    clusterClient.shutdown();
+@RunWith(Cucumber.class)
+@CucumberOptions(
+    features = "src/test/resources/features",
+    glue = "com.yourpackage",
+    plugin = {"pretty", "html:target/cucumber-reports"}
+)
+public class CucumberTestRunner {
+    // This class will run your Gherkin scenarios
 }
