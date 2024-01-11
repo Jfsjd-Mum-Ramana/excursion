@@ -130,3 +130,39 @@ import org.junit.runner.RunWith;
 public class CucumberTestRunner {
     // This class will run your Gherkin scenarios
 }
+
+
+
+
+
+
+
+<dependencies>
+    <!-- Apache Flink dependencies -->
+    <dependency>
+        <groupId>org.apache.flink</groupId>
+        <artifactId>flink-java</artifactId>
+        <version>${flink.version}</version>
+    </dependency>
+    <dependency>
+        <groupId>org.apache.flink</groupId>
+        <artifactId>flink-streaming-java_2.11</artifactId>
+        <version>${flink.version}</version>
+    </dependency>
+
+    <!-- Cucumber dependencies -->
+    <dependency>
+        <groupId>io.cucumber</groupId>
+        <artifactId>cucumber-java</artifactId>
+        <version>${cucumber.version}</version>
+        <scope>test</scope>
+    </dependency>
+    <dependency>
+        <groupId>io.cucumber</groupId>
+        <artifactId>cucumber-junit</artifactId>
+        <version>${cucumber.version}</version>
+        <scope>test</scope>
+    </dependency>
+
+    <!-- Other dependencies you may need -->
+</dependencies>
