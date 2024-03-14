@@ -19,3 +19,4 @@
 12 BootStrap alert should have a X Mark to close also the message should disappear automatically in 5 seconds or by clicking the X Mark
 
 13 If all Validations are good then close the Password Reset Modal and show BootStrap Success alert in the Modal Stating "User Password Reset Success" on the Top of Login Screen
+
