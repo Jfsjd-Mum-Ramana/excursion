@@ -1,22 +1,17 @@
-1 Create a Password Reset Screen with User Name and Reset Button which will open on clicking of Password Reset Button from the Login Page
+Sure, here are some test scenarios for the `updateByQuery` method:
 
-2 Add a place holder in the User Name box as Enter the User Name
+Positive Test Scenarios:
+1. Verify that the method updates records in the Lucene index based on the provided query and update fields.
+2. Verify that the method successfully updates multiple records when the query matches multiple documents in the Lucene index.
+3. Verify that the method handles different types of update fields (e.g., string, numeric, boolean) correctly.
+4. Verify that the method correctly handles edge cases, such as updating records with special characters or empty values.
+5. Verify that the method returns an HTTP status code of 200 (OK) when the update operation is successful.
 
-3. Disable the Reset Button if User Name Field is empty
+Negative Test Scenarios:
+1. Verify that the method throws a `CustomLuceneException` when the Lucene service is unavailable or returns an error response.
+2. Verify that the method throws a `CustomLuceneException` when the provided query is invalid or malformed.
+3. Verify that the method throws a `CustomLuceneException` when the provided update fields are empty or null.
+4. Verify that the method throws a `CustomLuceneException` when the provided update fields contain invalid data types or formats.
+5. Verify that the method throws a `CustomLuceneException` when the Lucene index does not exist or cannot be accessed.
 
-4 Once the User Name is entered Check if the entered username is present in the Local Storage
-
-5 Add Validation not to enter paste special characters in User Name
-
-6 If Present the Open a Pop Up Modal with Name as Password Reset Modal which will contain Non Editable User Name and New Password and Retype New Password Fields and a Subrat Button
-
-7 On Click of the Submit Button in Password Reset Modal find the username and set this new password for the username in local storage B Add Validation to check if Password has 8 Characters, Min 1 Lower Case, Min 1 Upper Case and Min 1 Special Character
-
-9 Allowed Special Characters in Password (@#$%^) and anything out of this then throw an Error Message stating that the Special Character should be within this Right Click on Password Field.
-
-10 Disable Copy, Paste using ShortCuts and On Click of the Submit Button in Password Reset Modal check if New Password and Reset Password Values marich and if not and show BootStrap Success alert in the Modal Stating 11 "Password does not match" on the Top of Password Reset Screen
-
-12 BootStrap alert should have a X Mark to close also the message should disappear automatically in 5 seconds or by clicking the X Mark
-
-13 If all Validations are good then close the Password Reset Modal and show BootStrap Success alert in the Modal Stating "User Password Reset Success" on the Top of Login Screen
-
+These test scenarios cover both positive and negative cases to ensure that the `updateByQuery` method behaves correctly under various conditions.
