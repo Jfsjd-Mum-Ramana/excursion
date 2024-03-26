@@ -1,137 +1,43 @@
-import io.cucumber.java.en.Given;
-import io.cucumber.java.en.Then;
-import io.cucumber.java.en.When;
-import org.junit.Assert;
+import com.amazonaws.auth.AWSStaticCredentialsProvider;
+import com.amazonaws.auth.BasicAWSCredentials;
+import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration;
+import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.AmazonS3ClientBuilder;
+import com.amazonaws.services.s3.model.ListObjectsV2Request;
+import com.amazonaws.services.s3.model.ListObjectsV2Result;
+import com.amazonaws.services.s3.model.S3ObjectSummary;
 
-public class XmlTransformerApplicationTest {
+import java.util.List;
 
-    private XmlTransformerApplication xmlTransformerApplication;
-    private String filePath;
-    private String dataTopic;
-    private String bootstarpServer;
-    private String primaryKey;
-    private String auditTopic;
-    private String logMessage;
+public class S3ListObjectsExample {
 
-    @Given("the XMLTransformerApplication is running")
-    public void theXMLTransformerApplicationIsRunning() {
-        xmlTransformerApplication = new XmlTransformerApplication();
-    }
+    public static void main(String[] args) {
+        String accessKey = "your_access_key";
+        String secretKey = "your_secret_key";
+        String region = "your_region";
+        String bucketName = "your_bucket_name";
 
-    @When("a valid XML file path is provided")
-    public void aValidXMLFilePathIsProvided() {
-        filePath = "path/to/valid.xml";
-    }
+        BasicAWSCredentials credentials = new BasicAWSCredentials(accessKey, secretKey);
+        AWSStaticCredentialsProvider credentialsProvider = new AWSStaticCredentialsProvider(credentials);
 
-    @When("required program arguments are provided")
-    public void requiredProgramArgumentsAreProvided() {
-        dataTopic = "testDataTopic";
-        bootstarpServer = "testBootstrapServer";
-        auditTopic = "testAuditTopic";
-        primaryKey = "testPrimaryKey";
-    }
+        AmazonS3 s3Client = AmazonS3ClientBuilder.standard()
+                .withCredentials(credentialsProvider)
+                .withEndpointConfiguration(new EndpointConfiguration("https://s3." + region + ".amazonaws.com", region))
+                .build();
 
-    @Then("the application should transform the XML file to JSON successfully")
-    public void applicationShouldTransformXMLToJSONSuccessfully() {
-        String jsonOutput = xmlTransformerApplication.convertXmlToJson(filePath);
-        Assert.assertNotNull(jsonOutput);
-        // Add more assertions as needed
-    }
+        // Create a request to list objects in the bucket
+        ListObjectsV2Request listObjectsRequest = new ListObjectsV2Request().withBucketName(bucketName);
 
-    @Then("the JSON data should be sent to the specified Kafka data topic")
-    public void jsonDataSentToSpecifiedKafkaDataTopic() {
-        // Simulate Kafka data transmission
-        // Assuming sending JSON to Kafka topic is successful
-        // For example, check if the Kafka producer sent the JSON data to the expected topic
-        // Assert.assertTrue(kafkaService.sendToTopic(dataTopic, jsonOutput));
-    }
+        // Call the listObjectsV2 method to get the object listing
+        ListObjectsV2Result result = s3Client.listObjectsV2(listObjectsRequest);
 
-    @When("an invalid XML file path is provided")
-    public void anInvalidXMLFilePathIsProvided() {
-        filePath = "invalid/path/to/file.xml";
-    }
+        // Get the list of object summaries from the result
+        List<S3ObjectSummary> objectSummaries = result.getObjectSummaries();
 
-    @Then("the application should log an error about the file not found")
-    public void applicationShouldLogErrorFileNotFound() {
-        try {
-            xmlTransformerApplication.readXMLFile(filePath);
-        } catch (Exception e) {
-            logMessage = e.getMessage();
+        // Process the object summaries
+        for (S3ObjectSummary objectSummary : objectSummaries) {
+            // Print or process each object summary
+            System.out.println("Object Key: " + objectSummary.getKey());
         }
-        Assert.assertNotNull(logMessage);
-        Assert.assertTrue(logMessage.contains("File not found"));
     }
-
-    @When("missing or empty program arguments are provided")
-    public void missingOrEmptyProgramArgumentsProvided() {
-        dataTopic = "";
-        bootstarpServer = "";
-        auditTopic = "";
-        primaryKey = "";
-    }
-
-    @Then("the application should log an error about missing or empty arguments")
-    public void applicationShouldLogErrorMissingOrEmptyArguments() {
-        try {
-            xmlTransformerApplication.validateArguments(dataTopic, bootstarpServer, auditTopic);
-        } catch (Exception e) {
-            logMessage = e.getMessage();
-        }
-        Assert.assertNotNull(logMessage);
-        Assert.assertTrue(logMessage.contains("Missing or empty arguments"));
-    }
-
-    // Add more step definitions to cover various scenarios
-
-    // Consider additional scenarios related to edge cases, error handling, or specific functionalities of the XmlTransformerApplication.
 }
-
-
-
-
-Feature: XML to JSON Transformation
-
-  Scenario: Transform valid XML file to JSON and send to Kafka
-    Given the XMLTransformerApplication is running
-    And required program arguments are provided
-    When a valid XML file path is provided
-    Then the application should transform the XML file to JSON successfully
-    And the JSON data should be sent to the specified Kafka data topic
-
-  Scenario: Handle invalid XML file path
-    Given the XMLTransformerApplication is running
-    When an invalid XML file path is provided
-    Then the application should log an error about the file not found
-
-  Scenario: Handle missing or empty program arguments
-    Given the XMLTransformerApplication is running
-    When missing or empty program arguments are provided
-    Then the application should log an error about missing or empty arguments
-
-
-
-
-
-<dependencies>
-    <!-- Cucumber dependencies -->
-    <dependency>
-        <groupId>io.cucumber</groupId>
-        <artifactId>cucumber-java</artifactId>
-        <version>7.3.1</version> <!-- Use the latest version -->
-        <scope>test</scope>
-    </dependency>
-    <dependency>
-        <groupId>io.cucumber</groupId>
-        <artifactId>cucumber-junit</artifactId>
-        <version>7.3.1</version> <!-- Use the same version as cucumber-java -->
-        <scope>test</scope>
-    </dependency>
-    
-    <!-- JUnit dependency (needed for running Cucumber tests) -->
-    <dependency>
-        <groupId>junit</groupId>
-        <artifactId>junit</artifactId>
-        <version>4.13.2</version> <!-- Use the latest version -->
-        <scope>test</scope>
-    </dependency>
-</dependencies>
