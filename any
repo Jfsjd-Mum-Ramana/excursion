@@ -14,7 +14,7 @@ public class S3ListObjectsExample {
     public static void main(String[] args) {
         String accessKey = "your_access_key";
         String secretKey = "your_secret_key";
-        String endpoint = "http://s3-txslmemsql3.nss.com:80";
+        String region = "eu-north-1";
         String bucketName = "your_bucket_name";
 
         BasicAWSCredentials credentials = new BasicAWSCredentials(accessKey, secretKey);
@@ -22,7 +22,7 @@ public class S3ListObjectsExample {
 
         AmazonS3 s3Client = AmazonS3ClientBuilder.standard()
                 .withCredentials(credentialsProvider)
-                .withEndpointConfiguration(new AwsClientBuilder.EndpointConfiguration(endpoint, ""))
+                .withRegion(region)
                 .build();
 
         // Create a request to list objects in the bucket
@@ -34,9 +34,9 @@ public class S3ListObjectsExample {
         // Get the list of object summaries from the result
         List<S3ObjectSummary> objectSummaries = result.getObjectSummaries();
 
-        // Process the object summaries
+        // Print the object keys
+        System.out.println("Objects in bucket " + bucketName + ":");
         for (S3ObjectSummary objectSummary : objectSummaries) {
-            // Print or process each object summary
             System.out.println("Object Key: " + objectSummary.getKey());
         }
     }
