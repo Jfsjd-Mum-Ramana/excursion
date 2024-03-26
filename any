@@ -1,6 +1,6 @@
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration;
+import com.amazonaws.client.builder.AwsClientBuilder;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.services.s3.model.ListObjectsV2Request;
@@ -14,7 +14,7 @@ public class S3ListObjectsExample {
     public static void main(String[] args) {
         String accessKey = "your_access_key";
         String secretKey = "your_secret_key";
-        String region = "your_region";
+        String endpoint = "http://s3-txslmemsql3.nss.com:80";
         String bucketName = "your_bucket_name";
 
         BasicAWSCredentials credentials = new BasicAWSCredentials(accessKey, secretKey);
@@ -22,7 +22,7 @@ public class S3ListObjectsExample {
 
         AmazonS3 s3Client = AmazonS3ClientBuilder.standard()
                 .withCredentials(credentialsProvider)
-                .withEndpointConfiguration(new EndpointConfiguration("https://s3." + region + ".amazonaws.com", region))
+                .withEndpointConfiguration(new AwsClientBuilder.EndpointConfiguration(endpoint, ""))
                 .build();
 
         // Create a request to list objects in the bucket
