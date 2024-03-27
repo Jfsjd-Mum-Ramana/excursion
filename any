@@ -1,43 +1,74 @@
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.client.builder.AwsClientBuilder;
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3ClientBuilder;
-import com.amazonaws.services.s3.model.ListObjectsV2Request;
-import com.amazonaws.services.s3.model.ListObjectsV2Result;
-import com.amazonaws.services.s3.model.S3ObjectSummary;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.ListObjectsRequest;
+import software.amazon.awssdk.services.s3.model.ListObjectsResponse;
+import software.amazon.awssdk.services.s3.model.S3Object;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.S3Exception;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.URI;
 
-import java.util.List;
-
-public class S3ListObjectsExample {
-
+public class S3Example {
     public static void main(String[] args) {
-        String accessKey = "your_access_key";
-        String secretKey = "your_secret_key";
-        String region = "eu-north-1";
-        String bucketName = "your_bucket_name";
+        // Specify your AWS region
+        Region region = Region.US_EAST_1; // Change this to your desired region
 
-        BasicAWSCredentials credentials = new BasicAWSCredentials(accessKey, secretKey);
-        AWSStaticCredentialsProvider credentialsProvider = new AWSStaticCredentialsProvider(credentials);
+        // Specify your AWS credentials (access key and secret key)
+        String accessKey = "your-access-key";
+        String secretKey = "your-secret-key";
 
-        AmazonS3 s3Client = AmazonS3ClientBuilder.standard()
-                .withCredentials(credentialsProvider)
-                .withRegion(region)
+        // Specify your S3 host (optional if using default AWS S3)
+        String s3Host = "your-s3-host"; // For example, "s3.amazonaws.com"
+
+        // Create credentials provider
+        AwsBasicCredentials awsCredentials = AwsBasicCredentials.create(accessKey, secretKey);
+        StaticCredentialsProvider credentialsProvider = StaticCredentialsProvider.create(awsCredentials);
+
+        // Create S3 client
+        S3Client s3Client = S3Client.builder()
+                .region(region)
+                .credentialsProvider(credentialsProvider)
+                .endpointOverride(URI.create(s3Host))
                 .build();
 
-        // Create a request to list objects in the bucket
-        ListObjectsV2Request listObjectsRequest = new ListObjectsV2Request().withBucketName(bucketName);
+        // Specify the bucket name you want to access
+        String bucketName = "your-bucket-name";
 
-        // Call the listObjectsV2 method to get the object listing
-        ListObjectsV2Result result = s3Client.listObjectsV2(listObjectsRequest);
+        // List objects in the bucket
+        ListObjectsRequest listObjectsRequest = ListObjectsRequest.builder()
+                .bucket(bucketName)
+                .build();
 
-        // Get the list of object summaries from the result
-        List<S3ObjectSummary> objectSummaries = result.getObjectSummaries();
+        ListObjectsResponse listObjectsResponse = s3Client.listObjects(listObjectsRequest);
+        for (S3Object object : listObjectsResponse.contents()) {
+            System.out.println("Object key: " + object.key());
 
-        // Print the object keys
-        System.out.println("Objects in bucket " + bucketName + ":");
-        for (S3ObjectSummary objectSummary : objectSummaries) {
-            System.out.println("Object Key: " + objectSummary.getKey());
+            // Get object content
+            try {
+                GetObjectRequest getObjectRequest = GetObjectRequest.builder()
+                        .bucket(bucketName)
+                        .key(object.key())
+                        .build();
+
+                InputStream objectData = s3Client.getObject(getObjectRequest);
+                BufferedReader reader = new BufferedReader(new InputStreamReader(objectData));
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    // Parse the data as needed
+                    System.out.println("Data from S3 object: " + line);
+                }
+                reader.close();
+            } catch (S3Exception | IOException e) {
+                e.printStackTrace();
+            }
         }
+
+        // Close the S3 client
+        s3Client.close();
     }
 }
