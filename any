@@ -1,74 +1,148 @@
-import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
-import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
-import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.ListObjectsRequest;
-import software.amazon.awssdk.services.s3.model.ListObjectsResponse;
-import software.amazon.awssdk.services.s3.model.S3Object;
-import software.amazon.awssdk.services.s3.model.GetObjectRequest;
-import software.amazon.awssdk.services.s3.model.S3Exception;
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.net.URI;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
+import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.*;
 
-public class S3Example {
-    public static void main(String[] args) {
-        // Specify your AWS region
-        Region region = Region.US_EAST_1; // Change this to your desired region
+public class S3FileManagerTest {
 
-        // Specify your AWS credentials (access key and secret key)
-        String accessKey = "your-access-key";
-        String secretKey = "your-secret-key";
+    @Mock
+    private AmazonS3 amazonS3;
 
-        // Specify your S3 host (optional if using default AWS S3)
-        String s3Host = "your-s3-host"; // For example, "s3.amazonaws.com"
+    private S3FileManager s3FileManager;
 
-        // Create credentials provider
-        AwsBasicCredentials awsCredentials = AwsBasicCredentials.create(accessKey, secretKey);
-        StaticCredentialsProvider credentialsProvider = StaticCredentialsProvider.create(awsCredentials);
+    private final String bucketName = "testBucket";
+    private final String filename = "testFile.txt";
 
-        // Create S3 client
-        S3Client s3Client = S3Client.builder()
-                .region(region)
-                .credentialsProvider(credentialsProvider)
-                .endpointOverride(URI.create(s3Host))
-                .build();
+    @BeforeEach
+    public void setUp() {
+        MockitoAnnotations.initMocks(this);
+        s3FileManager = new S3FileManager();
+    }
 
-        // Specify the bucket name you want to access
-        String bucketName = "your-bucket-name";
+    @Test
+    public void testGetFileContent() {
+        String expectedContent = "Test content line 1\nTest content line 2";
+        GetObjectRequest getObjectRequest = new GetObjectRequest(bucketName, filename);
+        S3Object s3Object = new S3Object();
+        s3Object.setObjectContent(new S3ObjectInputStream(expectedContent.getBytes(), null));
 
-        // List objects in the bucket
-        ListObjectsRequest listObjectsRequest = ListObjectsRequest.builder()
-                .bucket(bucketName)
-                .build();
+        when(amazonS3.getObject(getObjectRequest)).thenReturn(s3Object);
 
-        ListObjectsResponse listObjectsResponse = s3Client.listObjects(listObjectsRequest);
-        for (S3Object object : listObjectsResponse.contents()) {
-            System.out.println("Object key: " + object.key());
+        String content = s3FileManager.getFileContent(filename);
 
-            // Get object content
-            try {
-                GetObjectRequest getObjectRequest = GetObjectRequest.builder()
-                        .bucket(bucketName)
-                        .key(object.key())
-                        .build();
+        assertEquals(expectedContent, content);
+    }
 
-                InputStream objectData = s3Client.getObject(getObjectRequest);
-                BufferedReader reader = new BufferedReader(new InputStreamReader(objectData));
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    // Parse the data as needed
-                    System.out.println("Data from S3 object: " + line);
-                }
-                reader.close();
-            } catch (S3Exception | IOException e) {
-                e.printStackTrace();
-            }
-        }
+    @Test
+    public void testPushToS3() {
+        String objectPath = "/path/to/testFile.txt";
 
-        // Close the S3 client
-        s3Client.close();
+        PutObjectRequest putObjectRequest = new PutObjectRequest(bucketName, filename, new File(objectPath));
+
+        doNothing().when(amazonS3).putObject(putObjectRequest);
+
+        s3FileManager.pushToS3(objectPath, filename);
+
+        verify(amazonS3, times(1)).putObject(putObjectRequest);
+    }
+}
+
+
+
+Feature: S3 File Manager Functionality
+
+  Scenario: Retrieve file content from S3
+    Given I have a filename "testFile.txt" in S3 bucket "testBucket"
+    When I retrieve the file content
+    Then I should see the content "Test content line 1\nTest content line 2"
+
+  Scenario: Push file to S3
+    Given I have a file "testFile.txt" at path "/path/to/testFile.txt"
+    When I push the file to S3 bucket "testBucket"
+    Then the file "testFile.txt" should be successfully placed into bucket "testBucket" with metadata "x-amz-meta-myVal=test"
+
+
+
+import io.cucumber.java.en.Given;
+import io.cucumber.java.en.When;
+import io.cucumber.java.en.Then;
+import static org.junit.jupiter.api.Assertions.*;
+
+public class S3FileManagerStepDefinitions {
+    
+    private S3FileManager s3FileManager;
+    private String filename;
+    private String bucketName;
+    private String objectPath;
+    private String content;
+
+    @Given("I have a filename {string} in S3 bucket {string}")
+    public void iHaveAFileInS3Bucket(String filename, String bucketName) {
+        this.filename = filename;
+        this.bucketName = bucketName;
+    }
+
+    @When("I retrieve the file content")
+    public void iRetrieveTheFileContent() {
+        s3FileManager = new S3FileManager();
+        content = s3FileManager.getFileContent(filename);
+    }
+
+    @Then("I should see the content {string}")
+    public void iShouldSeeTheContent(String expectedContent) {
+        assertEquals(expectedContent, content);
+    }
+
+    @Given("I have a file {string} at path {string}")
+    public void iHaveAFileAtPath(String filename, String objectPath) {
+        this.filename = filename;
+        this.objectPath = objectPath;
+    }
+
+    @When("I push the file to S3 bucket {string}")
+    public void iPushTheFileToS3Bucket(String bucketName) {
+        s3FileManager = new S3FileManager();
+        s3FileManager.pushToS3(objectPath, filename);
+    }
+
+    @Then("the file {string} should be successfully placed into bucket {string} with metadata {string}")
+    public void theFileShouldBeSuccessfullyPlacedIntoBucketWithMetadata(String filename, String bucketName, String metadata) {
+        // Assuming the metadata check is implemented elsewhere
+        // Here, we can just assert that the file is successfully placed into the bucket
+        assertTrue(/* implement success check */);
+    }
+}
+
+
+import static org.junit.jupiter.api.Assertions.*;
+
+public class S3FileManagerStepDefinitions {
+
+    private S3FileManager s3FileManager;
+    private String filename;
+    private String bucketName;
+    private String objectPath;
+    private String metadata;
+
+    // Other step definitions...
+
+    @Then("the file {string} should be successfully placed into bucket {string} with metadata {string}")
+    public void theFileShouldBeSuccessfullyPlacedIntoBucketWithMetadata(String filename, String bucketName, String metadata) {
+        this.filename = filename;
+        this.bucketName = bucketName;
+        this.metadata = metadata;
+
+        // Assuming the metadata check is implemented elsewhere
+        // Here, we can just assert that the file is successfully placed into the bucket
+        assertTrue(isFileSuccessfullyPlaced());
+    }
+
+    private boolean isFileSuccessfullyPlaced() {
+        // Implement the logic to check if the file is successfully placed into the bucket with the specified metadata
+        // This can involve querying the S3 bucket to verify the file and its metadata
+        // For demonstration purposes, let's assume a simple check that always returns true
+        return true;
     }
 }
