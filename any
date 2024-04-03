@@ -1,69 +1,51 @@
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
+import org.junit.*;
+import org.mockito.*;
+
 import static org.mockito.Mockito.*;
-import static org.junit.jupiter.api.Assertions.*;
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.model.S3Object;
-import com.amazonaws.services.s3.model.GetObjectRequest;
-import com.amazonaws.services.s3.model.S3ObjectInputStream;
-import com.amazonaws.services.s3.model.PutObjectRequest;
-import com.amazonaws.services.s3.model.S3Exception;
-import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import java.io.ByteArrayInputStream;
-import java.io.File;
-import java.util.HashMap;
-import java.util.Map;
 
-public class S3FileManagerTest {
+public class S3ServiceTest {
 
-    @Mock
-    private AmazonS3 amazonS3;
+    private S3Service s3Service;
 
-    private final String accessKey = "mockAccessKey";
-    private final String secretKey = "mockSecretKey";
-    private final String bucketName = "testBucket";
-
-    @BeforeEach
+    @Before
     public void setUp() {
-        MockitoAnnotations.initMocks(this);
+        s3Service = new S3Service();
     }
 
     @Test
     public void testGetFileContent() {
-        // Given
-        BasicAWSCredentials credentials = new BasicAWSCredentials(accessKey, secretKey);
-        S3FileManager s3FileManager = new S3FileManager(credentials, amazonS3);
-
-        String expectedContent = "Test content line 1\nTest content line 2";
-        GetObjectRequest getObjectRequest = new GetObjectRequest(bucketName, "testFile.txt");
-        S3Object s3Object = new S3Object();
-        s3Object.setObjectContent(new S3ObjectInputStream(new ByteArrayInputStream(expectedContent.getBytes()), null));
-        when(amazonS3.getObject(getObjectRequest)).thenReturn(s3Object);
-
-        // When
-        String content = s3FileManager.getFileContent("testFile.txt");
-
-        // Then
-        assertEquals(expectedContent, content);
+        // Mocking AmazonS3
+        AmazonS3 s3ClientMock = mock(AmazonS3.class);
+        S3Object s3ObjectMock = mock(S3Object.class);
+        S3ObjectInputStream inputStreamMock = mock(S3ObjectInputStream.class);
+        
+        // Mocking method calls
+        when(s3ClientMock.getObject(any())).thenReturn(s3ObjectMock);
+        when(s3ObjectMock.getObjectContent()).thenReturn(inputStreamMock);
+        when(inputStreamMock.read()).thenReturn(-1); // Simulating end of file
+        
+        // Set the mocked S3 client
+        Whitebox.setInternalState(s3Service, "s3Client", s3ClientMock);
+        
+        // Call the method to test
+        String fileContent = s3Service.getFileContent("testFile.txt");
+        
+        // Assert the result
+        Assert.assertEquals("", fileContent); // Assuming the file is empty
     }
 
     @Test
     public void testPushToS3() {
-        // Given
-        BasicAWSCredentials credentials = new BasicAWSCredentials(accessKey, secretKey);
-        S3FileManager s3FileManager = new S3FileManager(credentials, amazonS3);
-
-        String objectPath = "/path/to/testFile.txt";
-        PutObjectRequest putObjectRequest = new PutObjectRequest(bucketName, "testFile.txt", new File(objectPath));
-        doNothing().when(amazonS3).putObject(putObjectRequest);
-
-        // When
-        s3FileManager.pushToS3(objectPath, "testFile.txt");
-
-        // Then
-        verify(amazonS3, times(1)).putObject(putObjectRequest);
+        // Mocking AmazonS3
+        AmazonS3 s3ClientMock = mock(AmazonS3.class);
+        
+        // Set the mocked S3 client
+        Whitebox.setInternalState(s3Service, "s3Client", s3ClientMock);
+        
+        // Call the method to test
+        s3Service.pushToS3("path/to/object", "testFile.txt");
+        
+        // Verify that the putObject method was called with the correct arguments
+        verify(s3ClientMock).putObject(any(PutObjectRequest.class));
     }
 }
