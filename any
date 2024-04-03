@@ -1,6 +1,10 @@
 import org.junit.*;
 import org.mockito.*;
 
+import java.lang.reflect.Field;
+import java.util.HashMap;
+import java.util.Map;
+
 import static org.mockito.Mockito.*;
 
 public class S3ServiceTest {
@@ -13,7 +17,7 @@ public class S3ServiceTest {
     }
 
     @Test
-    public void testGetFileContent() {
+    public void testGetFileContent() throws Exception {
         // Mocking AmazonS3
         AmazonS3 s3ClientMock = mock(AmazonS3.class);
         S3Object s3ObjectMock = mock(S3Object.class);
@@ -24,8 +28,10 @@ public class S3ServiceTest {
         when(s3ObjectMock.getObjectContent()).thenReturn(inputStreamMock);
         when(inputStreamMock.read()).thenReturn(-1); // Simulating end of file
         
-        // Set the mocked S3 client
-        Whitebox.setInternalState(s3Service, "s3Client", s3ClientMock);
+        // Set the mocked S3 client using reflection
+        Field field = S3Service.class.getDeclaredField("s3Client");
+        field.setAccessible(true);
+        field.set(s3Service, s3ClientMock);
         
         // Call the method to test
         String fileContent = s3Service.getFileContent("testFile.txt");
@@ -35,12 +41,14 @@ public class S3ServiceTest {
     }
 
     @Test
-    public void testPushToS3() {
+    public void testPushToS3() throws Exception {
         // Mocking AmazonS3
         AmazonS3 s3ClientMock = mock(AmazonS3.class);
         
-        // Set the mocked S3 client
-        Whitebox.setInternalState(s3Service, "s3Client", s3ClientMock);
+        // Set the mocked S3 client using reflection
+        Field field = S3Service.class.getDeclaredField("s3Client");
+        field.setAccessible(true);
+        field.set(s3Service, s3ClientMock);
         
         // Call the method to test
         s3Service.pushToS3("path/to/object", "testFile.txt");
