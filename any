@@ -1,6 +1,7 @@
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.*;
 import org.junit.*;
+import org.mockito.*;
 
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
@@ -13,49 +14,42 @@ import static org.mockito.Mockito.*;
 
 public class S3ServiceTest {
 
+    private AmazonS3 mockS3Client;
     private S3Service s3Service;
 
     @Before
     public void setUp() {
-        s3Service = new S3Service("accessKey", "secretKey", "serviceEndpoint", "signingRegion", "bucketName");
+        mockS3Client = mock(AmazonS3.class);
+        s3Service = new S3Service(mockS3Client);
     }
 
     @Test
-    public void testGetFileContent() throws Exception {
-        // Mocking AmazonS3
-        AmazonS3 s3ClientMock = mock(AmazonS3.class);
+    public void testGetFileContent() throws IOException {
+        // Mocking S3Object and S3ObjectInputStream
         S3Object s3ObjectMock = mock(S3Object.class);
         S3ObjectInputStream inputStreamMock = mock(S3ObjectInputStream.class);
-        
-        // Mocking method calls
-        when(s3ClientMock.getObject(any())).thenReturn(s3ObjectMock);
         when(s3ObjectMock.getObjectContent()).thenReturn(inputStreamMock);
         when(inputStreamMock.read()).thenReturn(-1); // Simulating end of file
         
-        // Spy on the S3Service instance
-        S3Service s3ServiceSpy = spy(s3Service);
-        doReturn(s3ClientMock).when(s3ServiceSpy).getS3Client();
+        // Mocking getObject() method of AmazonS3
+        when(mockS3Client.getObject(any(GetObjectRequest.class))).thenReturn(s3ObjectMock);
         
         // Call the method to test
-        String fileContent = s3ServiceSpy.getFileContent("testFile.txt");
+        String fileContent = s3Service.getFileContent("testFile.txt");
         
         // Assert the result
         Assert.assertEquals("", fileContent); // Assuming the file is empty
     }
 
     @Test
-    public void testPushToS3() throws Exception {
-        // Mocking AmazonS3
-        AmazonS3 s3ClientMock = mock(AmazonS3.class);
-        
-        // Spy on the S3Service instance
-        S3Service s3ServiceSpy = spy(s3Service);
-        doReturn(s3ClientMock).when(s3ServiceSpy).getS3Client();
+    public void testPushToS3() {
+        // Mocking putObject() method of AmazonS3
+        when(mockS3Client.putObject(any(PutObjectRequest.class))).thenReturn(null);
         
         // Call the method to test
-        s3ServiceSpy.pushToS3("path/to/object", "testFile.txt");
+        s3Service.pushToS3("path/to/object", "testFile.txt");
         
         // Verify that the putObject method was called with the correct arguments
-        verify(s3ClientMock).putObject(any(PutObjectRequest.class));
+        verify(mockS3Client).putObject(any(PutObjectRequest.class));
     }
 }
