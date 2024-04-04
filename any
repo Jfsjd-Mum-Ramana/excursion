@@ -1,55 +1,25 @@
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.model.*;
-import org.junit.*;
-import org.mockito.*;
+Here are some positive and negative test scenarios for the provided class:
 
-import java.io.BufferedReader;
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.util.HashMap;
-import java.util.Map;
+Positive Scenarios:
 
-import static org.mockito.Mockito.*;
+1. **Get File Content Success**: Test that the `getFileContent` method successfully retrieves the content of a file from S3 when provided with a valid filename.
 
-public class S3ServiceTest {
+2. **Push to S3 Success**: Test that the `pushToS3` method successfully uploads a file to the S3 bucket when provided with a valid object path and filename.
 
-    private AmazonS3 mockS3Client;
-    private S3Service s3Service;
+Negative Scenarios:
 
-    @Before
-    public void setUp() {
-        mockS3Client = mock(AmazonS3.class);
-        s3Service = new S3Service(mockS3Client);
-    }
+1. **Get File Content Failure**: Test that the `getFileContent` method handles the case when the specified filename does not exist in the S3 bucket.
 
-    @Test
-    public void testGetFileContent() throws IOException {
-        // Mocking S3Object and S3ObjectInputStream
-        S3Object s3ObjectMock = mock(S3Object.class);
-        S3ObjectInputStream inputStreamMock = mock(S3ObjectInputStream.class);
-        when(s3ObjectMock.getObjectContent()).thenReturn(inputStreamMock);
-        when(inputStreamMock.read()).thenReturn(-1); // Simulating end of file
-        
-        // Mocking getObject() method of AmazonS3
-        when(mockS3Client.getObject(any(GetObjectRequest.class))).thenReturn(s3ObjectMock);
-        
-        // Call the method to test
-        String fileContent = s3Service.getFileContent("testFile.txt");
-        
-        // Assert the result
-        Assert.assertEquals("", fileContent); // Assuming the file is empty
-    }
+2. **Push to S3 Failure**: Test that the `pushToS3` method handles the case when the specified object path or filename is invalid or when there is an issue with connecting to the S3 service.
 
-    @Test
-    public void testPushToS3() {
-        // Mocking putObject() method of AmazonS3
-        when(mockS3Client.putObject(any(PutObjectRequest.class))).thenReturn(null);
-        
-        // Call the method to test
-        s3Service.pushToS3("path/to/object", "testFile.txt");
-        
-        // Verify that the putObject method was called with the correct arguments
-        verify(mockS3Client).putObject(any(PutObjectRequest.class));
-    }
-}
+3. **Missing Access Key and Secret Key**: Test that the class handles the scenario when the access key or secret key is not provided or is empty.
+
+4. **Invalid Bucket Name**: Test that the class handles the scenario when the specified bucket name is invalid or does not exist.
+
+5. **S3 Service Unavailable**: Test that the class handles the scenario when the S3 service is temporarily unavailable or unreachable.
+
+6. **File Content Retrieval Failure**: Test that the `getFileContent` method handles the scenario when there is an error retrieving the content of the file from S3, such as network issues or permission errors.
+
+7. **Push to S3 Permission Denied**: Test that the `pushToS3` method handles the scenario when there is a permission denied error while trying to upload a file to the S3 bucket.
+
+8. **Exception Handling**: Test that the class properly handles and logs exceptions that occur during S3 operations, such as network errors, authentication failures, or service errors.
