@@ -1,25 +1,46 @@
-Here are some positive and negative test scenarios for the provided class:
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.util.FileCopyUtils;
+import com.jcraft.jsch.*;
 
-Positive Scenarios:
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 
-1. **Get File Content Success**: Test that the `getFileContent` method successfully retrieves the content of a file from S3 when provided with a valid filename.
+@Configuration
+public class SSHConfig {
 
-2. **Push to S3 Success**: Test that the `pushToS3` method successfully uploads a file to the S3 bucket when provided with a valid object path and filename.
+    @Value("${ssh.publicKeyPath}")
+    private String publicKeyPath;
 
-Negative Scenarios:
+    // Other configurations...
 
-1. **Get File Content Failure**: Test that the `getFileContent` method handles the case when the specified filename does not exist in the S3 bucket.
+    @Bean
+    public Session sshSession() {
+        JSch jsch = new JSch();
+        Session session = null;
 
-2. **Push to S3 Failure**: Test that the `pushToS3` method handles the case when the specified object path or filename is invalid or when there is an issue with connecting to the S3 service.
+        try {
+            // Handle unknown host key
+            JSch.setConfig("StrictHostKeyChecking", "no");
 
-3. **Missing Access Key and Secret Key**: Test that the class handles the scenario when the access key or secret key is not provided or is empty.
+            // Read the public key file from the resources directory
+            ClassPathResource resource = new ClassPathResource(publicKeyPath);
+            byte[] publicKeyBytes = FileCopyUtils.copyToByteArray(resource.getInputStream());
+            String publicKey = new String(publicKeyBytes, StandardCharsets.UTF_8);
 
-4. **Invalid Bucket Name**: Test that the class handles the scenario when the specified bucket name is invalid or does not exist.
+            // Add the public key for authentication
+            jsch.addIdentity("mykey", publicKey.getBytes(), null, null);
 
-5. **S3 Service Unavailable**: Test that the class handles the scenario when the S3 service is temporarily unavailable or unreachable.
+            // Set up the SSH session
+            session = jsch.getSession(sshUsername, sshHost);
+            session.setConfig("PreferredAuthentications", "publickey");
+            session.connect();
+        } catch (JSchException | IOException e) {
+            e.printStackTrace();
+        }
 
-6. **File Content Retrieval Failure**: Test that the `getFileContent` method handles the scenario when there is an error retrieving the content of the file from S3, such as network issues or permission errors.
-
-7. **Push to S3 Permission Denied**: Test that the `pushToS3` method handles the scenario when there is a permission denied error while trying to upload a file to the S3 bucket.
-
-8. **Exception Handling**: Test that the class properly handles and logs exceptions that occur during S3 operations, such as network errors, authentication failures, or service errors.
+        return session;
+    }
+}
