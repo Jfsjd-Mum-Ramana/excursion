@@ -1,46 +1,41 @@
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.core.io.ClassPathResource;
-import org.springframework.util.FileCopyUtils;
-import com.jcraft.jsch.*;
+Positive Test Scenarios:
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
+1. **Successful Authentication**:
+   - Provide a valid public/private key pair.
+   - Send a request to the custom-ssh-collector application for authentication.
+   - Expect a successful authentication response with a 200 OK status.
+   - Verify that the response contains a JSON message saying "Authentication Successful".
 
-@Configuration
-public class SSHConfig {
+2. **Invalid Key Pair**:
+   - Provide an invalid public/private key pair.
+   - Send a request to the custom-ssh-collector application for authentication.
+   - Expect an authentication failure response with a 401 Unauthorized status.
+   - Verify that the response contains a JSON message saying "Invalid Key Pair".
 
-    @Value("${ssh.publicKeyPath}")
-    private String publicKeyPath;
+Negative Test Scenarios:
 
-    // Other configurations...
+1. **Missing Key Pair without a valid username/password**:
+   - Do not provide a public/private key pair.
+   - Send a request to the custom-ssh-collector application for authentication.
+   - Expect an authentication failure response with a 401 Unauthorized status.
+   - Verify that the response contains a JSON message saying "Invalid Key Pair".
 
-    @Bean
-    public Session sshSession() {
-        JSch jsch = new JSch();
-        Session session = null;
+2. **Missing Username/Password with a missing key pair**:
+   - Do not provide a public/private key pair or a valid username/password pair.
+   - Send a request to the custom-ssh-collector application for authentication.
+   - Expect an authentication failure response with a 401 Unauthorized status.
+   - Verify that the response contains a JSON message saying "Invalid Key Pair".
 
-        try {
-            // Handle unknown host key
-            JSch.setConfig("StrictHostKeyChecking", "no");
+3. **Missing Key Pair with a valid username/password**:
+   - Do not provide a public/private key pair, but provide a valid username/password pair.
+   - Send a request to the custom-ssh-collector application for authentication.
+   - Expect an authentication failure response with a 401 Unauthorized status.
+   - Verify that the response contains a JSON message saying "Invalid Key Pair".
 
-            // Read the public key file from the resources directory
-            ClassPathResource resource = new ClassPathResource(publicKeyPath);
-            byte[] publicKeyBytes = FileCopyUtils.copyToByteArray(resource.getInputStream());
-            String publicKey = new String(publicKeyBytes, StandardCharsets.UTF_8);
+4. **Invalid Username/Password with a missing key pair**:
+   - Do not provide a public/private key pair, but provide an invalid username/password pair.
+   - Send a request to the custom-ssh-collector application for authentication.
+   - Expect an authentication failure response with a 401 Unauthorized status.
+   - Verify that the response contains a JSON message saying "Invalid Key Pair".
 
-            // Add the public key for authentication
-            jsch.addIdentity("mykey", publicKey.getBytes(), null, null);
-
-            // Set up the SSH session
-            session = jsch.getSession(sshUsername, sshHost);
-            session.setConfig("PreferredAuthentications", "publickey");
-            session.connect();
-        } catch (JSchException | IOException e) {
-            e.printStackTrace();
-        }
-
-        return session;
-    }
-}
+These test scenarios cover both positive and negative cases to ensure that the custom-ssh-collector application behaves correctly according to the specified requirements.
