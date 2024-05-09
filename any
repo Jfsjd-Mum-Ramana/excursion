@@ -1,41 +1,186 @@
-Positive Test Scenarios:
+package org.vdsi.space.collections.customsshcollector.services;
+import com.jcraft.jsch.ChannelSftp;
+import com.jcraft.jsch.JSch;
+import com.jcraft.jsch.JSchException;
+import com.jcraft.jsch.Session;
+import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.vdsi.space.collections.customsshcollector.repository.LuceneCollectionAuditRepository;
+import org.vdsi.space.collections.customsshcollector.util.CollectorUtil;
+import org.vdsi.space.collections.lucene.enums.JobStatus;
+import org.vdsi.space.collections.lucene.enums.ProcessType;
+import org.vdsi.space.collections.lucene.model.CollectionAudit;
+import org.vdsi.space.collections.lucene.model.SpaceCollector;
 
-1. **Successful Authentication**:
-   - Provide a valid public/private key pair.
-   - Send a request to the custom-ssh-collector application for authentication.
-   - Expect a successful authentication response with a 200 OK status.
-   - Verify that the response contains a JSON message saying "Authentication Successful".
-
-2. **Invalid Key Pair**:
-   - Provide an invalid public/private key pair.
-   - Send a request to the custom-ssh-collector application for authentication.
-   - Expect an authentication failure response with a 401 Unauthorized status.
-   - Verify that the response contains a JSON message saying "Invalid Key Pair".
-
-Negative Test Scenarios:
-
-1. **Missing Key Pair without a valid username/password**:
-   - Do not provide a public/private key pair.
-   - Send a request to the custom-ssh-collector application for authentication.
-   - Expect an authentication failure response with a 401 Unauthorized status.
-   - Verify that the response contains a JSON message saying "Invalid Key Pair".
-
-2. **Missing Username/Password with a missing key pair**:
-   - Do not provide a public/private key pair or a valid username/password pair.
-   - Send a request to the custom-ssh-collector application for authentication.
-   - Expect an authentication failure response with a 401 Unauthorized status.
-   - Verify that the response contains a JSON message saying "Invalid Key Pair".
-
-3. **Missing Key Pair with a valid username/password**:
-   - Do not provide a public/private key pair, but provide a valid username/password pair.
-   - Send a request to the custom-ssh-collector application for authentication.
-   - Expect an authentication failure response with a 401 Unauthorized status.
-   - Verify that the response contains a JSON message saying "Invalid Key Pair".
-
-4. **Invalid Username/Password with a missing key pair**:
-   - Do not provide a public/private key pair, but provide an invalid username/password pair.
-   - Send a request to the custom-ssh-collector application for authentication.
-   - Expect an authentication failure response with a 401 Unauthorized status.
-   - Verify that the response contains a JSON message saying "Invalid Key Pair".
-
-These test scenarios cover both positive and negative cases to ensure that the custom-ssh-collector application behaves correctly according to the specified requirements.
+import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.Vector;
+import java.util.stream.Collectors;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+@Service
+@Slf4j
+public class SSHService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(SSHService.class);
+    @Autowired
+    CollectorUtil collectorUtil;
+    @Autowired
+    private  LuceneCollectionAuditRepository lucenceColletionAuditRepo;
+    private  JSchFactory jschFactory;
+    private  OutputStreamCreator outputStreamCreator;
+    @Autowired
+    KafkaProducerService kafkaProducerService;
+    @Autowired
+    private S3Service s3Service;
+    public SSHService(LuceneCollectionAuditRepository lucenceColletionAuditRepo, JSchFactory jschFactory, OutputStreamCreator outputStreamCreator) {
+        this.lucenceColletionAuditRepo = lucenceColletionAuditRepo;
+        this.jschFactory = jschFactory;
+        this.outputStreamCreator = outputStreamCreator;
+        this.s3Service = s3Service;
+    }
+    public boolean retrieveData(SpaceCollector sp, String dateReceived, String auditTopic) throws Exception {
+        LOGGER.info("Entered SSH service");
+        boolean isAllFilesTransferred = true;
+        JSch jsch = jschFactory.createJSch();
+        String sshUsername = sp.getUserName();
+        String sshHost = sp.getUrl();
+        String sshPassword = sp.getPassword();
+        if (sshPassword.equals("")) {
+            jsch.addIdentity("src/main/resources/sshkey.pem");
+        }
+        int port = sp.getPort().intValue();
+        Session session = jsch.getSession(sshUsername, sshHost, port);
+        session.setConfig("StrictHostKeyChecking", "no");
+        if (!sshPassword.isEmpty()) {
+            session.setPassword(sshPassword);
+        }
+        //sk changes
+        if (sshHost.equals("localhost")) {
+            String knownHostsFile = System.getProperty("user.home") + "/.ssh/known_hosts";
+            jsch.setKnownHosts(knownHostsFile);
+        }
+        session.connect();
+        ChannelSftp channelSftp = (ChannelSftp) session.openChannel("sftp");
+        channelSftp.connect();
+        try {
+            String remoteDirectory = getDirectory(sp.getInputFilePath());
+            String localDirectory = getDirectory(sp.getOutputFilePath());
+            //String localDirectory = sp.getOutputFilePath();
+            // Get file paths
+            String finalRemoteDirectory = remoteDirectory;
+            // Navigate to the remote directory
+            channelSftp.cd(remoteDirectory);
+            // List all files in the remote directory
+            Vector<ChannelSftp.LsEntry> files = channelSftp.ls(".");
+            List<String> filePaths = files.stream()
+                    .filter(file -> !file.getAttrs().isDir())
+                    .map(file -> finalRemoteDirectory + file.getFilename()) // Use absolute file path
+                    .collect(Collectors.toList());
+            // Get latest status for each file path
+            List<CollectionAudit> audits = lucenceColletionAuditRepo.findLatestByFilePaths(filePaths);
+            // Create a map for quick lookup
+            Map<String, String> auditStatusMap = audits.stream().filter(audit -> audit
+                    != null).collect(Collectors.toMap(audit -> audit.getInputFilePath(), audit ->
+                    audit.getJobStatus()));
+            // Download each file to the local directory
+            for (ChannelSftp.LsEntry file : files) {
+                if (!file.getAttrs().isDir()) {
+                    String filePath = remoteDirectory + file.getFilename(); // Use absolute file path
+                    String status = auditStatusMap.get(filePath);
+                    if (status == null || "COLLECTION_FAILED".equals(status)) {
+                        // Insert a record into the database with status as "COLLECTION_IN_PROGRESS"
+                        CollectionAudit audit = getCollectionAudit(sp);
+                        try {
+                            InputStream inputStream = channelSftp.get(filePath); // Use absolute file path
+                            String outputFile = localDirectory + file.getFilename();
+                            if (file.getFilename().endsWith(".zip")) {
+                                unzip(inputStream, outputFile);
+                            } else {
+                                transferFile(inputStream, new FileOutputStream(outputFile), outputFile);
+                            }
+//                            outputStream.close();
+                            inputStream.close();
+                            s3Service.pushToS3(outputFile, file.getFilename());
+                            log.info("outputFile " +outputFile);
+                            audit.setInputFilePath(outputFile);
+                            audit.setJobStatus(JobStatus.COLLECTION_SUCCESSFUL.toString());
+                            kafkaProducerService.writeMessage(collectorUtil.buildAuditQueueJSON(audit), "", auditTopic);
+                        } catch (Exception e) {
+                            audit.setInputFilePath(filePath);
+                            audit.setJobStatus(JobStatus.COLLECTION_FAILED.toString());
+                            audit.setExceptions(e.getMessage());
+                            kafkaProducerService.writeMessage(collectorUtil.buildAuditQueueJSON(audit), "", auditTopic);
+                        }
+                    }
+                }
+            }
+        } finally {
+            if (channelSftp != null) {
+                channelSftp.disconnect();
+            }
+            if (session != null) {
+                session.disconnect();
+            }
+        }
+        return isAllFilesTransferred;
+    }
+    private CollectionAudit getCollectionAudit(SpaceCollector sp) {
+        CollectionAudit audit = new CollectionAudit();
+        audit.setId(UUID.randomUUID().toString());
+        audit.setDateProcessed(collectorUtil.localDateToString(LocalDateTime.now()));
+//        audit.setInputFilePath(audit.getInputFilePath().replace(localDirectory, "ZipPath-->"));
+        audit.setFileType(sp.getFileType());
+        audit.setDelimiters(sp.getDelimiter());
+        audit.setUrl(sp.getUrl());
+        audit.setPort(Integer.valueOf(sp.getPort().toString()));
+        audit.setCollectorId(sp.getId());
+        audit.setProcessType(ProcessType.Collector);
+        return audit;
+    }
+    private JSch getJsch(SpaceCollector sp) throws JSchException {
+        JSch jsch = jschFactory.createJSch();
+        if (sp.getUrl().equals("localhost")) {
+            String knownHostsFile = System.getProperty("user.home") + "/.ssh/known_hosts";
+            jsch.setKnownHosts(knownHostsFile);
+        }
+        return jsch;
+    }
+    private static String getDirectory(String sp) {
+        String remoteDirectory = sp;
+        if (!remoteDirectory.endsWith("/")) {
+            remoteDirectory += "/";
+        }
+        return remoteDirectory;
+    }
+    public void transferFile(InputStream inputStream, OutputStream outputStream, String outputFile) throws IOException, IOException {
+        byte[] buffer = new byte[1024];
+        int bytesRead;
+        while ((bytesRead = inputStream.read(buffer)) != -1) {
+            outputStream.write(buffer, 0, bytesRead);
+        }
+        outputStream.close();
+        inputStream.close();
+    }
+    private void unzip(InputStream inputStream, String outputFile) throws IOException {
+        try (ZipInputStream zis = new ZipInputStream(inputStream)) {
+            ZipEntry zipEntry = zis.getNextEntry();
+            while (zipEntry != null) {
+                String filePath = outputFile + File.separator + zipEntry.getName();
+                if (zipEntry.isDirectory()) {
+                    Files.createDirectories(Paths.get(filePath));
+                } else {
+                    transferFile(zis, new FileOutputStream(filePath), filePath);
+                }
+                zipEntry = zis.getNextEntry();
+            }
+        }
+    }
+}
