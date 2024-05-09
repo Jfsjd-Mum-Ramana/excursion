@@ -14,18 +14,15 @@ import org.vdsi.space.collections.lucene.enums.JobStatus;
 import org.vdsi.space.collections.lucene.enums.ProcessType;
 import org.vdsi.space.collections.lucene.model.CollectionAudit;
 import org.vdsi.space.collections.lucene.model.SpaceCollector;
-
-import java.io.*;
-import java.nio.file.Files;
-import java.nio.file.Paths;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.Vector;
 import java.util.stream.Collectors;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
 @Service
 @Slf4j
 public class SSHService {
@@ -101,12 +98,14 @@ public class SSHService {
                         try {
                             InputStream inputStream = channelSftp.get(filePath); // Use absolute file path
                             String outputFile = localDirectory + file.getFilename();
-                            if (file.getFilename().endsWith(".zip")) {
-                                unzip(inputStream, outputFile);
-                            } else {
-                                transferFile(inputStream, new FileOutputStream(outputFile), outputFile);
+                            //FileOutputStream outputStream = new FileOutputStream(outputFile);
+                            OutputStream outputStream = outputStreamCreator.create(outputFile);
+                            byte[] buffer = new byte[1024];
+                            int bytesRead;
+                            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                                outputStream.write(buffer, 0, bytesRead);
                             }
-//                            outputStream.close();
+                            outputStream.close();
                             inputStream.close();
                             s3Service.pushToS3(outputFile, file.getFilename());
                             log.info("outputFile " +outputFile);
@@ -136,7 +135,6 @@ public class SSHService {
         CollectionAudit audit = new CollectionAudit();
         audit.setId(UUID.randomUUID().toString());
         audit.setDateProcessed(collectorUtil.localDateToString(LocalDateTime.now()));
-//        audit.setInputFilePath(audit.getInputFilePath().replace(localDirectory, "ZipPath-->"));
         audit.setFileType(sp.getFileType());
         audit.setDelimiters(sp.getDelimiter());
         audit.setUrl(sp.getUrl());
@@ -169,18 +167,21 @@ public class SSHService {
         outputStream.close();
         inputStream.close();
     }
-    private void unzip(InputStream inputStream, String outputFile) throws IOException {
-        try (ZipInputStream zis = new ZipInputStream(inputStream)) {
-            ZipEntry zipEntry = zis.getNextEntry();
-            while (zipEntry != null) {
-                String filePath = outputFile + File.separator + zipEntry.getName();
-                if (zipEntry.isDirectory()) {
-                    Files.createDirectories(Paths.get(filePath));
-                } else {
-                    transferFile(zis, new FileOutputStream(filePath), filePath);
-                }
-                zipEntry = zis.getNextEntry();
-            }
-        }
-    }
 }
+
+
+AC1: Given that I have access to the custom-ssh-collector codebase,
+    When I implement the unzip functionality,
+    Then the custom-ssh-collector should be able to unzip any ZIP files it encounters and process the files inside independently.
+AC2: Given that the unzip functionality has been implemented,
+    When the custom-ssh-collector encounters a ZIP file,
+    Then it should unzip the file without any errors.
+AC3: Given that a ZIP file has been unzipped,
+    When the custom-ssh-collector processes the files inside,
+    Then it should process each file independently and successfully.
+AC4: Given that the files inside a ZIP file have been processed,
+    When the custom-ssh-collector generates the audit message,
+    Then it should include the paths of all the files that were inside the ZIP file, with the format "ZipPath--&gt;inside file path".
+AC5: Given that the unzip functionality has been successfully implemented and tested,
+    When I document the changes and the benefits of the unzip functionality,
+    Then the team should be able to understand the new functionality and how to use and maintain it.
