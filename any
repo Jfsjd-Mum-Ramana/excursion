@@ -7,7 +7,7 @@ import org.apache.commons.compress.compressors.gzip.*;
 public class UnzipExample {
 
     public static void main(String[] args) {
-        String filePath = "path/to/your/file"; // Change this to your actual file path
+        String filePath = "path/to/your/file.tar.gz"; // Change this to your actual file path
         String destDir = "path/to/destination/folder"; // Change this to your actual destination folder
 
         try {
@@ -26,7 +26,7 @@ public class UnzipExample {
         } else if ("tar".equalsIgnoreCase(fileExtension)) {
             untar(filePath, destDir);
         } else if ("gz".equalsIgnoreCase(fileExtension)) {
-            ungzip(filePath, destDir);
+            untarAndUngzip(filePath, destDir);
         } else {
             System.err.println("Unsupported file type: " + fileExtension);
         }
@@ -88,14 +88,22 @@ public class UnzipExample {
         }
     }
 
-    private static void ungzip(String gzFilePath, String destDir) throws IOException {
-        try (GzipCompressorInputStream gzIn = new GzipCompressorInputStream(new FileInputStream(gzFilePath))) {
-            String outFilePath = destDir + File.separator + new File(gzFilePath).getName().replace(".gz", "");
-            try (FileOutputStream out = new FileOutputStream(outFilePath)) {
-                byte[] buffer = new byte[1024];
-                int len;
-                while ((len = gzIn.read(buffer)) > 0) {
-                    out.write(buffer, 0, len);
+    private static void untarAndUngzip(String tarGzFilePath, String destDir) throws IOException {
+        try (TarArchiveInputStream tarInput = new TarArchiveInputStream(new GzipCompressorInputStream(new FileInputStream(tarGzFilePath)))) {
+            TarArchiveEntry entry;
+            while ((entry = tarInput.getNextTarEntry()) != null) {
+                File destPath = new File(destDir, entry.getName());
+                if (entry.isDirectory()) {
+                    destPath.mkdirs();
+                } else {
+                    destPath.getParentFile().mkdirs();
+                    try (BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(destPath))) {
+                        byte[] buffer = new byte[1024];
+                        int len;
+                        while ((len = tarInput.read(buffer)) != -1) {
+                            bos.write(buffer, 0, len);
+                        }
+                    }
                 }
             }
         }
