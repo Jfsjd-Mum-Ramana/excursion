@@ -109,3 +109,12 @@ public class UnzipExample {
         }
     }
 }
+
+
+
+<dependency>
+    <groupId>org.apache.commons</groupId>
+    <artifactId>commons-compress</artifactId>
+    <version>1.21</version> <!-- Or the latest version available -->
+</dependency>
+
