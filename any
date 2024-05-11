@@ -1,92 +1,138 @@
-import java.io.*;
-import java.util.*;
-import java.util.zip.*;
-import org.apache.commons.io.IOUtils;
-
+package org.vdsi.space.collections.customsshcollector.services;
+import com.jcraft.jsch.ChannelSftp;
+import com.jcraft.jsch.JSch;
+import com.jcraft.jsch.JSchException;
+import com.jcraft.jsch.Session;
+import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.vdsi.space.collections.customsshcollector.config.ProfileCheckConfig;
+import org.vdsi.space.collections.customsshcollector.repository.LuceneCollectionAuditRepository;
+import org.vdsi.space.collections.customsshcollector.util.CollectorUtil;
+import org.vdsi.space.collections.customsshcollector.util.DateUtil;
+import org.vdsi.space.collections.lucene.enums.JobStatus;
+import org.vdsi.space.collections.lucene.enums.ProcessType;
+import org.vdsi.space.collections.lucene.model.CollectionAudit;
+import org.vdsi.space.collections.lucene.model.SpaceCollector;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.Vector;
+import java.util.stream.Collectors;
 @Service
 @Slf4j
 public class SSHService {
     private static final Logger LOGGER = LoggerFactory.getLogger(SSHService.class);
-    
     @Autowired
     CollectorUtil collectorUtil;
-    
     @Autowired
     DateUtil dateUtil;
-    
     @Autowired
-    private LuceneCollectionAuditRepository luceneCollectionAuditRepo;
-    
-    @Autowired
-    private JSchFactory jschFactory;
-    
-    @Autowired
-    private OutputStreamCreator outputStreamCreator;
-    
+    private  LuceneCollectionAuditRepository lucenceColletionAuditRepo;
+    private  JSchFactory jschFactory;
+    private  OutputStreamCreator outputStreamCreator;
     @Autowired
     KafkaProducerService kafkaProducerService;
-    
     @Autowired
     private S3Service s3Service;
-
-    public SSHService(LuceneCollectionAuditRepository luceneCollectionAuditRepo, JSchFactory jschFactory, OutputStreamCreator outputStreamCreator) {
-        this.luceneCollectionAuditRepo = luceneCollectionAuditRepo;
+    public SSHService(LuceneCollectionAuditRepository lucenceColletionAuditRepo, JSchFactory jschFactory, OutputStreamCreator outputStreamCreator) {
+        this.lucenceColletionAuditRepo = lucenceColletionAuditRepo;
         this.jschFactory = jschFactory;
         this.outputStreamCreator = outputStreamCreator;
+        //this.s3Service = s3Service;
     }
-
-    public void retrieveData(SpaceCollector sp, String dateReceived, String auditTopic) throws Exception {
+    public boolean retrieveData(SpaceCollector sp, String dateReceived, String auditTopic) throws Exception {
         LOGGER.info("Entered SSH service");
+        boolean isAllFilesTransferred = true;
         JSch jsch = jschFactory.createJSch();
         String sshUsername = sp.getUserName();
         String sshHost = sp.getUrl();
         String sshPassword = sp.getPassword();
-        
         if (sshPassword.equals("")) {
             jsch.addIdentity("/prod/eclapp/lib/id_rsa_decoded");
         }
-        
         int port = sp.getPort().intValue();
         Session session = jsch.getSession(sshUsername, sshHost, port);
         session.setConfig("StrictHostKeyChecking", "no");
-        
         if (!sshPassword.isEmpty()) {
             session.setPassword(sshPassword);
         }
-        
+        //sk changes
         if (sshHost.equals("localhost")) {
             String knownHostsFile = System.getProperty("user.home") + "/.ssh/known_hosts";
             jsch.setKnownHosts(knownHostsFile);
         }
-        
         session.connect();
         ChannelSftp channelSftp = (ChannelSftp) session.openChannel("sftp");
         channelSftp.connect();
-        
         try {
             String remoteDirectory = getDirectory(sp.getInputFilePath());
             String localDirectory = getDirectory(sp.getOutputFilePath());
+            //String localDirectory = sp.getOutputFilePath();
+            // Get file paths
+            String finalRemoteDirectory = remoteDirectory;
+            // Navigate to the remote directory
             channelSftp.cd(remoteDirectory);
+            // List all files in the remote directory
             Vector<ChannelSftp.LsEntry> files = channelSftp.ls(".");
+            
             String date = dateUtil.getDateInMMddyyyy();
             String env = ProfileCheckConfig.activeProfile;
             
             List<String> filePaths = files.stream()
                     .filter(file -> !file.getAttrs().isDir())
-                    .map(file -> remoteDirectory + file.getFilename()) 
+                    .map(file -> finalRemoteDirectory + file.getFilename()) // Use absolute file path
                     .collect(Collectors.toList());
-            
-            List<CollectionAudit> audits = luceneCollectionAuditRepo.findLatestByFilePaths(filePaths);
-            Map<String, String> auditStatusMap = audits.stream()
-                    .filter(audit -> audit != null)
-                    .collect(Collectors.toMap(audit -> audit.getInputFilePath(), audit -> audit.getJobStatus()));
-            
+            // Get latest status for each file path
+            List<CollectionAudit> audits = lucenceColletionAuditRepo.findLatestByFilePaths(filePaths);
+            // Create a map for quick lookup
+            Map<String, String> auditStatusMap = audits.stream().filter(audit -> audit
+                    != null).collect(Collectors.toMap(audit -> audit.getInputFilePath(), audit ->
+                    audit.getJobStatus()));
+            // Download each file to the local directory
             for (ChannelSftp.LsEntry file : files) {
                 if (!file.getAttrs().isDir()) {
-                    String filePath = remoteDirectory + file.getFilename();
+                    String filePath = remoteDirectory + file.getFilename(); // Use absolute file path
                     String status = auditStatusMap.get(filePath);
                     if (status == null || "COLLECTION_FAILED".equals(status)) {
-                        processFile(channelSftp, filePath, localDirectory, auditTopic, sp);
+                        // Insert a record into the database with status as "COLLECTION_IN_PROGRESS"
+                        CollectionAudit audit = getCollectionAudit(sp);
+                        String outputFile = localDirectory + file.getFilename();
+
+                        try (InputStream inputStream = channelSftp.get(filePath); // Use absolute file path
+                        	     OutputStream outputStream = outputStreamCreator.create(outputFile)) {
+
+                            //InputStream inputStream = channelSftp.get(filePath); // Use absolute file path
+                            //String outputFile = localDirectory + file.getFilename();
+                            ////FileOutputStream outputStream = new FileOutputStream(outputFile);
+                            //OutputStream outputStream = outputStreamCreator.create(outputFile);
+                            byte[] buffer = new byte[1024];
+                            int bytesRead;
+                            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                                outputStream.write(buffer, 0, bytesRead);
+                            }
+                            //outputStream.close();
+                            //inputStream.close();
+                            String key = String.format("%s/%s/%s/%s/%s", env, sp.getFileType(), sshHost, date, file.getFilename());
+                            s3Service.pushToS3(outputFile,key);
+                            LOGGER.info("outputFile " +outputFile +" key "+key);
+                            audit.setInputFilePath(key);
+                            audit.setJobStatus(JobStatus.COLLECTION_SUCCESSFUL.toString());
+                            kafkaProducerService.writeMessage(collectorUtil.buildAuditQueueJSON(audit), "", auditTopic);
+
+                        } catch (Exception e) {
+                            audit.setInputFilePath(filePath);
+                            audit.setJobStatus(JobStatus.COLLECTION_FAILED.toString());
+                            audit.setExceptions(e.getMessage());
+                            kafkaProducerService.writeMessage(collectorUtil.buildAuditQueueJSON(audit), "", auditTopic);
+                            LOGGER.error("Error on retrieveData {}" ,e);
+                        }
                     }
                 }
             }
@@ -98,65 +144,42 @@ public class SSHService {
                 session.disconnect();
             }
         }
+        return isAllFilesTransferred;
     }
-
-    private void processFile(ChannelSftp channelSftp, String filePath, String localDirectory, String auditTopic, SpaceCollector sp) throws IOException {
-        try (InputStream inputStream = channelSftp.get(filePath)) {
-            List<String> uncompressedFilePaths = unzip(inputStream, localDirectory);
-            
-            for (String uncompressedFilePath : uncompressedFilePaths) {
-                processSingleFile(channelSftp, uncompressedFilePath, localDirectory, auditTopic, sp);
-            }
-            
-            generateAuditMessage(filePath, uncompressedFilePaths, auditTopic);
+    private CollectionAudit getCollectionAudit(SpaceCollector sp) {
+        CollectionAudit audit = new CollectionAudit();
+        audit.setId(UUID.randomUUID().toString());
+        audit.setDateProcessed(collectorUtil.localDateToString(LocalDateTime.now()));
+        audit.setFileType(sp.getFileType());
+        audit.setDelimiters(sp.getDelimiter());
+        audit.setUrl(sp.getUrl());
+        audit.setPort(Integer.valueOf(sp.getPort().toString()));
+        audit.setCollectorId(sp.getId());
+        audit.setProcessType(ProcessType.Collector);
+        return audit;
+    }
+    private JSch getJsch(SpaceCollector sp) throws JSchException {
+        JSch jsch = jschFactory.createJSch();
+        if (sp.getUrl().equals("localhost")) {
+            String knownHostsFile = System.getProperty("user.home") + "/.ssh/known_hosts";
+            jsch.setKnownHosts(knownHostsFile);
         }
+        return jsch;
     }
-
-    private List<String> unzip(InputStream inputStream, String outputDirectory) throws IOException {
-        List<String> uncompressedFilePaths = new ArrayList<>();
-        byte[] buffer = new byte[1024];
-        
-        try (ZipInputStream zipInputStream = new ZipInputStream(inputStream)) {
-            ZipEntry entry;
-            while ((entry = zipInputStream.getNextEntry()) != null) {
-                String entryName = entry.getName();
-                String unzippedFilePath = outputDirectory + File.separator + entryName;
-                uncompressedFilePaths.add(unzippedFilePath);
-                
-                Files.createDirectories(Paths.get(unzippedFilePath).getParent());
-                
-                try (OutputStream outputStream = new FileOutputStream(unzippedFilePath)) {
-                    IOUtils.copy(zipInputStream, outputStream);
-                }
-            }
-        }
-        
-        return uncompressedFilePaths;
-    }
-
-    private void generateAuditMessage(String originalFilePath, List<String> unzippedFilePaths, String auditTopic) {
-        StringBuilder message = new StringBuilder("OriginalFilePath --> UnzippedFilePath\n");
-        for (String unzippedFilePath : unzippedFilePaths) {
-            message.append(originalFilePath).append(" --> ").append(unzippedFilePath).append("\n");
-        }
-        LOGGER.info("Audit Message: {}", message.toString());
-        // Send audit message
-    }
-
-    private String getDirectory(String sp) {
+    private static String getDirectory(String sp) {
         String remoteDirectory = sp;
         if (!remoteDirectory.endsWith("/")) {
             remoteDirectory += "/";
         }
         return remoteDirectory;
     }
-    
-    private void pushToS3(String filePath, String s3Key) {
-        try {
-            s3Service.pushToS3(new FileInputStream(filePath), s3Key);
-            LOGGER.info("File pushed to S3 - Key: {}", s3Key);
-        } catch (FileNotFoundException e) {
-            LOGGER.error("File not found: {}", filePath, e);
+    public void transferFile(InputStream inputStream, OutputStream outputStream, String outputFile) throws IOException, IOException {
+        byte[] buffer = new byte[1024];
+        int bytesRead;
+        while ((bytesRead = inputStream.read(buffer)) != -1) {
+            outputStream.write(buffer, 0, bytesRead);
         }
+        outputStream.close();
+        inputStream.close();
     }
 }
