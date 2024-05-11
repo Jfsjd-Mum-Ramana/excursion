@@ -1,4 +1,6 @@
 import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.zip.*;
 import org.apache.commons.io.IOUtils;
@@ -102,13 +104,25 @@ public class SSHService {
 
     private void processFile(ChannelSftp channelSftp, String filePath, String localDirectory, String auditTopic, SpaceCollector sp) throws IOException {
         try (InputStream inputStream = channelSftp.get(filePath)) {
-            List<String> uncompressedFilePaths = unzip(inputStream, localDirectory);
-            
-            for (String uncompressedFilePath : uncompressedFilePaths) {
-                processSingleFile(channelSftp, uncompressedFilePath, localDirectory, auditTopic, sp);
+            if (isZipFile(inputStream)) {
+                List<String> uncompressedFilePaths = unzip(inputStream, localDirectory);
+                for (String uncompressedFilePath : uncompressedFilePaths) {
+                    processSingleFile(channelSftp, uncompressedFilePath, localDirectory, auditTopic, sp);
+                }
+                generateAuditMessage(filePath, uncompressedFilePaths, auditTopic);
+            } else {
+                LOGGER.error("The file is not a valid ZIP file: {}", filePath);
             }
-            
-            generateAuditMessage(filePath, uncompressedFilePaths, auditTopic);
+        }
+    }
+
+    private boolean isZipFile(InputStream inputStream) throws IOException {
+        // Read the first few bytes to check the file signature
+        byte[] signature = new byte[4];
+        if (inputStream.read(signature) != -1) {
+            return Arrays.equals(signature, new byte[]{0x50, 0x4B, 0x03, 0x04}); // ZIP file signature
+        } else {
+            return false;
         }
     }
 
@@ -160,7 +174,3 @@ public class SSHService {
         }
     }
 }
-
-
-
-for the above code implement the unzip functionality in the above code means whenever the input file will be containing any file it will unzip the file the file will containing any file like .zip and .tar and .gz any file it will unzip the file write the logic accordingly 
