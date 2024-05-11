@@ -1,176 +1,49 @@
 import java.io.*;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.util.*;
+import java.nio.file.*;
 import java.util.zip.*;
-import org.apache.commons.io.IOUtils;
 
-@Service
-@Slf4j
-public class SSHService {
-    private static final Logger LOGGER = LoggerFactory.getLogger(SSHService.class);
-    
-    @Autowired
-    CollectorUtil collectorUtil;
-    
-    @Autowired
-    DateUtil dateUtil;
-    
-    @Autowired
-    private LuceneCollectionAuditRepository luceneCollectionAuditRepo;
-    
-    @Autowired
-    private JSchFactory jschFactory;
-    
-    @Autowired
-    private OutputStreamCreator outputStreamCreator;
-    
-    @Autowired
-    KafkaProducerService kafkaProducerService;
-    
-    @Autowired
-    private S3Service s3Service;
+public class UnzipExample {
 
-    public SSHService(LuceneCollectionAuditRepository luceneCollectionAuditRepo, JSchFactory jschFactory, OutputStreamCreator outputStreamCreator) {
-        this.luceneCollectionAuditRepo = luceneCollectionAuditRepo;
-        this.jschFactory = jschFactory;
-        this.outputStreamCreator = outputStreamCreator;
-    }
+    public static void main(String[] args) {
+        String zipFilePath = "path/to/your/file.zip"; // Change this to your actual zip file path
+        String destDir = "path/to/destination/folder"; // Change this to your actual destination folder
 
-    public void retrieveData(SpaceCollector sp, String dateReceived, String auditTopic) throws Exception {
-        LOGGER.info("Entered SSH service");
-        JSch jsch = jschFactory.createJSch();
-        String sshUsername = sp.getUserName();
-        String sshHost = sp.getUrl();
-        String sshPassword = sp.getPassword();
-        
-        if (sshPassword.equals("")) {
-            jsch.addIdentity("/prod/eclapp/lib/id_rsa_decoded");
-        }
-        
-        int port = sp.getPort().intValue();
-        Session session = jsch.getSession(sshUsername, sshHost, port);
-        session.setConfig("StrictHostKeyChecking", "no");
-        
-        if (!sshPassword.isEmpty()) {
-            session.setPassword(sshPassword);
-        }
-        
-        if (sshHost.equals("localhost")) {
-            String knownHostsFile = System.getProperty("user.home") + "/.ssh/known_hosts";
-            jsch.setKnownHosts(knownHostsFile);
-        }
-        
-        session.connect();
-        ChannelSftp channelSftp = (ChannelSftp) session.openChannel("sftp");
-        channelSftp.connect();
-        
         try {
-            String remoteDirectory = getDirectory(sp.getInputFilePath());
-            String localDirectory = getDirectory(sp.getOutputFilePath());
-            channelSftp.cd(remoteDirectory);
-            Vector<ChannelSftp.LsEntry> files = channelSftp.ls(".");
-            String date = dateUtil.getDateInMMddyyyy();
-            String env = ProfileCheckConfig.activeProfile;
-            
-            List<String> filePaths = files.stream()
-                    .filter(file -> !file.getAttrs().isDir())
-                    .map(file -> remoteDirectory + file.getFilename()) 
-                    .collect(Collectors.toList());
-            
-            List<CollectionAudit> audits = luceneCollectionAuditRepo.findLatestByFilePaths(filePaths);
-            Map<String, String> auditStatusMap = audits.stream()
-                    .filter(audit -> audit != null)
-                    .collect(Collectors.toMap(audit -> audit.getInputFilePath(), audit -> audit.getJobStatus()));
-            
-            for (ChannelSftp.LsEntry file : files) {
-                if (!file.getAttrs().isDir()) {
-                    String filePath = remoteDirectory + file.getFilename();
-                    String status = auditStatusMap.get(filePath);
-                    if (status == null || "COLLECTION_FAILED".equals(status)) {
-                        processFile(channelSftp, filePath, localDirectory, auditTopic, sp);
-                    }
-                }
-            }
-        } finally {
-            if (channelSftp != null) {
-                channelSftp.disconnect();
-            }
-            if (session != null) {
-                session.disconnect();
-            }
+            unzip(zipFilePath, destDir);
+            System.out.println("File unzipped successfully.");
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 
-    private void processFile(ChannelSftp channelSftp, String filePath, String localDirectory, String auditTopic, SpaceCollector sp) throws IOException {
-        try (InputStream inputStream = channelSftp.get(filePath)) {
-            if (isZipFile(inputStream)) {
-                List<String> uncompressedFilePaths = unzip(inputStream, localDirectory);
-                for (String uncompressedFilePath : uncompressedFilePaths) {
-                    processSingleFile(channelSftp, uncompressedFilePath, localDirectory, auditTopic, sp);
-                }
-                generateAuditMessage(filePath, uncompressedFilePaths, auditTopic);
-            } else {
-                LOGGER.error("The file is not a valid ZIP file: {}", filePath);
-            }
-        }
-    }
-
-    private boolean isZipFile(InputStream inputStream) throws IOException {
-        // Read the first few bytes to check the file signature
-        byte[] signature = new byte[4];
-        if (inputStream.read(signature) != -1) {
-            return Arrays.equals(signature, new byte[]{0x50, 0x4B, 0x03, 0x04}); // ZIP file signature
-        } else {
-            return false;
-        }
-    }
-
-    private List<String> unzip(InputStream inputStream, String outputDirectory) throws IOException {
-        List<String> uncompressedFilePaths = new ArrayList<>();
+    public static void unzip(String zipFilePath, String destDir) throws IOException {
         byte[] buffer = new byte[1024];
-        
-        try (ZipInputStream zipInputStream = new ZipInputStream(inputStream)) {
-            ZipEntry entry;
-            while ((entry = zipInputStream.getNextEntry()) != null) {
-                String entryName = entry.getName();
-                String unzippedFilePath = outputDirectory + File.separator + entryName;
-                uncompressedFilePaths.add(unzippedFilePath);
-                
-                Files.createDirectories(Paths.get(unzippedFilePath).getParent());
-                
-                try (OutputStream outputStream = new FileOutputStream(unzippedFilePath)) {
-                    IOUtils.copy(zipInputStream, outputStream);
+
+        try (ZipInputStream zipInputStream = new ZipInputStream(new FileInputStream(zipFilePath))) {
+            ZipEntry entry = zipInputStream.getNextEntry();
+
+            while (entry != null) {
+                String fileName = entry.getName();
+                File newFile = new File(destDir + File.separator + fileName);
+
+                // Create directories if necessary
+                new File(newFile.getParent()).mkdirs();
+
+                if (!entry.isDirectory()) {
+                    try (FileOutputStream fos = new FileOutputStream(newFile)) {
+                        int len;
+                        while ((len = zipInputStream.read(buffer)) > 0) {
+                            fos.write(buffer, 0, len);
+                        }
+                    }
+                } else {
+                    // If the entry is a directory, create it
+                    newFile.mkdir();
                 }
+
+                zipInputStream.closeEntry();
+                entry = zipInputStream.getNextEntry();
             }
-        }
-        
-        return uncompressedFilePaths;
-    }
-
-    private void generateAuditMessage(String originalFilePath, List<String> unzippedFilePaths, String auditTopic) {
-        StringBuilder message = new StringBuilder("OriginalFilePath --> UnzippedFilePath\n");
-        for (String unzippedFilePath : unzippedFilePaths) {
-            message.append(originalFilePath).append(" --> ").append(unzippedFilePath).append("\n");
-        }
-        LOGGER.info("Audit Message: {}", message.toString());
-        // Send audit message
-    }
-
-    private String getDirectory(String sp) {
-        String remoteDirectory = sp;
-        if (!remoteDirectory.endsWith("/")) {
-            remoteDirectory += "/";
-        }
-        return remoteDirectory;
-    }
-    
-    private void pushToS3(String filePath, String s3Key) {
-        try {
-            s3Service.pushToS3(new FileInputStream(filePath), s3Key);
-            LOGGER.info("File pushed to S3 - Key: {}", s3Key);
-        } catch (FileNotFoundException e) {
-            LOGGER.error("File not found: {}", filePath, e);
         }
     }
 }
