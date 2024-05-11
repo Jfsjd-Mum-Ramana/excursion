@@ -186,3 +186,40 @@ public class SSHService {
         inputStream.close();
     }
 }
+AC1: Given that I have access to the custom-ssh-collector codebase,
+
+    When I implement the unzip functionality,
+
+    Then the custom-ssh-collector should be able to unzip any ZIP files it encounters and process the files inside independently.
+
+
+
+AC2: Given that the unzip functionality has been implemented,
+
+    When the custom-ssh-collector encounters a ZIP file,
+
+    Then it should unzip the file without any errors.
+
+
+
+AC3: Given that a ZIP file has been unzipped,
+
+    When the custom-ssh-collector processes the files inside,
+
+    Then it should process each file independently and successfully.
+
+
+
+AC4: Given that the files inside a ZIP file have been processed,
+
+    When the custom-ssh-collector generates the audit message,
+
+    Then it should include the paths of all the files that were inside the ZIP file, with the format "ZipPath--&gt;inside file path".
+
+
+
+AC5: Given that the unzip functionality has been successfully implemented and tested,
+
+    When I document the changes and the benefits of the unzip functionality,
+
+    Then the team should be able to understand the new functionality and how to use and maintain it.
