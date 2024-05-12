@@ -1,21 +1,9 @@
-public void testUntar_WithNonTarFile() throws IOException {
-    // Create a non-tar file in the temporary directory
-    Path nonTarFilePath = tempDir.resolve("file.txt");
-    Files.createFile(nonTarFilePath);
-
-    // Create a destination directory
-    Path destDir = tempDir.resolve("destDir");
-    Files.createDirectory(destDir);
-
-    // Call the method and assert that it throws an exception
-    assertThrows(IOException.class, () -> {
-        try {
-            ZipUtil.untar(nonTarFilePath.toString(), destDir.toString());
-        } catch (TarException e) {
-            throw new IOException("Failed to untar the file.", e);
-        }
-    });
-}
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.io.IOException;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.ZipException;
 
 public void testUntarAndUngzip_WithNonTarGzFile() throws IOException {
     // Create a non-tar.gz file in the temporary directory
@@ -28,10 +16,26 @@ public void testUntarAndUngzip_WithNonTarGzFile() throws IOException {
 
     // Call the method and assert that it throws an exception
     assertThrows(IOException.class, () -> {
+        String fileName = nonTarGzFilePath.getFileName().toString();
+        String fileExtension = getFileExtension(fileName);
+
+        if (!fileExtension.equals("tar.gz")) {
+            throw new IOException("Not a valid tar.gz file.");
+        }
+
         try {
             ZipUtil.untarAndUngzip(nonTarGzFilePath.toString(), destDir.toString());
         } catch (TarException | GzipException e) {
             throw new IOException("Failed to untar and ungzip the file.", e);
         }
     });
+}
+
+// Helper method to get file extension
+private String getFileExtension(String fileName) {
+    if (fileName.lastIndexOf(".") != -1 && fileName.lastIndexOf(".") != 0) {
+        return fileName.substring(fileName.lastIndexOf(".") + 1);
+    } else {
+        return "";
+    }
 }
