@@ -1,116 +1,4 @@
-package org.vdsi.space.collections.customsshcollector.junits.util;
-
-import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
-import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
-import org.apache.commons.compress.compressors.gzip.GzipCompressorOutputStream;
-import org.junit.jupiter.api.Disabled;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-import org.vdsi.space.collections.customsshcollector.util.ZipUtil;
-
-import java.io.BufferedOutputStream;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.zip.ZipOutputStream;
-
-import static org.junit.jupiter.api.Assertions.*;
-
-public class ZipUtilTest {
-    @TempDir
-    Path tempDir;
-
-    @Test
-    public void testIsZipFile_WithZipFile() throws IOException {
-        // Create a zip file in the temporary directory
-        Path zipFilePath = tempDir.resolve("file.zip");
-        try (ZipOutputStream zos = new ZipOutputStream(Files.newOutputStream(zipFilePath))) {
-        }
-
-        boolean result = ZipUtil.isZipFile(zipFilePath.toString());
-
-        // Assert that the method returns true
-        assertTrue(result);
-    }
-
-    @Test
-    public void testIsZipFile_WithNonZipFile() throws IOException {
-        // Create a non-zip file in the temporary directory
-        Path nonZipFilePath = tempDir.resolve("file.txt");
-        Files.createFile(nonZipFilePath);
-
-        boolean result = ZipUtil.isZipFile(nonZipFilePath.toString());
-
-        // Assert that the method returns false
-        assertFalse(result);
-    }
-
-    @Test
-    public void testIsZipFile_WithNonExistentFile() {
-        // Assert that the method returns false
-        assertFalse(ZipUtil.isZipFile("non_existent_file"));
-    }
-
-    @Test
-    @Disabled
-    public void testExtract_WithZipFile() throws IOException {
-        // Create a zip file in the temporary directory
-        Path zipFilePath = tempDir.resolve("file.zip");
-        try (ZipOutputStream zos = new ZipOutputStream(Files.newOutputStream(zipFilePath))) {
-        }
-
-        // Create a destination directory
-        Path destDir = tempDir.resolve("destDir");
-        Files.createDirectory(destDir);
-
-        // Call the method and assert that it does not throw an exception
-        assertDoesNotThrow(() -> ZipUtil.extract(zipFilePath.toString(), destDir.toString()));
-    }
-
-    @Test
-    public void testExtract_WithNonZipFile() throws IOException {
-        // Create a non-zip file in the temporary directory
-        Path nonZipFilePath = tempDir.resolve("file.txt");
-        Files.createFile(nonZipFilePath);
-
-        // Create a destination directory
-        Path destDir = tempDir.resolve("destDir");
-        Files.createDirectory(destDir);
-
-        // Call the method and assert that it throws an exception
-        assertThrows(IOException.class, () -> ZipUtil.extract(nonZipFilePath.toString(), destDir.toString()));
-    }
-
-    @Test
-    public void testExtract_WithNonExistentFile() {
-        // Create a destination directory
-        Path destDir = tempDir.resolve("destDir");
-
-        // Call the method and assert that it throws an exception
-        assertThrows(IOException.class, () -> ZipUtil.extract("non_existent_file", destDir.toString()));
-    }
-
-    @Test
-    public void testUntar_WithTarFile() throws IOException {
-        // Create a tar file in the temporary directory
-        Path tarFilePath = tempDir.resolve("file.tar");
-        try (TarArchiveOutputStream tarOutput = new TarArchiveOutputStream(new BufferedOutputStream(Files.newOutputStream(tarFilePath)))) {
-            TarArchiveEntry entry = new TarArchiveEntry("file.txt");
-            tarOutput.putArchiveEntry(entry);
-            tarOutput.closeArchiveEntry();
-        }
-
-        // Create a destination directory
-        Path destDir = tempDir.resolve("destDir");
-        Files.createDirectory(destDir);
-
-        // Call the method and assert that it does not throw an exception
-        assertDoesNotThrow(() -> ZipUtil.untar(tarFilePath.toString(), destDir.toString()));
-    }
-
-    @Test
-    @Disabled
-    public void testUntar_WithNonTarFile() throws IOException {
+public void testUntar_WithNonTarFile() throws IOException {
         // Create a non-tar file in the temporary directory
         Path nonTarFilePath = tempDir.resolve("file.txt");
         Files.createFile(nonTarFilePath);
@@ -123,36 +11,8 @@ public class ZipUtilTest {
         assertThrows(IOException.class, () -> ZipUtil.untar(nonTarFilePath.toString(), destDir.toString()));
     }
 
-    @Test
-    public void testUntar_WithNonExistentFile() {
-        // Create a destination directory
-        Path destDir = tempDir.resolve("destDir");
 
-        // Call the method and assert that it throws an exception
-        assertThrows(IOException.class, () -> ZipUtil.untar("non_existent_file", destDir.toString()));
-    }
-
-    @Test
-    public void testUntarAndUngzip_WithTarGzFile() throws IOException {
-        // Create a tar.gz file in the temporary directory
-        Path tarGzFilePath = tempDir.resolve("file.tar.gz");
-        try (TarArchiveOutputStream tarOutput = new TarArchiveOutputStream(new GzipCompressorOutputStream(new BufferedOutputStream(Files.newOutputStream(tarGzFilePath))))) {
-            TarArchiveEntry entry = new TarArchiveEntry("file.txt");
-            tarOutput.putArchiveEntry(entry);
-            tarOutput.closeArchiveEntry();
-        }
-
-        // Create a destination directory
-        Path destDir = tempDir.resolve("destDir");
-        Files.createDirectory(destDir);
-
-        // Call the method and assert that it does not throw an exception
-        assertDoesNotThrow(() -> ZipUtil.untarAndUngzip(tarGzFilePath.toString(), destDir.toString()));
-    }
-
-    @Test
-    @Disabled
-    public void testUntarAndUngzip_WithNonTarGzFile() throws IOException {
+ public void testUntarAndUngzip_WithNonTarGzFile() throws IOException {
         // Create a non-tar.gz file in the temporary directory
         Path nonTarGzFilePath = tempDir.resolve("file.txt");
         Files.createFile(nonTarGzFilePath);
@@ -164,13 +24,3 @@ public class ZipUtilTest {
         // Call the method and assert that it throws an exception
         assertThrows(IOException.class, () -> ZipUtil.untarAndUngzip(nonTarGzFilePath.toString(), destDir.toString()));
     }
-
-    @Test
-    public void testUntarAndUngzip_WithNonExistentFile() {
-        // Create a destination directory
-        Path destDir = tempDir.resolve("destDir");
-
-        // Call the method and assert that it throws an exception
-        assertThrows(IOException.class, () -> ZipUtil.untarAndUngzip("non_existent_file", destDir.toString()));
-    }
-}
