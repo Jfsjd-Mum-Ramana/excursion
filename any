@@ -1,77 +1,16 @@
-import org.junit.Assert;
-import cucumber.api.java.en.Given;
-import cucumber.api.java.en.Then;
-import cucumber.api.java.en.When;
-import java.io.File;
-import java.io.IOException;
+Here are some positive and negative test scenarios for the provided `ZipUtil` class:
 
-public class ZipUtilSteps {
+Positive Scenarios:
+1. **Valid Zip File**: Provide a valid zip file path to the `isZipFile` method and verify that it returns true.
+2. **Valid Tar File**: Provide a valid tar file path to the `isZipFile` method and verify that it returns true.
+3. **Valid Gzipped Tar File**: Provide a valid gzipped tar file path to the `isZipFile` method and verify that it returns true.
+4. **Extract Tar File**: Provide a valid tar file path and destination directory to the `extract` method and verify that it successfully extracts the files to the destination directory.
+5. **Extract Gzipped Tar File**: Provide a valid gzipped tar file path and destination directory to the `extract` method and verify that it successfully extracts the files to the destination directory.
 
-    private String filePath;
-    private String destDir;
-    private boolean isZipFileResult;
+Negative Scenarios:
+1. **Invalid File Extension**: Provide a file path with an invalid extension (e.g., `.xyz`) to the `isZipFile` method and verify that it returns false.
+2. **Non-existent File**: Provide a non-existent file path to the `extract` method and verify that it handles the error gracefully.
+3. **Unsupported File Type**: Provide a file path with an unsupported file type to the `extract` method and verify that it throws an IOException with the appropriate message.
+4. **Invalid Destination Directory**: Provide an invalid destination directory path to the `extract` method and verify that it handles the error gracefully.
 
-    @Given("^a file path \"([^\"]*)\"$")
-    public void a_file_path(String filePath) {
-        this.filePath = filePath;
-    }
-
-    @Given("^a tar file \"([^\"]*)\" and a destination directory \"([^\"]*)\"$")
-    public void a_tar_file_and_a_destination_directory(String filePath, String destDir) {
-        this.filePath = filePath;
-        this.destDir = destDir;
-    }
-
-    @Given("^a gzipped tar file \"([^\"]*)\" and a destination directory \"([^\"]*)\"$")
-    public void a_gzipped_tar_file_and_a_destination_directory(String filePath, String destDir) {
-        this.filePath = filePath;
-        this.destDir = destDir;
-    }
-
-    @When("^the isZipFile method is called$")
-    public void the_isZipFile_method_is_called() {
-        isZipFileResult = ZipUtil.isZipFile(filePath);
-    }
-
-    @When("^the extract method is called$")
-    public void the_extract_method_is_called() {
-        try {
-            ZipUtil.extract(filePath, destDir);
-        } catch (IOException e) {
-            // Handle exception
-        }
-    }
-
-    @Then("^it should return true$")
-    public void it_should_return_true() {
-        Assert.assertTrue(isZipFileResult);
-    }
-
-    @Then("^the files from the tar file should be extracted to the destination directory$")
-    public void the_files_from_the_tar_file_should_be_extracted_to_the_destination_directory() {
-        File directory = new File(destDir);
-        Assert.assertTrue(directory.exists() && directory.isDirectory());
-
-        // Add more assertions to verify the extracted files if needed
-    }
-
-    @Then("^the files from the gzipped tar file should be extracted to the destination directory$")
-    public void the_files_from_the_gzipped_tar_file_should_be_extracted_to_the_destination_directory() {
-        File directory = new File(destDir);
-        Assert.assertTrue(directory.exists() && directory.isDirectory());
-
-        // Add more assertions to verify the extracted files if needed
-    }
-
-    @Then("^it should throw an IOException with a message indicating unsupported file type$")
-    public void it_should_throw_an_IOException_with_a_message_indicating_unsupported_file_type() {
-        try {
-            ZipUtil.extract(filePath, destDir);
-            // If no IOException is thrown, fail the test
-            Assert.fail("Expected IOException was not thrown");
-        } catch (IOException e) {
-            // Verify the exception message
-            Assert.assertEquals("Unsupported file type: xyz", e.getMessage());
-        }
-    }
-}
+These scenarios cover both positive and negative cases to ensure the robustness of the `ZipUtil` class.
