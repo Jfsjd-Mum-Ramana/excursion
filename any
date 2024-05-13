@@ -1,41 +1,102 @@
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.io.IOException;
-import java.util.zip.GZIPInputStream;
-import java.util.zip.ZipException;
+public class ZipUtil {
 
-public void testUntarAndUngzip_WithNonTarGzFile() throws IOException {
-    // Create a non-tar.gz file in the temporary directory
-    Path nonTarGzFilePath = tempDir.resolve("file.txt");
-    Files.createFile(nonTarGzFilePath);
+    public static boolean isZipFile(String filePath) {
+        String extn = ZipUtil.getFileExtension(filePath);
 
-    // Create a destination directory
-    Path destDir = tempDir.resolve("destDir");
-    Files.createDirectory(destDir);
+        String[] array = {"zip", "tar", "gz"};
+        List<String> list = Arrays.asList(array);
 
-    // Call the method and assert that it throws an exception
-    assertThrows(IOException.class, () -> {
-        String fileName = nonTarGzFilePath.getFileName().toString();
-        String fileExtension = getFileExtension(fileName);
-
-        if (!fileExtension.equals("tar.gz")) {
-            throw new IOException("Not a valid tar.gz file.");
-        }
-
-        try {
-            ZipUtil.untarAndUngzip(nonTarGzFilePath.toString(), destDir.toString());
-        } catch (TarException | GzipException e) {
-            throw new IOException("Failed to untar and ungzip the file.", e);
-        }
-    });
-}
-
-// Helper method to get file extension
-private String getFileExtension(String fileName) {
-    if (fileName.lastIndexOf(".") != -1 && fileName.lastIndexOf(".") != 0) {
-        return fileName.substring(fileName.lastIndexOf(".") + 1);
-    } else {
-        return "";
+        return list.contains(extn) ? true : false;
     }
+
+    public static void extract(String filePath, String destDir) throws IOException {
+        String fileExtension = getFileExtension(filePath);
+        /*if ("zip".equalsIgnoreCase(fileExtension)) {
+            unzip(filePath, destDir);
+        } else*/ if ("tar".equalsIgnoreCase(fileExtension)) {
+            untar(filePath, destDir);
+        } else if ("gz".equalsIgnoreCase(fileExtension)) {
+            untarAndUngzip(filePath, destDir);
+        } else {
+            System.err.println("Unsupported file type: " + fileExtension);
+            throw new IOException("Unsupported file type: " + fileExtension);
+        }
+    }
+
+    private static String getFileExtension(String filePath) {
+        return filePath.substring(filePath.lastIndexOf('.') + 1);
+    }
+
+//    public static void unzip(String zipFilePath, String destDir) throws IOException {
+//        byte[] buffer = new byte[1024];
+//        try (ZipInputStream zipInputStream = new ZipInputStream(new FileInputStream(zipFilePath))) {
+//            ZipEntry entry = zipInputStream.getNextEntry();
+//            while (entry != null) {
+//                String fileName = entry.getName();
+//                File newFile = new File(destDir + File.separator + fileName);
+//                // Create directories if necessary
+//                new File(newFile.getParent()).mkdirs();
+//                if (!entry.isDirectory()) {
+//                    try (FileOutputStream fos = new FileOutputStream(newFile)) {
+//                        int len;
+//                        while ((len = zipInputStream.read(buffer)) > 0) {
+//                            fos.write(buffer, 0, len);
+//                        }
+//                    }
+//                } else {
+//                    // If the entry is a directory, create it
+//                    newFile.mkdir();
+//                }
+//                zipInputStream.closeEntry();
+//                entry = zipInputStream.getNextEntry();
+//            }
+//        }
+//    }
+
+    public static void untar(String tarFilePath, String destDir) throws IOException {
+        try (TarArchiveInputStream tarInput = new TarArchiveInputStream(new FileInputStream(tarFilePath))) {
+            TarArchiveEntry entry;
+            while ((entry = tarInput.getNextTarEntry()) != null) {
+                File destPath = new File(destDir, entry.getName());
+                if (entry.isDirectory()) {
+                    destPath.mkdirs();
+                } else {
+                    destPath.getParentFile().mkdirs();
+                    try (BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(destPath))) {
+                        byte[] buffer = new byte[1024];
+                        int len;
+                        while ((len = tarInput.read(buffer)) != -1) {
+                            bos.write(buffer, 0, len);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    public static void untarAndUngzip(String tarGzFilePath, String destDir) throws IOException {
+        try (TarArchiveInputStream tarInput = new TarArchiveInputStream(new GzipCompressorInputStream(new FileInputStream(tarGzFilePath)))) {
+            TarArchiveEntry entry;
+            while ((entry = tarInput.getNextTarEntry()) != null) {
+                File destPath = new File(destDir, entry.getName());
+                if (entry.isDirectory()) {
+                    destPath.mkdirs();
+                } else {
+                    destPath.getParentFile().mkdirs();
+                    try (BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(destPath))) {
+                        byte[] buffer = new byte[1024];
+                        int len;
+                        while ((len = tarInput.read(buffer)) != -1) {
+                            bos.write(buffer, 0, len);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
 }
+
+
+
+
