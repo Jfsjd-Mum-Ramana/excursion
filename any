@@ -92,3 +92,79 @@ public class ZipUtilTest {
         assertThrows(IOException.class, () -> ZipUtil.extract("test.xyz", TEST_DIR));
     }
 }
+
+
+
+
+
+
+
+
+
+
+import org.apache.commons.io.FileUtils;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import java.io.File;
+import java.io.IOException;
+import static org.junit.jupiter.api.Assertions.*;
+
+public class ZipUtilTest {
+    private static final String TEST_DIR = "test_output";
+    private static final String TEST_TAR_FILE = "src/test/resources/test.tar";
+    private static final String TEST_GZIPPED_TAR_FILE = "src/test/resources/test.tar.gz";
+
+    @BeforeEach
+    public void setup() {
+        new File(TEST_DIR).mkdir();
+    }
+
+    @AfterEach
+    public void cleanup() throws IOException {
+        FileUtils.deleteDirectory(new File(TEST_DIR));
+    }
+
+    @Test
+    public void testIsZipFile_ValidZipFile_ReturnsTrue() {
+        assertTrue(ZipUtil.isZipFile("test.zip"));
+    }
+
+    @Test
+    public void testIsZipFile_ValidTarFile_ReturnsTrue() {
+        assertTrue(ZipUtil.isZipFile("test.tar"));
+    }
+
+    @Test
+    public void testIsZipFile_ValidGzippedTarFile_ReturnsTrue() {
+        assertTrue(ZipUtil.isZipFile("test.tar.gz"));
+    }
+
+    @Test
+    public void testIsZipFile_UnsupportedFileType_ReturnsFalse() {
+        assertFalse(ZipUtil.isZipFile("test.xyz"));
+    }
+
+    @Test
+    public void testExtract_TarFile_ExtractsContents() throws IOException {
+        File tarFile = new File(TEST_TAR_FILE);
+        assertTrue(tarFile.exists());
+        ZipUtil.extract(TEST_TAR_FILE, TEST_DIR);
+        File extractedFile = new File(TEST_DIR + File.separator + "testfile.txt");
+        assertTrue(extractedFile.exists());
+    }
+
+    @Test
+    public void testExtract_GzippedTarFile_ExtractsContents() throws IOException {
+        File gzippedTarFile = new File(TEST_GZIPPED_TAR_FILE);
+        assertTrue(gzippedTarFile.exists());
+        ZipUtil.extract(TEST_GZIPPED_TAR_FILE, TEST_DIR);
+        File extractedFile = new File(TEST_DIR + File.separator + "testfile.txt");
+        assertTrue(extractedFile.exists());
+    }
+
+    @Test
+    public void testExtract_UnsupportedFileType_ThrowsIOException() {
+        assertThrows(IOException.class, () -> ZipUtil.extract("test.xyz", TEST_DIR));
+    }
+}
