@@ -1,122 +1,77 @@
-package org.vdsi.space.collections.customsshcollector.util;
+import org.junit.Assert;
+import cucumber.api.java.en.Given;
+import cucumber.api.java.en.Then;
+import cucumber.api.java.en.When;
+import java.io.File;
+import java.io.IOException;
 
-import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
-import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
-import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
+public class ZipUtilSteps {
 
-import java.io.*;
-import java.util.Arrays;
-import java.util.List;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
+    private String filePath;
+    private String destDir;
+    private boolean isZipFileResult;
 
-public class ZipUtil {
-
-    public static boolean isZipFile(String filePath) {
-        String extn = ZipUtil.getFileExtension(filePath);
-
-        String[] array = {"zip", "tar", "gz"};
-        List<String> list = Arrays.asList(array);
-
-        return list.contains(extn) ? true : false;
+    @Given("^a file path \"([^\"]*)\"$")
+    public void a_file_path(String filePath) {
+        this.filePath = filePath;
     }
 
-    public static void extract(String filePath, String destDir) throws IOException {
-        String fileExtension = getFileExtension(filePath);
-        /*if ("zip".equalsIgnoreCase(fileExtension)) {
-            unzip(filePath, destDir);
-        } else*/ if ("tar".equalsIgnoreCase(fileExtension)) {
-            untar(filePath, destDir);
-        } else if ("gz".equalsIgnoreCase(fileExtension)) {
-            untarAndUngzip(filePath, destDir);
-        } else {
-            System.err.println("Unsupported file type: " + fileExtension);
-            throw new IOException("Unsupported file type: " + fileExtension);
+    @Given("^a tar file \"([^\"]*)\" and a destination directory \"([^\"]*)\"$")
+    public void a_tar_file_and_a_destination_directory(String filePath, String destDir) {
+        this.filePath = filePath;
+        this.destDir = destDir;
+    }
+
+    @Given("^a gzipped tar file \"([^\"]*)\" and a destination directory \"([^\"]*)\"$")
+    public void a_gzipped_tar_file_and_a_destination_directory(String filePath, String destDir) {
+        this.filePath = filePath;
+        this.destDir = destDir;
+    }
+
+    @When("^the isZipFile method is called$")
+    public void the_isZipFile_method_is_called() {
+        isZipFileResult = ZipUtil.isZipFile(filePath);
+    }
+
+    @When("^the extract method is called$")
+    public void the_extract_method_is_called() {
+        try {
+            ZipUtil.extract(filePath, destDir);
+        } catch (IOException e) {
+            // Handle exception
         }
     }
 
-    private static String getFileExtension(String filePath) {
-        return filePath.substring(filePath.lastIndexOf('.') + 1);
+    @Then("^it should return true$")
+    public void it_should_return_true() {
+        Assert.assertTrue(isZipFileResult);
     }
 
+    @Then("^the files from the tar file should be extracted to the destination directory$")
+    public void the_files_from_the_tar_file_should_be_extracted_to_the_destination_directory() {
+        File directory = new File(destDir);
+        Assert.assertTrue(directory.exists() && directory.isDirectory());
 
-
-    public static void untar(String tarFilePath, String destDir) throws IOException {
-        try (TarArchiveInputStream tarInput = new TarArchiveInputStream(new FileInputStream(tarFilePath))) {
-            TarArchiveEntry entry;
-            while ((entry = tarInput.getNextTarEntry()) != null) {
-                File destPath = new File(destDir, entry.getName());
-                if (entry.isDirectory()) {
-                    destPath.mkdirs();
-                } else {
-                    destPath.getParentFile().mkdirs();
-                    try (BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(destPath))) {
-                        byte[] buffer = new byte[1024];
-                        int len;
-                        while ((len = tarInput.read(buffer)) != -1) {
-                            bos.write(buffer, 0, len);
-                        }
-                    }
-                }
-            }
-        }
+        // Add more assertions to verify the extracted files if needed
     }
 
-    public static void untarAndUngzip(String tarGzFilePath, String destDir) throws IOException {
-        try (TarArchiveInputStream tarInput = new TarArchiveInputStream(new GzipCompressorInputStream(new FileInputStream(tarGzFilePath)))) {
-            TarArchiveEntry entry;
-            while ((entry = tarInput.getNextTarEntry()) != null) {
-                File destPath = new File(destDir, entry.getName());
-                if (entry.isDirectory()) {
-                    destPath.mkdirs();
-                } else {
-                    destPath.getParentFile().mkdirs();
-                    try (BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(destPath))) {
-                        byte[] buffer = new byte[1024];
-                        int len;
-                        while ((len = tarInput.read(buffer)) != -1) {
-                            bos.write(buffer, 0, len);
-                        }
-                    }
-                }
-            }
+    @Then("^the files from the gzipped tar file should be extracted to the destination directory$")
+    public void the_files_from_the_gzipped_tar_file_should_be_extracted_to_the_destination_directory() {
+        File directory = new File(destDir);
+        Assert.assertTrue(directory.exists() && directory.isDirectory());
+
+        // Add more assertions to verify the extracted files if needed
+    }
+
+    @Then("^it should throw an IOException with a message indicating unsupported file type$")
+    public void it_should_throw_an_IOException_with_a_message_indicating_unsupported_file_type() {
+        try {
+            ZipUtil.extract(filePath, destDir);
+            // If no IOException is thrown, fail the test
+            Assert.fail("Expected IOException was not thrown");
+        } catch (IOException e) {
+            // Verify the exception message
+            Assert.assertEquals("Unsupported file type: xyz", e.getMessage());
         }
     }
 }
-
-
-Give me the test validation steps by using this feature file and above is the class:
-
-here the feature file:
-
-Feature: ZipUtil Extraction Functionality
-
-  Scenario: Check if a file is a valid zip file
-    Given a file path "test.zip"
-    When the isZipFile method is called
-    Then it should return true
-
-  Scenario: Check if a file is a valid tar file
-    Given a file path "test.tar"
-    When the isZipFile method is called
-    Then it should return true
-
-  Scenario: Check if a file is a valid gzipped tar file
-    Given a file path "test.tar.gz"
-    When the isZipFile method is called
-    Then it should return true
-
-  Scenario: Extract contents of a tar file
-    Given a tar file "test.tar" and a destination directory "output"
-    When the extract method is called
-    Then the files from the tar file should be extracted to the destination directory
-
-  Scenario: Extract contents of a gzipped tar file
-    Given a gzipped tar file "test.tar.gz" and a destination directory "output"
-    When the extract method is called
-    Then the files from the gzipped tar file should be extracted to the destination directory
-
-  Scenario: Attempt to extract an unsupported file type
-    Given a file path "test.xyz"
-    When the extract method is called
-    Then it should throw an IOException with a message indicating unsupported file type
