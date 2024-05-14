@@ -1,17 +1,49 @@
-import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
 import java.io.*;
+import java.util.zip.GZIPInputStream;
 
 public class ZipUtil {
-    
-    public static void ungzip(String gzipFilePath, String destDir) throws IOException {
-        try (InputStream fin = new FileInputStream(gzipFilePath);
-             BufferedInputStream bis = new BufferedInputStream(fin);
-             GzipCompressorInputStream gzIn = new GzipCompressorInputStream(bis);
-             FileOutputStream out = new FileOutputStream(new File(destDir, new File(gzipFilePath).getName().replace(".gz", "")))) {
-            byte[] buffer = new byte[4096];
-            int n;
-            while ((n = gzIn.read(buffer)) != -1) {
-                out.write(buffer, 0, n);
+
+    // Existing code...
+
+    public static void untarAndUngzip(String tarGzFilePath, String destDir) throws IOException {
+        try (TarArchiveInputStream tarInput = new TarArchiveInputStream(new GzipCompressorInputStream(new FileInputStream(tarGzFilePath)))) {
+            TarArchiveEntry entry;
+            while ((entry = tarInput.getNextTarEntry()) != null) {
+                File destPath = new File(destDir, entry.getName());
+                if (entry.isDirectory()) {
+                    destPath.mkdirs();
+                } else {
+                    destPath.getParentFile().mkdirs();
+                    // Check if the file is a .gz file
+                    if (entry.getName().endsWith(".gz")) {
+                        // Unzip the .gz file
+                        ungzip(tarInput, destPath);
+                    } else {
+                        // Untar regular files
+                        untarFile(tarInput, destPath);
+                    }
+                }
+            }
+        }
+    }
+
+    private static void ungzip(InputStream inputStream, File destFile) throws IOException {
+        byte[] buffer = new byte[1024];
+        try (GZIPInputStream gzipInputStream = new GZIPInputStream(inputStream);
+             FileOutputStream fos = new FileOutputStream(destFile)) {
+            int len;
+            while ((len = gzipInputStream.read(buffer)) != -1) {
+                fos.write(buffer, 0, len);
+            }
+        }
+    }
+
+    private static void untarFile(InputStream inputStream, File destFile) throws IOException {
+        try (BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(destFile))) {
+            byte[] buffer = new byte[1024];
+            int len;
+            while ((len = inputStream.read(buffer)) != -1) {
+                bos.write(buffer, 0, len);
             }
         }
     }
