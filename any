@@ -1,21 +1,17 @@
+import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
 import java.io.*;
-import java.util.zip.GZIPInputStream;
 
 public class ZipUtil {
-
-    // Existing code...
-
-    public static void unzipGz(String gzFilePath, String destDir) throws IOException {
-        try (GZIPInputStream gzipInput = new GZIPInputStream(new FileInputStream(gzFilePath))) {
-            String fileName = gzFilePath.substring(0, gzFilePath.lastIndexOf('.'));
-            File destFile = new File(destDir, fileName);
-            try (DataInputStream dis = new DataInputStream(gzipInput);
-                 FileOutputStream fos = new FileOutputStream(destFile)) {
-                byte[] buffer = new byte[4096]; // Increase buffer size for larger files
-                int len;
-                while ((len = dis.read(buffer)) != -1) {
-                    fos.write(buffer, 0, len);
-                }
+    
+    public static void ungzip(String gzipFilePath, String destDir) throws IOException {
+        try (InputStream fin = new FileInputStream(gzipFilePath);
+             BufferedInputStream bis = new BufferedInputStream(fin);
+             GzipCompressorInputStream gzIn = new GzipCompressorInputStream(bis);
+             FileOutputStream out = new FileOutputStream(new File(destDir, new File(gzipFilePath).getName().replace(".gz", "")))) {
+            byte[] buffer = new byte[4096];
+            int n;
+            while ((n = gzIn.read(buffer)) != -1) {
+                out.write(buffer, 0, n);
             }
         }
     }
