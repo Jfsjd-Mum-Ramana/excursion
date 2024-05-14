@@ -1,16 +1,109 @@
-Here are some positive and negative test scenarios for the provided `ZipUtil` class:
+package org.vdsi.space.collections.customsshcollector.util;
 
-Positive Scenarios:
-1. **Valid Zip File**: Provide a valid zip file path to the `isZipFile` method and verify that it returns true.
-2. **Valid Tar File**: Provide a valid tar file path to the `isZipFile` method and verify that it returns true.
-3. **Valid Gzipped Tar File**: Provide a valid gzipped tar file path to the `isZipFile` method and verify that it returns true.
-4. **Extract Tar File**: Provide a valid tar file path and destination directory to the `extract` method and verify that it successfully extracts the files to the destination directory.
-5. **Extract Gzipped Tar File**: Provide a valid gzipped tar file path and destination directory to the `extract` method and verify that it successfully extracts the files to the destination directory.
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
+import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
 
-Negative Scenarios:
-1. **Invalid File Extension**: Provide a file path with an invalid extension (e.g., `.xyz`) to the `isZipFile` method and verify that it returns false.
-2. **Non-existent File**: Provide a non-existent file path to the `extract` method and verify that it handles the error gracefully.
-3. **Unsupported File Type**: Provide a file path with an unsupported file type to the `extract` method and verify that it throws an IOException with the appropriate message.
-4. **Invalid Destination Directory**: Provide an invalid destination directory path to the `extract` method and verify that it handles the error gracefully.
+import java.io.*;
+import java.util.Arrays;
+import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
-These scenarios cover both positive and negative cases to ensure the robustness of the `ZipUtil` class.
+public class ZipUtil {
+
+    public static boolean isZipFile(String filePath) {
+        String extn = ZipUtil.getFileExtension(filePath);
+
+        String[] array = {"zip", "tar", "gz"};
+        List<String> list = Arrays.asList(array);
+
+        return list.contains(extn) ? true : false;
+    }
+
+    public static void extract(String filePath, String destDir) throws IOException {
+        String fileExtension = getFileExtension(filePath);
+        /*if ("zip".equalsIgnoreCase(fileExtension)) {
+            unzip(filePath, destDir);
+        } else*/ if ("tar".equalsIgnoreCase(fileExtension)) {
+            untar(filePath, destDir);
+        } else if ("gz".equalsIgnoreCase(fileExtension)) {
+            untarAndUngzip(filePath, destDir);
+        } else {
+            System.err.println("Unsupported file type: " + fileExtension);
+            throw new IOException("Unsupported file type: " + fileExtension);
+        }
+    }
+
+    private static String getFileExtension(String filePath) {
+        return filePath.substring(filePath.lastIndexOf('.') + 1);
+    }
+
+//    public static void unzip(String zipFilePath, String destDir) throws IOException {
+//        byte[] buffer = new byte[1024];
+//        try (ZipInputStream zipInputStream = new ZipInputStream(new FileInputStream(zipFilePath))) {
+//            ZipEntry entry = zipInputStream.getNextEntry();
+//            while (entry != null) {
+//                String fileName = entry.getName();
+//                File newFile = new File(destDir + File.separator + fileName);
+//                // Create directories if necessary
+//                new File(newFile.getParent()).mkdirs();
+//                if (!entry.isDirectory()) {
+//                    try (FileOutputStream fos = new FileOutputStream(newFile)) {
+//                        int len;
+//                        while ((len = zipInputStream.read(buffer)) > 0) {
+//                            fos.write(buffer, 0, len);
+//                        }
+//                    }
+//                } else {
+//                    // If the entry is a directory, create it
+//                    newFile.mkdir();
+//                }
+//                zipInputStream.closeEntry();
+//                entry = zipInputStream.getNextEntry();
+//            }
+//        }
+//    }
+
+    public static void untar(String tarFilePath, String destDir) throws IOException {
+        try (TarArchiveInputStream tarInput = new TarArchiveInputStream(new FileInputStream(tarFilePath))) {
+            TarArchiveEntry entry;
+            while ((entry = tarInput.getNextTarEntry()) != null) {
+                File destPath = new File(destDir, entry.getName());
+                if (entry.isDirectory()) {
+                    destPath.mkdirs();
+                } else {
+                    destPath.getParentFile().mkdirs();
+                    try (BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(destPath))) {
+                        byte[] buffer = new byte[1024];
+                        int len;
+                        while ((len = tarInput.read(buffer)) != -1) {
+                            bos.write(buffer, 0, len);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    public static void untarAndUngzip(String tarGzFilePath, String destDir) throws IOException {
+        try (TarArchiveInputStream tarInput = new TarArchiveInputStream(new GzipCompressorInputStream(new FileInputStream(tarGzFilePath)))) {
+            TarArchiveEntry entry;
+            while ((entry = tarInput.getNextTarEntry()) != null) {
+                File destPath = new File(destDir, entry.getName());
+                if (entry.isDirectory()) {
+                    destPath.mkdirs();
+                } else {
+                    destPath.getParentFile().mkdirs();
+                    try (BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(destPath))) {
+                        byte[] buffer = new byte[1024];
+                        int len;
+                        while ((len = tarInput.read(buffer)) != -1) {
+                            bos.write(buffer, 0, len);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
