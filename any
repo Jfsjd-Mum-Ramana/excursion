@@ -1,50 +1,44 @@
-import java.io.*;
-import java.util.zip.GZIPInputStream;
+public static File unzipGZ(File file, File outputDir) {
+    GZIPInputStream in = null;
+    OutputStream out = null;
+    File target = null;
+    try {
+        // Open the compressed file
+        in = new GZIPInputStream(new FileInputStream(file));
 
-public class ZipUtil {
+        // Open the output file
+        target = new File(outputDir, FileUtil.stripFileExt(file.getName()));
+        out = new FileOutputStream(target);
 
-    // Existing code...
+        // Transfer bytes from the compressed file to the output file
+        byte[] buf = new byte[1024];
+        int len;
+        while ((len = in.read(buf)) > 0) {
+            out.write(buf, 0, len);
+        }
 
-    public static void untarAndUngzip(String tarGzFilePath, String destDir) throws IOException {
-        try (TarArchiveInputStream tarInput = new TarArchiveInputStream(new GzipCompressorInputStream(new FileInputStream(tarGzFilePath)))) {
-            TarArchiveEntry entry;
-            while ((entry = tarInput.getNextTarEntry()) != null) {
-                File destPath = new File(destDir, entry.getName());
-                if (entry.isDirectory()) {
-                    destPath.mkdirs();
-                } else {
-                    destPath.getParentFile().mkdirs();
-                    // Check if the file is a .gz file
-                    if (entry.getName().endsWith(".gz")) {
-                        // Unzip the .gz file
-                        ungzip(tarInput, destPath);
-                    } else {
-                        // Untar regular files
-                        untarFile(tarInput, destPath);
-                    }
-                }
+        // Close the file and stream
+        in.close();
+        out.close();
+    } catch (IOException e) {
+        e.printStackTrace();
+    } finally {
+        if (in != null) {
+            try {
+                in.close();
+            } catch (IOException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+            }
+        }
+        if (out != null) {
+            try {
+                out.close();
+            } catch (IOException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
             }
         }
     }
-
-    private static void ungzip(InputStream inputStream, File destFile) throws IOException {
-        byte[] buffer = new byte[1024];
-        try (GZIPInputStream gzipInputStream = new GZIPInputStream(inputStream);
-             FileOutputStream fos = new FileOutputStream(destFile)) {
-            int len;
-            while ((len = gzipInputStream.read(buffer)) != -1) {
-                fos.write(buffer, 0, len);
-            }
-        }
-    }
-
-    private static void untarFile(InputStream inputStream, File destFile) throws IOException {
-        try (BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(destFile))) {
-            byte[] buffer = new byte[1024];
-            int len;
-            while ((len = inputStream.read(buffer)) != -1) {
-                bos.write(buffer, 0, len);
-            }
-        }
-    }
+    return target;
 }
