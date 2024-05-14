@@ -1,44 +1,52 @@
-public static File unzipGZ(File file, File outputDir) {
-    GZIPInputStream in = null;
-    OutputStream out = null;
-    File target = null;
-    try {
-        // Open the compressed file
-        in = new GZIPInputStream(new FileInputStream(file));
+import java.io.*;
+import java.util.zip.GZIPInputStream;
 
-        // Open the output file
-        target = new File(outputDir, FileUtil.stripFileExt(file.getName()));
-        out = new FileOutputStream(target);
+public class ZipUtil {
 
-        // Transfer bytes from the compressed file to the output file
-        byte[] buf = new byte[1024];
-        int len;
-        while ((len = in.read(buf)) > 0) {
-            out.write(buf, 0, len);
-        }
+    // Existing code...
 
-        // Close the file and stream
-        in.close();
-        out.close();
-    } catch (IOException e) {
-        e.printStackTrace();
-    } finally {
-        if (in != null) {
-            try {
-                in.close();
-            } catch (IOException e) {
-                // TODO Auto-generated catch block
-                e.printStackTrace();
+    public static File unzipGZ(File file, File outputDir) {
+        GZIPInputStream in = null;
+        OutputStream out = null;
+        File target = null;
+        try {
+            // Open the compressed file
+            in = new GZIPInputStream(new FileInputStream(file));
+
+            // Open the output file
+            target = new File(outputDir, stripFileExt(file.getName()));
+            out = new FileOutputStream(target);
+
+            // Transfer bytes from the compressed file to the output file
+            byte[] buf = new byte[1024];
+            int len;
+            while ((len = in.read(buf)) > 0) {
+                out.write(buf, 0, len);
+            }
+
+            // Close the file and stream
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            if (in != null) {
+                try {
+                    in.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+            if (out != null) {
+                try {
+                    out.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
             }
         }
-        if (out != null) {
-            try {
-                out.close();
-            } catch (IOException e) {
-                // TODO Auto-generated catch block
-                e.printStackTrace();
-            }
-        }
+        return target;
     }
-    return target;
+
+    private static String stripFileExt(String fileName) {
+        return fileName.replaceFirst("[.][^.]+$", "");
+    }
 }
