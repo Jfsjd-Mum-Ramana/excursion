@@ -1,52 +1,55 @@
-import java.io.*;
-import java.util.zip.GZIPInputStream;
+### Positive Test Scenarios
 
-public class ZipUtil {
+1. **Valid GZ File with Text Content**
+   - **Description:** Test with a simple `.gz` file containing plain text.
+   - **Expected Outcome:** The method unzips the file correctly and outputs a file with the same name but without the `.gz` extension, containing the original text.
 
-    // Existing code...
+2. **Valid GZ File with Binary Content**
+   - **Description:** Test with a `.gz` file containing binary data (e.g., a compressed image or executable).
+   - **Expected Outcome:** The method unzips the file correctly and outputs a file with the same name but without the `.gz` extension, containing the original binary data.
 
-    public static File unzipGZ(File file, File outputDir) {
-        GZIPInputStream in = null;
-        OutputStream out = null;
-        File target = null;
-        try {
-            // Open the compressed file
-            in = new GZIPInputStream(new FileInputStream(file));
+3. **Multiple Files**
+   - **Description:** Test with multiple `.gz` files in a loop, each containing different data.
+   - **Expected Outcome:** Each file is unzipped correctly, with the correct contents in the output directory.
 
-            // Open the output file
-            target = new File(outputDir, stripFileExt(file.getName()));
-            out = new FileOutputStream(target);
+4. **Large GZ File**
+   - **Description:** Test with a very large `.gz` file to check for performance and memory management.
+   - **Expected Outcome:** The method unzips the file without running out of memory or crashing, and the output file matches the original uncompressed content.
 
-            // Transfer bytes from the compressed file to the output file
-            byte[] buf = new byte[1024];
-            int len;
-            while ((len = in.read(buf)) > 0) {
-                out.write(buf, 0, len);
-            }
+### Negative Test Scenarios
 
-            // Close the file and stream
-        } catch (IOException e) {
-            e.printStackTrace();
-        } finally {
-            if (in != null) {
-                try {
-                    in.close();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-            if (out != null) {
-                try {
-                    out.close();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-        }
-        return target;
-    }
+1. **Non-existent Input File**
+   - **Description:** Test with a file path that does not exist.
+   - **Expected Outcome:** The method should handle the `FileNotFoundException` gracefully and not create any output file. It should print the stack trace or an error message.
 
-    private static String stripFileExt(String fileName) {
-        return fileName.replaceFirst("[.][^.]+$", "");
-    }
-}
+2. **Corrupted GZ File**
+   - **Description:** Test with a corrupted `.gz` file that cannot be decompressed.
+   - **Expected Outcome:** The method should handle the `IOException` gracefully, not create any output file, and print an error message or stack trace.
+
+3. **Output Directory Doesn't Exist**
+   - **Description:** Test with an output directory path that does not exist.
+   - **Expected Outcome:** The method should handle the situation gracefully, possibly by creating the directory or printing an error message.
+
+4. **Output Directory is a File**
+   - **Description:** Test with an output directory path that is actually a file.
+   - **Expected Outcome:** The method should handle the situation gracefully and print an error message, as it cannot write to a file expected to be a directory.
+
+5. **Insufficient Permissions**
+   - **Description:** Test with an output directory where the user has no write permissions.
+   - **Expected Outcome:** The method should handle the `IOException` gracefully and print an error message, indicating that it cannot write to the specified directory.
+
+6. **Empty GZ File**
+   - **Description:** Test with an empty `.gz` file (0 bytes).
+   - **Expected Outcome:** The method should create an empty output file without throwing any exceptions.
+
+7. **Non-GZ File**
+   - **Description:** Test with a file that has a `.gz` extension but is not actually a GZIP-compressed file.
+   - **Expected Outcome:** The method should handle the `IOException` gracefully, not create any output file, and print an error message indicating the file is not a valid GZIP file.
+
+8. **Null Input File**
+   - **Description:** Test with a null input file argument.
+   - **Expected Outcome:** The method should handle the `NullPointerException` gracefully and print an error message.
+
+9. **Null Output Directory**
+   - **Description:** Test with a null output directory argument.
+   - **Expected Outcome:** The method should handle the `NullPointerException` gracefully and print an error message.
