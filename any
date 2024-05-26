@@ -1,29 +1,3 @@
-Feature: Downloading files from S3
-
-  Scenario: Download file from S3 successfully
-    Given an S3 bucket "test-bucket" with file key "test-file"
-    When I request to download the file
-    Then the response should contain the file content "test"
-    And the response header "Content-Disposition" should be "attachment; filename=test-file"
-    And the response header "Content-Length" should be "4"
-
-  Scenario: Handle IOException when downloading file from S3
-    Given an S3 bucket "test-bucket" with file key "test-file"
-    And the S3 service will throw an IOException
-    When I request to download the file
-    Then an IOException should be thrown
-
-  Scenario: Handle partial read during file download from S3
-    Given an S3 bucket "test-bucket" with file key "test-file"
-    And the file will be read partially
-    When I request to download the file
-    Then the response should contain the file content "test"
-    And the response header "Content-Disposition" should be "attachment; filename=test-file"
-    And the response header "Content-Length" should be "4"
-
-
-
-
 package org.vdsi.space.collections.customauditengine.controllers;
 
 import com.amazonaws.services.s3.AmazonS3;
@@ -39,8 +13,9 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.mock;
 
 public class S3ControllerStepDefinitions {
 
@@ -64,12 +39,21 @@ public class S3ControllerStepDefinitions {
         objectMetadata.setContentLength(4); // Assuming content length is 4
         s3Object.setObjectMetadata(objectMetadata);
         s3Object.setObjectContent(new S3ObjectInputStream(new ByteArrayInputStream("test".getBytes()), null));
-        when(amazonS3.getObject(bucketName, key)).thenReturn(s3Object);
+
+        // Mocking getObject with specific bucketName and key arguments
+        when(amazonS3.getObject(any(), any())).thenAnswer(invocation -> {
+            String invokedBucketName = invocation.getArgument(0);
+            String invokedKey = invocation.getArgument(1);
+            if (invokedBucketName.equals(bucketName) && invokedKey.equals(key)) {
+                return s3Object;
+            }
+            return null; // or throw an exception for unexpected invocation
+        });
     }
 
     @Given("the S3 service will throw an IOException")
     public void s3ServiceThrowsIOException() throws IOException {
-        when(amazonS3.getObject(anyString(), anyString())).thenThrow(new IOException("Test IOException"));
+        when(amazonS3.getObject(any(), any())).thenThrow(new IOException("Test IOException"));
     }
 
     @Given("the file will be read partially")
@@ -79,7 +63,7 @@ public class S3ControllerStepDefinitions {
         objectMetadata.setContentLength(4); // Assuming content length is 4
 
         S3ObjectInputStream inputStream = new S3ObjectInputStream(new ByteArrayInputStream("test".getBytes()), null);
-        when(amazonS3.getObject(anyString(), anyString())).thenReturn(s3Object);
+        when(amazonS3.getObject(any(), any())).thenReturn(s3Object);
         when(s3Object.getObjectContent()).thenReturn(inputStream);
         // Return partial read
         when(inputStream.read()).thenReturn((int)'t').thenReturn((int)'e').thenReturn(-1);
