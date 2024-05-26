@@ -1,77 +1,51 @@
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.model.ObjectMetadata;
-import com.amazonaws.services.s3.model.S3Object;
-import com.amazonaws.services.s3.model.S3ObjectInputStream;
 import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
 import io.cucumber.java.en.When;
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.BeforeEach;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.vdsi.space.collections.customauditengine.controllers.S3Controller;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.any;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-import org.vdsi.space.collections.customauditengine.controllers.S3Controller;
 
 @WebMvcTest(S3Controller.class)
 public class S3ControllerStepDefinitions {
 
-    @Mock
-    private AmazonS3 s3Client;
+    private MockMvc mockMvc;
+    private MvcResult result;
 
-    @InjectMocks
-    private S3Controller s3Controller;
-
-    private S3Object s3Object;
-    private ObjectMetadata objectMetadata;
-    private String resourceId;
-
-    @BeforeEach
-    void setUp() {
-        s3Object = new S3Object();
-        objectMetadata = new ObjectMetadata();
-        objectMetadata.setContentLength(5);
-        s3Object.setObjectMetadata(objectMetadata);
-        s3Object.setObjectContent(new S3ObjectInputStream(new ByteArrayInputStream("test".getBytes()), null));
-    }
-
-    @Given("a mocked resource ID {string}")
-    public void a_mocked_resource_id(String resourceId) {
-        this.resourceId = resourceId;
+    @Given("a mocked resource ID")
+    public void a_mocked_resource_id() {
+        // No action needed for this step
     }
 
     @When("the user requests the resource data")
     public void the_user_requests_the_resource_data() throws Exception {
-        // Mocking the behavior of the S3 client to return the prepared S3Object
-        when(s3Client.getObject(anyString(), anyString())).thenReturn(s3Object);
+        // Simulate the user requesting resource data
+        mockMvc = MockMvcBuilders.standaloneSetup(new S3Controller(null))
+                .build();
+        result = mockMvc.perform(get("/s3download"))
+                .andReturn();
     }
 
     @Then("the response status should be {int}")
-    public void the_response_status_should_be(Integer status) throws IOException {
-        // Simulating the response status
-        MockHttpServletResponse response = new MockHttpServletResponse();
-        response.setStatus(status);
+    public void the_response_status_should_be(Integer status) {
+        // Simulate checking the response status
+        MockHttpServletResponse response = result.getResponse();
         assertEquals(status, response.getStatus());
     }
 
     @Then("the response should contain the resource name {string}")
-    public void the_response_should_contain_the_resource_name(String expectedName) throws Exception {
-        // Simulating the response containing the resource name
-        MvcResult result = mockMvc.perform(get("/s3download"))
-                .andExpect(status().isOk())
-                .andReturn();
+    public void the_response_should_contain_the_resource_name(String expectedName) throws IOException {
+        // Simulate checking if the response contains the resource name
         String responseBody = result.getResponse().getContentAsString();
-        Assertions.assertTrue(responseBody.contains(expectedName));
+        assertEquals(expectedName, responseBody);
     }
 }
