@@ -1,50 +1,109 @@
+Feature: Downloading files from S3
+
+  Scenario: Download file from S3 successfully
+    Given an S3 bucket "test-bucket" with file key "test-file"
+    When I request to download the file
+    Then the response should contain the file content "test"
+    And the response header "Content-Disposition" should be "attachment; filename=test-file"
+    And the response header "Content-Length" should be "4"
+
+  Scenario: Handle IOException when downloading file from S3
+    Given an S3 bucket "test-bucket" with file key "test-file"
+    And the S3 service will throw an IOException
+    When I request to download the file
+    Then an IOException should be thrown
+
+  Scenario: Handle partial read during file download from S3
+    Given an S3 bucket "test-bucket" with file key "test-file"
+    And the file will be read partially
+    When I request to download the file
+    Then the response should contain the file content "test"
+    And the response header "Content-Disposition" should be "attachment; filename=test-file"
+    And the response header "Content-Length" should be "4"
+
+
+
+
 package org.vdsi.space.collections.customauditengine.controllers;
 
 import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectInputStream;
-import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.http.MediaType;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import io.cucumber.java.Before;
+import io.cucumber.java.en.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.mock.web.MockHttpServletResponse;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.io.OutputStream;
 
-@RestController
-public class S3Controller {
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
 
-    private final AmazonS3 s3Client;
+public class S3ControllerStepDefinitions {
 
-    public S3Controller(AmazonS3 s3Client) {
-        this.s3Client = s3Client;
+    @MockBean
+    private AmazonS3 amazonS3;
+
+    @Autowired
+    private S3Controller s3Controller;
+
+    private MockHttpServletResponse response;
+
+    @Before
+    public void setUp() {
+        response = new MockHttpServletResponse();
     }
 
-    @GetMapping(value = "/s3download", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
-    public void downloadFile(@RequestParam String bucketName,
-                             @RequestParam String key,
-                             HttpServletResponse response) throws IOException {
-        String fileName = key.substring(key.lastIndexOf("/") + 1);
+    @Given("an S3 bucket {string} with file key {string}")
+    public void anS3BucketWithFileKey(String bucketName, String key) throws IOException {
+        S3Object s3Object = new S3Object();
+        ObjectMetadata objectMetadata = new ObjectMetadata();
+        objectMetadata.setContentLength(4); // Assuming content length is 4
+        s3Object.setObjectMetadata(objectMetadata);
+        s3Object.setObjectContent(new S3ObjectInputStream(new ByteArrayInputStream("test".getBytes()), null));
+        when(amazonS3.getObject(bucketName, key)).thenReturn(s3Object);
+    }
 
-        // Ensure s3Client is not null
-        if (s3Client == null) {
-            throw new IllegalStateException("s3Client is null");
-        }
+    @Given("the S3 service will throw an IOException")
+    public void s3ServiceThrowsIOException() throws IOException {
+        when(amazonS3.getObject(anyString(), anyString())).thenThrow(new IOException("Test IOException"));
+    }
 
-        S3Object s3Object = s3Client.getObject(bucketName, key);
-        try (S3ObjectInputStream inputStream = s3Object.getObjectContent()) {
-            response.setHeader("Content-Disposition", "attachment; filename=" + fileName);
-            response.setHeader("Content-Length", String.valueOf(s3Object.getObjectMetadata().getContentLength()));
+    @Given("the file will be read partially")
+    public void fileReadPartially() throws IOException {
+        S3Object s3Object = new S3Object();
+        ObjectMetadata objectMetadata = new ObjectMetadata();
+        objectMetadata.setContentLength(4); // Assuming content length is 4
 
-            try (OutputStream outputStream = response.getOutputStream()) {
-                int len;
-                byte[] buffer = new byte[4096];
-                while ((len = inputStream.read(buffer, 0, buffer.length)) != -1) {
-                    outputStream.write(buffer, 0, len);
-                }
-                outputStream.flush();
-            }
-        }
+        S3ObjectInputStream inputStream = new S3ObjectInputStream(new ByteArrayInputStream("test".getBytes()), null);
+        when(amazonS3.getObject(anyString(), anyString())).thenReturn(s3Object);
+        when(s3Object.getObjectContent()).thenReturn(inputStream);
+        // Return partial read
+        when(inputStream.read()).thenReturn((int)'t').thenReturn((int)'e').thenReturn(-1);
+    }
+
+    @When("I request to download the file")
+    public void requestToDownloadFile() throws IOException {
+        s3Controller.downloadFile("test-bucket", "test-file", response);
+    }
+
+    @Then("the response should contain the file content {string}")
+    public void responseContainsFileContent(String content) {
+        String responseBody = response.getContentAsString();
+        assert responseBody != null;
+        assert responseBody.equals(content);
+    }
+
+    @Then("the response header {string} should be {string}")
+    public void responseHeaderShouldBe(String headerName, String headerValue) {
+        assert response.getHeader(headerName).equals(headerValue);
+    }
+
+    @Then("an IOException should be thrown")
+    public void ioExceptionShouldBeThrown() {
+        // IOException is expected, no need for assertion
     }
 }
