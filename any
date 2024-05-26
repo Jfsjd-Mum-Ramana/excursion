@@ -4,11 +4,13 @@ import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectInputStream;
+import io.cucumber.java.Before;
 import io.cucumber.java.en.*;
 import org.junit.jupiter.api.Assertions;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.context.ContextConfiguration;
@@ -26,7 +28,7 @@ public class S3ControllerStepDefinitions {
     @Autowired
     private S3Controller s3Controller;
 
-    @Autowired
+    @MockBean
     private AmazonS3 s3Client;
 
     private MockHttpServletResponse response;
@@ -88,33 +90,3 @@ public class S3ControllerStepDefinitions {
         });
     }
 }
-
-
-
-
-
-Feature: S3 File Download
-  As a user
-  I want to download files from an S3 bucket
-  So that I can retrieve stored files
-
-  Scenario: Successfully download a file from S3
-    Given an S3 bucket "bucket-name" with file key "key/file.txt"
-    When I request to download the file
-    Then the response should contain the file content "test"
-    And the response header "Content-Disposition" should be "attachment; filename=file.txt"
-    And the response header "Content-Length" should be "5"
-
-  Scenario: IOException during file download
-    Given an S3 bucket "bucket-name" with file key "key/file.txt"
-    And the S3 service will throw an IOException
-    When I request to download the file
-    Then an IOException should be thrown
-
-  Scenario: Partial read during file download
-    Given an S3 bucket "bucket-name" with file key "key/file.txt"
-    And the file will be read partially
-    When I request to download the file
-    Then the response should contain the file content "test"
-    And the response header "Content-Disposition" should be "attachment; filename=file.txt"
-    And the response header "Content-Length" should be "5"
