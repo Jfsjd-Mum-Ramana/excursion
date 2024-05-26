@@ -1,65 +1,48 @@
- for (ChannelSftp.LsEntry file : files) {
-                if (!file.getAttrs().isDir()) {
-                    String filePath = remoteDirectory + file.getFilename(); // Use absolute file path
-                    retrieveAttributesOfRemoteFile(channelSftp, file, remoteDirectory, sp.getInputFilePath());
+package org.vdsi.space.collections.customauditengine.controllers;
 
-                    String status = auditStatusMap.get(filePath);
-                    if (status == null || "COLLECTION_FAILED".equals(status)) {
-                        try {
-                            String outputFile = localDirectory + file.getFilename();
-                            LOGGER.info("in filePath : " + filePath + " out filePath : " + outputFile);
+import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.model.S3Object;
+import com.amazonaws.services.s3.model.S3ObjectInputStream;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
-                            FileUtil.downloadFile(outputStreamCreator.create(outputFile), channelSftp.get(file.getFilename()),
-                                    filePath, outputFile, sp.getOutputFilePath());
+import java.io.IOException;
+import java.io.OutputStream;
 
-                            List<String> filesList = new ArrayList<>();
-                            if (ZipUtil.isZipFile(outputFile)) {
-                                String fileNameWithoutExtn = FileUtil.getFileNameWithoutExtn(filePath);
-                                FileUtil.createDirectoryIfNotExists(sp.getOutputFilePath() + "/"+fileNameWithoutExtn);
+@RestController
+public class S3Controller {
 
+    private final AmazonS3 s3Client;
 
-                                ZipUtil.extract(outputFile, sp.getOutputFilePath() + "/"+fileNameWithoutExtn);
-                                filesList.addAll(FileUtil.readFilesInDirectory(sp.getOutputFilePath() + "/"+fileNameWithoutExtn));
-                            } else {
-                                filesList.add(outputFile);
-                            }
+    @Autowired
+    public S3Controller(AmazonS3 s3Client) {
+        this.s3Client = s3Client;
+    }
 
-                            for (String fileName : filesList) {
+    @GetMapping(value = "/s3download", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
+    public void downloadFile(@RequestParam String bucketName,
+                             @RequestParam String key,
+                             HttpServletResponse response) throws IOException {
+        String fileName = key.substring(key.lastIndexOf("/") + 1);
 
-                                String key = String.format("%s/%s/%s/%s/%s", ProfileCheckConfig.activeProfile,
-                                        sp.getFileType(), sshHost,
-                                        dateUtil.getDateInMMddyyyy(),
-                                        fileName.substring(fileName.lastIndexOf("./") + 1));
-                                s3Service.pushToS3(fileName, key);
+        S3Object s3Object = s3Client.getObject(bucketName, key);
+        try (S3ObjectInputStream inputStream = s3Object.getObjectContent()) {
+            response.setHeader("Content-Disposition", "attachment; filename=" + fileName);
+            response.setHeader("Content-Length", String.valueOf(s3Object.getObjectMetadata().getContentLength()));
 
-                                System.out.println("**************************");
-                                System.out.println("Filename: "+fileName);
-                                System.out.println("Key: "+key);
-                                System.out.println("**************************");
-                                CollectionAudit audit = createAuditObject(sp,
-                                        key, JobStatus.COLLECTION_SUCCESSFUL.toString(), "");
-                                kafkaProducerService.writeMessage(collectorUtil.buildAuditQueueJSON(audit),
-                                        "", auditTopic);
-                            }
-                        } catch (Exception e) {
-                            CollectionAudit audit = createAuditObject(sp,
-                                    filePath, JobStatus.COLLECTION_FAILED.toString(), e.getMessage());
-                            kafkaProducerService.writeMessage(collectorUtil.buildAuditQueueJSON(audit), "",
-                                    auditTopic);
-                            LOGGER.error("Error on retrieveData {}", e);
-                        }
-                    }
-                }else{
-                    LOGGER.info("DIR found : " + file.getFilename());
+            try (OutputStream outputStream = response.getOutputStream()) {
+                int len;
+                byte[] buffer = new byte[4096];
+                while ((len = inputStream.read(buffer, 0, buffer.length)) != -1) {
+                    outputStream.write(buffer, 0, len);
                 }
-            }
-        } finally {
-            if (channelSftp != null) {
-                channelSftp.disconnect();
-            }
-            if (session != null) {
-                session.disconnect();
+                outputStream.flush();
             }
         }
-        return true;
     }
+}
