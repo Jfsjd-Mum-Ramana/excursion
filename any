@@ -1,17 +1,3 @@
-Feature: S3 File Download
-
-  Scenario: Download a file from S3
-    Given the S3 bucket name is "test-bucket"
-    And the S3 key is "test-file.txt"
-    When I send a GET request to "/s3download" with the bucket name and key
-    Then the response status should be 200
-    And the response should have the header "Content-Disposition" with value "attachment; filename=test-file.txt"
-    And the response should have a non-zero content length
-    And the response content should match the content of "This is a test file."
-
-
-
-
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.S3Object;
@@ -20,8 +6,8 @@ import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
 import io.cucumber.java.en.When;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.test.context.ContextConfiguration;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -30,7 +16,6 @@ import org.springframework.web.context.WebApplicationContext;
 import java.io.ByteArrayInputStream;
 
 import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
@@ -38,17 +23,18 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest
-@ContextConfiguration(classes = S3Controller.class)
+@SpringBootTest
 public class S3ControllerSteps {
 
     @Autowired
     private WebApplicationContext webApplicationContext;
 
     @Autowired
+    private MockMvc mockMvc;
+
+    @MockBean
     private AmazonS3 s3Client;
 
-    private MockMvc mockMvc;
     private MvcResult result;
     private String bucketName;
     private String key;
@@ -93,7 +79,7 @@ public class S3ControllerSteps {
 
     @Then("the response status should be {int}")
     public void the_response_status_should_be(Integer status) {
-        assertEquals(status, result.getResponse().getStatus());
+        assertEquals(status.intValue(), result.getResponse().getStatus());
     }
 
     @Then("the response should have the header {string} with value {string}")
@@ -114,3 +100,19 @@ public class S3ControllerSteps {
     }
 }
 
+
+
+
+import com.amazonaws.services.s3.AmazonS3;
+import org.mockito.Mockito;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class TestConfig {
+
+    @Bean
+    public AmazonS3 amazonS3() {
+        return Mockito.mock(AmazonS3.class);
+    }
+}
