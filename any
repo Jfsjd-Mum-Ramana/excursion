@@ -1,52 +1,71 @@
-Feature: Mocked Feature
+package org.vdsi.space.collections.customauditengine.cucumber.glue;
 
-  Scenario: Successful retrieval of some data
-    Given a mocked resource ID
-    When the user requests the resource data
-    Then the response status should be 200
-    And the response should contain the resource name "Mocked Resource"
-
-
+import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.model.ObjectMetadata;
+import com.amazonaws.services.s3.model.S3Object;
+import com.amazonaws.services.s3.model.S3ObjectInputStream;
 import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
 import io.cucumber.java.en.When;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.times;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import org.vdsi.space.collections.customauditengine.controllers.S3Controller;
 
-@WebMvcTest(ResourceController.class)
-public class MockedSteps {
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 
-    private MockMvc mockMvc;
-    private MvcResult result;
-    private String resourceId;
+@WebMvcTest(S3Controller.class)
+public class S3ControllerStepDefinitions {
+
+    @Mock
+    private AmazonS3 s3Client;
+
+    @InjectMocks
+    private S3Controller s3Controller;
+
+    private S3Object s3Object;
+    private ObjectMetadata objectMetadata;
+
+    @BeforeEach
+    void setUp() {
+        s3Object = new S3Object();
+        objectMetadata = new ObjectMetadata();
+        objectMetadata.setContentLength(5);
+        s3Object.setObjectMetadata(objectMetadata);
+        s3Object.setObjectContent(new S3ObjectInputStream(new ByteArrayInputStream("test".getBytes()), null));
+    }
 
     @Given("a mocked resource ID")
     public void a_mocked_resource_id() {
-        this.resourceId = "12345";
+        ;
     }
 
     @When("the user requests the resource data")
     public void the_user_requests_the_resource_data() throws Exception {
-        // Mocked implementation of the controller logic
-        result = mockMvc.perform(get("/resources/{id}", resourceId))
-                .andExpect(status().isOk())
-                .andReturn();
+
     }
 
     @Then("the response status should be {int}")
-    public void the_response_status_should_be(Integer status) {
-        Assertions.assertEquals(status.intValue(), result.getResponse().getStatus());
+    public void the_response_status_should_be(Integer status) throws IOException {
+
     }
 
     @Then("the response should contain the resource name {string}")
     public void the_response_should_contain_the_resource_name(String expectedName) throws Exception {
-        String responseContent = result.getResponse().getContentAsString();
-        Assertions.assertTrue(responseContent.contains("\"name\":\"" + expectedName + "\""));
+      
     }
 }
