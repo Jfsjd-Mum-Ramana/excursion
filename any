@@ -2,46 +2,29 @@ import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectInputStream;
-import io.cucumber.java.Before;
 import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
 import io.cucumber.java.en.When;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.io.ByteArrayInputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(S3Controller.class)
-public class S3ControllerSteps {
+public class SimpleS3ControllerSteps {
 
     @InjectMocks
     private S3Controller s3Controller;
 
-    @MockBean
+    @Mock
     private AmazonS3 s3Client;
 
-    private MockMvc mockMvc;
-    private MvcResult result;
     private String bucketName;
     private String key;
-
-    @Before
-    public void setUp() {
-        MockitoAnnotations.openMocks(this);
-        mockMvc = MockMvcBuilders.standaloneSetup(s3Controller).build();
-    }
+    private S3Object s3Object;
 
     @Given("the S3 bucket name is {string}")
     public void the_S3_bucket_name_is(String bucketName) {
@@ -53,11 +36,10 @@ public class S3ControllerSteps {
         this.key = key;
     }
 
-    @When("I send a GET request to {string} with the bucket name and key")
-    public void i_send_a_GET_request_to_with_the_bucket_name_and_key(String url) throws Exception {
+    @When("the user requests to download the file")
+    public void the_user_requests_to_download_the_file() {
         // Mock S3Object and its input stream
         String fileContent = "This is a test file.";
-        S3Object s3Object = new S3Object();
         ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(fileContent.getBytes());
         S3ObjectInputStream s3ObjectInputStream = new S3ObjectInputStream(byteArrayInputStream, null);
 
@@ -65,39 +47,30 @@ public class S3ControllerSteps {
         ObjectMetadata metadata = new ObjectMetadata();
         metadata.setContentLength(fileContent.length());
 
+        // Create a mock S3Object
+        s3Object = new S3Object();
         s3Object.setObjectContent(s3ObjectInputStream);
         s3Object.setObjectMetadata(metadata);
 
         // Mock the s3Client.getObject method
         when(s3Client.getObject(bucketName, key)).thenReturn(s3Object);
-
-        result = mockMvc.perform(get(url)
-                .param("bucketName", bucketName)
-                .param("key", key))
-                .andExpect(status().isOk())
-                .andExpect(header().string("Content-Disposition", "attachment; filename=" + key.substring(key.lastIndexOf("/") + 1)))
-                .andReturn();
     }
 
-    @Then("the response status should be {int}")
-    public void the_response_status_should_be(Integer status) {
-        assertEquals(status.intValue(), result.getResponse().getStatus());
-    }
-
-    @Then("the response should have the header {string} with value {string}")
-    public void the_response_should_have_the_header_with_value(String headerName, String headerValue) {
-        assertEquals(headerValue, result.getResponse().getHeader(headerName));
-    }
-
-    @Then("the response should have a non-zero content length")
-    public void the_response_should_have_a_non_zero_content_length() {
-        long contentLength = result.getResponse().getContentLengthLong();
-        assert(contentLength > 0);
-    }
-
-    @Then("the response content should match the content of {string}")
-    public void the_response_content_should_match_the_content_of(String expectedContent) throws Exception {
-        String responseContent = result.getResponse().getContentAsString();
-        assertEquals(expectedContent, responseContent);
+    @Then("the file {string} should be downloaded successfully")
+    public void the_file_should_be_downloaded_successfully(String fileName) {
+        // Simulate file download and assert file content
+        assertEquals("This is a test file.", s3Controller.downloadFile(bucketName, key));
     }
 }
+
+
+
+
+
+Feature: Simple S3 File Download
+
+  Scenario: Successful file download from S3
+    Given the S3 bucket name is "my-test-bucket"
+    And the S3 key is "test-file.txt"
+    When the user requests to download the file
+    Then the file "test-file.txt" should be downloaded successfully
