@@ -1,122 +1,33 @@
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.model.AmazonS3Exception;
-import com.amazonaws.services.s3.model.ObjectMetadata;
-import com.amazonaws.services.s3.model.S3Object;
-import com.amazonaws.services.s3.model.S3ObjectInputStream;
-import io.cucumber.java.en.Given;
-import io.cucumber.java.en.Then;
-import io.cucumber.java.en.When;
-import org.mockito.Mockito;
-import org.springframework.mock.web.MockHttpServletResponse;
+public class S3Controller {
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.*;
+    private final AmazonS3 s3Client;
 
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-
-public class S3ControllerSteps {
-
-    private AmazonS3 s3Client;
-    private MockHttpServletResponse response;
-    private S3Controller s3Controller;
-
-    @Given("the S3 bucket named {string} contains a file with key {string}")
-    public void the_s3_bucket_contains_a_file(String bucketName, String key) throws IOException {
-        s3Client = Mockito.mock(AmazonS3.class);
-        S3Object s3Object = Mockito.mock(S3Object.class);
-        S3ObjectInputStream inputStream = new S3ObjectInputStream(new ByteArrayInputStream("file content".getBytes()), null);
-        ObjectMetadata metadata = new ObjectMetadata();
-        metadata.setContentLength("file content".length());
-
-        when(s3Client.getObject(bucketName, key)).thenReturn(s3Object);
-        when(s3Object.getObjectContent()).thenReturn(inputStream);
-        when(s3Object.getObjectMetadata()).thenReturn(metadata);
-
-        response = new MockHttpServletResponse();
-        s3Controller = new S3Controller(s3Client);
+    @Autowired
+    public S3Controller(AmazonS3 s3Client) {
+        this.s3Client = s3Client;
     }
 
-    @Given("the S3 bucket named {string} does not contain any file with key {string}")
-    public void the_s3_bucket_does_not_contain_file(String bucketName, String key) {
-        s3Client = Mockito.mock(AmazonS3.class);
-        when(s3Client.getObject(bucketName, key)).thenThrow(new AmazonS3Exception("The specified key does not exist."));
+    @GetMapping(value = "/s3download", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
+    public void downloadFile(@RequestParam String bucketName,
+                             @RequestParam String key,
+                             HttpServletResponse response) throws IOException {
+//        key = "local/CSV_ORACLESTP/localhost/05252024/bulkstat20240202185100/bulkstat20240202185100.txt";
 
-        response = new MockHttpServletResponse();
-        s3Controller = new S3Controller(s3Client);
-    }
+        String fileName = key.substring(key.lastIndexOf("/") + 1);
 
-    @Given("the S3 bucket named {string} does not exist")
-    public void the_s3_bucket_does_not_exist(String bucketName) {
-        s3Client = Mockito.mock(AmazonS3.class);
-        when(s3Client.getObject(bucketName, anyString())).thenThrow(new AmazonS3Exception("The specified bucket does not exist."));
+        S3Object s3Object = s3Client.getObject(bucketName, key);
+        try (S3ObjectInputStream inputStream = s3Object.getObjectContent()) {
+            response.setHeader("Content-Disposition", "attachment; filename=" + fileName);
+            response.setHeader("Content-Length", String.valueOf(s3Object.getObjectMetadata().getContentLength()));
 
-        response = new MockHttpServletResponse();
-        s3Controller = new S3Controller(s3Client);
-    }
-
-    @Given("the S3 bucket named {string} contains files but not the specified key {string}")
-    public void the_s3_bucket_contains_files_but_not_the_specified_key(String bucketName, String key) {
-        s3Client = Mockito.mock(AmazonS3.class);
-        when(s3Client.getObject(bucketName, key)).thenThrow(new AmazonS3Exception("The specified key does not exist."));
-
-        response = new MockHttpServletResponse();
-        s3Controller = new S3Controller(s3Client);
-    }
-
-    @When("a user requests to download the file with bucket name {string} and key {string}")
-    public void a_user_requests_to_download_file(String bucketName, String key) {
-        try {
-            s3Controller.downloadFile(bucketName, key, response);
-        } catch (IOException e) {
-            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            try (OutputStream outputStream = response.getOutputStream()) {
+                int len;
+                byte[] buffer = new byte[4096];
+                while ((len = inputStream.read(buffer, 0, buffer.length)) != -1) {
+                    outputStream.write(buffer, 0, len);
+                }
+                outputStream.flush();
+            }
         }
-    }
-
-    @When("a user requests to download a file with an invalid bucket name {string} and key {string}")
-    public void a_user_requests_to_download_file_with_invalid_bucket_name(String bucketName, String key) {
-        try {
-            s3Controller.downloadFile(bucketName, key, response);
-        } catch (IOException e) {
-            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-        }
-    }
-
-    @Then("the file should be downloaded successfully with the correct name and content")
-    public void the_file_should_be_downloaded_successfully() {
-        assertEquals("attachment; filename=test-file.txt", response.getHeader("Content-Disposition"));
-        assertEquals("11", response.getHeader("Content-Length"));
-        assertEquals("file content", response.getContentAsString());
-    }
-
-    @Then("the system should respond with an appropriate error message")
-    public void the_system_should_respond_with_error() {
-        assertEquals(404, response.getStatus());
     }
 }
-
-
-
-
-Feature: S3 File Download
-
-  Scenario: Downloading a file from S3
-    Given the S3 bucket named "test-bucket" contains a file with key "test-folder/test-file.txt"
-    When a user requests to download the file with bucket name "test-bucket" and key "test-folder/test-file.txt"
-    Then the file should be downloaded successfully with the correct name and content
-
-  Scenario: Downloading a non-existent file from S3
-    Given the S3 bucket named "test-bucket" does not contain any file with key "non-existent-file.txt"
-    When a user requests to download a non-existent file with bucket name "test-bucket" and key "non-existent-file.txt"
-    Then the system should respond with an appropriate error message
-
-  Scenario: Downloading a file with invalid bucket name
-    Given the S3 bucket named "invalid-bucket" does not exist
-    When a user requests to download a file with an invalid bucket name "invalid-bucket" and key "test-folder/test-file.txt"
-    Then the system should respond with an appropriate error message
-
-  Scenario: Downloading a file with invalid key
-    Given the S3 bucket named "test-bucket" contains files but not the specified key "invalid-key.txt"
-    When a user requests to download a file with bucket name "test-bucket" and an invalid key "invalid-key.txt"
-    Then the system should respond with an appropriate error message
