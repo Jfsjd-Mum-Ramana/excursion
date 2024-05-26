@@ -7,11 +7,9 @@ import com.amazonaws.services.s3.model.S3ObjectInputStream;
 import io.cucumber.java.Before;
 import io.cucumber.java.en.*;
 import org.junit.jupiter.api.Assertions;
-import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.context.ContextConfiguration;
 
@@ -22,7 +20,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @SpringBootTest
-@ContextConfiguration(classes = S3Controller.class)
+@ContextConfiguration(classes = {S3Controller.class})
 public class S3ControllerStepDefinitions {
 
     @Autowired
@@ -32,32 +30,38 @@ public class S3ControllerStepDefinitions {
     private AmazonS3 s3Client;
 
     private MockHttpServletResponse response;
-    private S3Object s3Object;
-    private ObjectMetadata objectMetadata;
 
     @Before
     public void setUp() {
-        objectMetadata = new ObjectMetadata();
-        objectMetadata.setContentLength(5);
-        s3Object = new S3Object();
-        s3Object.setObjectMetadata(objectMetadata);
+        response = new MockHttpServletResponse();
     }
 
     @Given("an S3 bucket {string} with file key {string}")
     public void an_s3_bucket_with_file_key(String bucketName, String key) {
+        S3Object s3Object = new S3Object();
+        ObjectMetadata objectMetadata = new ObjectMetadata();
+        objectMetadata.setContentLength(5);
+        s3Object.setObjectMetadata(objectMetadata);
         s3Object.setObjectContent(new S3ObjectInputStream(new ByteArrayInputStream("test".getBytes()), null));
         when(s3Client.getObject(bucketName, key)).thenReturn(s3Object);
     }
 
     @Given("the S3 service will throw an IOException")
     public void the_s3_service_will_throw_an_ioexception() throws IOException {
+        S3Object s3Object = new S3Object();
         S3ObjectInputStream inputStream = mock(S3ObjectInputStream.class);
         when(inputStream.read(any(byte[].class), anyInt(), anyInt())).thenThrow(new IOException("Test IOException"));
         s3Object.setObjectContent(inputStream);
+        when(s3Client.getObject(anyString(), anyString())).thenReturn(s3Object);
     }
 
     @Given("the file will be read partially")
     public void the_file_will_be_read_partially() throws IOException {
+        S3Object s3Object = new S3Object();
+        ObjectMetadata objectMetadata = new ObjectMetadata();
+        objectMetadata.setContentLength(5);
+        s3Object.setObjectMetadata(objectMetadata);
+        
         S3ObjectInputStream inputStream = mock(S3ObjectInputStream.class);
         when(inputStream.read(any(byte[].class), anyInt(), anyInt()))
                 .thenReturn(2)
@@ -69,7 +73,6 @@ public class S3ControllerStepDefinitions {
 
     @When("I request to download the file")
     public void i_request_to_download_the_file() throws IOException {
-        response = new MockHttpServletResponse();
         s3Controller.downloadFile("bucket-name", "key/file.txt", response);
     }
 
