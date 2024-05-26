@@ -1,55 +1,65 @@
-### Positive Test Scenarios
+ for (ChannelSftp.LsEntry file : files) {
+                if (!file.getAttrs().isDir()) {
+                    String filePath = remoteDirectory + file.getFilename(); // Use absolute file path
+                    retrieveAttributesOfRemoteFile(channelSftp, file, remoteDirectory, sp.getInputFilePath());
 
-1. **Valid GZ File with Text Content**
-   - **Description:** Test with a simple `.gz` file containing plain text.
-   - **Expected Outcome:** The method unzips the file correctly and outputs a file with the same name but without the `.gz` extension, containing the original text.
+                    String status = auditStatusMap.get(filePath);
+                    if (status == null || "COLLECTION_FAILED".equals(status)) {
+                        try {
+                            String outputFile = localDirectory + file.getFilename();
+                            LOGGER.info("in filePath : " + filePath + " out filePath : " + outputFile);
 
-2. **Valid GZ File with Binary Content**
-   - **Description:** Test with a `.gz` file containing binary data (e.g., a compressed image or executable).
-   - **Expected Outcome:** The method unzips the file correctly and outputs a file with the same name but without the `.gz` extension, containing the original binary data.
+                            FileUtil.downloadFile(outputStreamCreator.create(outputFile), channelSftp.get(file.getFilename()),
+                                    filePath, outputFile, sp.getOutputFilePath());
 
-3. **Multiple Files**
-   - **Description:** Test with multiple `.gz` files in a loop, each containing different data.
-   - **Expected Outcome:** Each file is unzipped correctly, with the correct contents in the output directory.
+                            List<String> filesList = new ArrayList<>();
+                            if (ZipUtil.isZipFile(outputFile)) {
+                                String fileNameWithoutExtn = FileUtil.getFileNameWithoutExtn(filePath);
+                                FileUtil.createDirectoryIfNotExists(sp.getOutputFilePath() + "/"+fileNameWithoutExtn);
 
-4. **Large GZ File**
-   - **Description:** Test with a very large `.gz` file to check for performance and memory management.
-   - **Expected Outcome:** The method unzips the file without running out of memory or crashing, and the output file matches the original uncompressed content.
 
-### Negative Test Scenarios
+                                ZipUtil.extract(outputFile, sp.getOutputFilePath() + "/"+fileNameWithoutExtn);
+                                filesList.addAll(FileUtil.readFilesInDirectory(sp.getOutputFilePath() + "/"+fileNameWithoutExtn));
+                            } else {
+                                filesList.add(outputFile);
+                            }
 
-1. **Non-existent Input File**
-   - **Description:** Test with a file path that does not exist.
-   - **Expected Outcome:** The method should handle the `FileNotFoundException` gracefully and not create any output file. It should print the stack trace or an error message.
+                            for (String fileName : filesList) {
 
-2. **Corrupted GZ File**
-   - **Description:** Test with a corrupted `.gz` file that cannot be decompressed.
-   - **Expected Outcome:** The method should handle the `IOException` gracefully, not create any output file, and print an error message or stack trace.
+                                String key = String.format("%s/%s/%s/%s/%s", ProfileCheckConfig.activeProfile,
+                                        sp.getFileType(), sshHost,
+                                        dateUtil.getDateInMMddyyyy(),
+                                        fileName.substring(fileName.lastIndexOf("./") + 1));
+                                s3Service.pushToS3(fileName, key);
 
-3. **Output Directory Doesn't Exist**
-   - **Description:** Test with an output directory path that does not exist.
-   - **Expected Outcome:** The method should handle the situation gracefully, possibly by creating the directory or printing an error message.
-
-4. **Output Directory is a File**
-   - **Description:** Test with an output directory path that is actually a file.
-   - **Expected Outcome:** The method should handle the situation gracefully and print an error message, as it cannot write to a file expected to be a directory.
-
-5. **Insufficient Permissions**
-   - **Description:** Test with an output directory where the user has no write permissions.
-   - **Expected Outcome:** The method should handle the `IOException` gracefully and print an error message, indicating that it cannot write to the specified directory.
-
-6. **Empty GZ File**
-   - **Description:** Test with an empty `.gz` file (0 bytes).
-   - **Expected Outcome:** The method should create an empty output file without throwing any exceptions.
-
-7. **Non-GZ File**
-   - **Description:** Test with a file that has a `.gz` extension but is not actually a GZIP-compressed file.
-   - **Expected Outcome:** The method should handle the `IOException` gracefully, not create any output file, and print an error message indicating the file is not a valid GZIP file.
-
-8. **Null Input File**
-   - **Description:** Test with a null input file argument.
-   - **Expected Outcome:** The method should handle the `NullPointerException` gracefully and print an error message.
-
-9. **Null Output Directory**
-   - **Description:** Test with a null output directory argument.
-   - **Expected Outcome:** The method should handle the `NullPointerException` gracefully and print an error message.
+                                System.out.println("**************************");
+                                System.out.println("Filename: "+fileName);
+                                System.out.println("Key: "+key);
+                                System.out.println("**************************");
+                                CollectionAudit audit = createAuditObject(sp,
+                                        key, JobStatus.COLLECTION_SUCCESSFUL.toString(), "");
+                                kafkaProducerService.writeMessage(collectorUtil.buildAuditQueueJSON(audit),
+                                        "", auditTopic);
+                            }
+                        } catch (Exception e) {
+                            CollectionAudit audit = createAuditObject(sp,
+                                    filePath, JobStatus.COLLECTION_FAILED.toString(), e.getMessage());
+                            kafkaProducerService.writeMessage(collectorUtil.buildAuditQueueJSON(audit), "",
+                                    auditTopic);
+                            LOGGER.error("Error on retrieveData {}", e);
+                        }
+                    }
+                }else{
+                    LOGGER.info("DIR found : " + file.getFilename());
+                }
+            }
+        } finally {
+            if (channelSftp != null) {
+                channelSftp.disconnect();
+            }
+            if (session != null) {
+                session.disconnect();
+            }
+        }
+        return true;
+    }
