@@ -1,76 +1,93 @@
+Feature: Mock S3 File Download
+
+  Scenario: Successful file download from S3
+    Given a mocked S3 bucket name
+    And a mocked S3 key
+    When the user requests to download the file
+    Then the response status should be 200
+    And the response should contain the file content "This is a test file."
+
+
 import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.model.ObjectMetadata;
-import com.amazonaws.services.s3.model.S3Object;
-import com.amazonaws.services.s3.model.S3ObjectInputStream;
+import io.cucumber.java.Before;
 import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
 import io.cucumber.java.en.When;
+import org.junit.jupiter.api.Assertions;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
-import java.io.ByteArrayInputStream;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-public class SimpleS3ControllerSteps {
+@WebMvcTest(S3Controller.class)
+public class MockS3ControllerSteps {
 
     @InjectMocks
     private S3Controller s3Controller;
 
-    @Mock
+    @MockBean
     private AmazonS3 s3Client;
 
+    private MockMvc mockMvc;
+    private MvcResult result;
     private String bucketName;
     private String key;
-    private S3Object s3Object;
+    private String expectedContent;
 
-    @Given("the S3 bucket name is {string}")
-    public void the_S3_bucket_name_is(String bucketName) {
-        this.bucketName = bucketName;
+    @Before
+    public void setUp() {
+        MockitoAnnotations.openMocks(this);
+        mockMvc = MockMvcBuilders.standaloneSetup(s3Controller).build();
     }
 
-    @Given("the S3 key is {string}")
-    public void the_S3_key_is(String key) {
-        this.key = key;
+    @Given("a mocked S3 bucket name")
+    public void a_mocked_S3_bucket_name() {
+        this.bucketName = "mocked-bucket";
+    }
+
+    @Given("a mocked S3 key")
+    public void a_mocked_S3_key() {
+        this.key = "mocked-key/test-file.txt";
+        this.expectedContent = "This is a test file.";
     }
 
     @When("the user requests to download the file")
-    public void the_user_requests_to_download_the_file() {
-        // Mock S3Object and its input stream
-        String fileContent = "This is a test file.";
-        ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(fileContent.getBytes());
-        S3ObjectInputStream s3ObjectInputStream = new S3ObjectInputStream(byteArrayInputStream, null);
+    public void the_user_requests_to_download_the_file() throws Exception {
+        // Mocking the response content directly
+        when(s3Client.getObject(bucketName, key)).thenAnswer(invocation -> {
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            response.setContentType(MediaType.APPLICATION_OCTET_STREAM_VALUE);
+            response.setHeader("Content-Disposition", "attachment; filename=test-file.txt");
+            response.setContentLength(expectedContent.length());
+            response.getWriter().write(expectedContent);
+            return null;
+        });
 
-        // Set object metadata
-        ObjectMetadata metadata = new ObjectMetadata();
-        metadata.setContentLength(fileContent.length());
-
-        // Create a mock S3Object
-        s3Object = new S3Object();
-        s3Object.setObjectContent(s3ObjectInputStream);
-        s3Object.setObjectMetadata(metadata);
-
-        // Mock the s3Client.getObject method
-        when(s3Client.getObject(bucketName, key)).thenReturn(s3Object);
+        result = mockMvc.perform(get("/s3download")
+                .param("bucketName", bucketName)
+                .param("key", key))
+                .andExpect(status().isOk())
+                .andReturn();
     }
 
-    @Then("the file {string} should be downloaded successfully")
-    public void the_file_should_be_downloaded_successfully(String fileName) {
-        // Simulate file download and assert file content
-        assertEquals("This is a test file.", s3Controller.downloadFile(bucketName, key));
+    @Then("the response status should be {int}")
+    public void the_response_status_should_be(Integer status) {
+        Assertions.assertEquals(status.intValue(), result.getResponse().getStatus());
+    }
+
+    @Then("the response should contain the file content {string}")
+    public void the_response_should_contain_the_file_content(String expectedContent) throws Exception {
+        String responseContent = result.getResponse().getContentAsString();
+        Assertions.assertEquals(expectedContent, responseContent);
     }
 }
-
-
-
-
-
-Feature: Simple S3 File Download
-
-  Scenario: Successful file download from S3
-    Given the S3 bucket name is "my-test-bucket"
-    And the S3 key is "test-file.txt"
-    When the user requests to download the file
-    Then the file "test-file.txt" should be downloaded successfully
