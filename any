@@ -1,7 +1,27 @@
+Feature: Downloading files from S3 Bucket
+
+  Scenario: Downloading a file successfully
+    When the file is downloaded
+    Then the response should contain the file content "test"
+    And the response header "Content-Length" should be "5"
+  
+  Scenario: Handling IOException from S3 service
+    When the file is downloaded
+    Then an IOException should be thrown
+
+  Scenario: Partially reading a file from S3
+    When the file is downloaded
+    Then the response should contain the file content "te"
+    And the response header "Content-Length" should be "2"
+
+
+
+
+
 package org.vdsi.space.collections.customauditengine.controllers;
 
-import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
+import io.cucumber.java.en.When;
 import org.junit.jupiter.api.Assertions;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -21,33 +41,7 @@ public class S3ControllerGlue {
 
     private MockHttpServletResponse response;
 
-    @Given("an S3 bucket {string} with file key {string}")
-    public void an_s3_bucket_with_file_key(String bucketName, String key) {
-        S3Object s3Object = new S3Object();
-        ObjectMetadata objectMetadata = new ObjectMetadata();
-        objectMetadata.setContentLength(5);
-        s3Object.setObjectMetadata(objectMetadata);
-        s3Object.setObjectContent(new S3ObjectInputStream(new ByteArrayInputStream("test".getBytes()), null));
-        when(s3Client.getObject(bucketName, key)).thenReturn(s3Object);
-    }
-
-    @Given("the S3 service will throw an IOException")
-    public void the_s3_service_will_throw_an_ioexception() throws IOException {
-        S3ObjectInputStream inputStream = mock(S3ObjectInputStream.class);
-        when(inputStream.read()).thenThrow(new IOException("Test IOException"));
-        S3Object s3Object = new S3Object();
-        s3Object.setObjectContent(inputStream);
-    }
-
-    @Given("the file will be read partially")
-    public void the_file_will_be_read_partially() throws IOException {
-        S3ObjectInputStream inputStream = mock(S3ObjectInputStream.class);
-        when(inputStream.read()).thenReturn((int) 't').thenReturn((int) 'e').thenReturn(-1);
-        S3Object s3Object = new S3Object();
-        s3Object.setObjectContent(inputStream);
-    }
-
-    @Then("the file is downloaded")
+    @When("the file is downloaded")
     public void the_file_is_downloaded() throws IOException {
         response = new MockHttpServletResponse();
         s3Controller.downloadFile("bucket-name", "key/file.txt", response);
