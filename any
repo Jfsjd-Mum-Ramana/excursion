@@ -1,24 +1,11 @@
-Feature: S3 File Download
-
-  Scenario: Download a file from S3
-    Given the S3 bucket name is "test-bucket"
-    And the S3 key is "test-file.txt"
-    When I send a GET request to "/s3download" with the bucket name and key
-    Then the response status should be 200
-    And the response should have the header "Content-Disposition" with value "attachment; filename=test-file.txt"
-    And the response should have a non-zero content length
-    And the response content should match the content of "This is a test file."
-
-
-
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectInputStream;
+import io.cucumber.java.Before;
 import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
 import io.cucumber.java.en.When;
-import org.junit.jupiter.api.BeforeEach;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
@@ -31,7 +18,6 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import java.io.ByteArrayInputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -51,7 +37,7 @@ public class S3ControllerSteps {
     private String bucketName;
     private String key;
 
-    @BeforeEach
+    @Before
     public void setUp() {
         MockitoAnnotations.openMocks(this);
         mockMvc = MockMvcBuilders.standaloneSetup(s3Controller).build();
@@ -83,13 +69,13 @@ public class S3ControllerSteps {
         s3Object.setObjectMetadata(metadata);
 
         // Mock the s3Client.getObject method
-        when(s3Client.getObject(anyString(), anyString())).thenReturn(s3Object);
+        when(s3Client.getObject(bucketName, key)).thenReturn(s3Object);
 
         result = mockMvc.perform(get(url)
                 .param("bucketName", bucketName)
                 .param("key", key))
                 .andExpect(status().isOk())
-                .andExpect(header().string("Content-Disposition", "attachment; filename=" + key))
+                .andExpect(header().string("Content-Disposition", "attachment; filename=" + key.substring(key.lastIndexOf("/") + 1)))
                 .andReturn();
     }
 
