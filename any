@@ -1,48 +1,85 @@
 package org.vdsi.space.collections.customauditengine.controllers;
 
 import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectInputStream;
-import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.MediaType;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockHttpServletResponse;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.io.OutputStream;
 
-@RestController
-public class S3Controller {
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.*;
 
-    private final AmazonS3 s3Client;
+@ExtendWith(MockitoExtension.class)
+public class S3ControllerTest {
 
-    @Autowired
-    public S3Controller(AmazonS3 s3Client) {
-        this.s3Client = s3Client;
+    @Mock
+    private AmazonS3 s3Client;
+
+    @InjectMocks
+    private S3Controller s3Controller;
+
+    private S3Object s3Object;
+    private ObjectMetadata objectMetadata;
+
+    @BeforeEach
+    void setUp() {
+        s3Object = new S3Object();
+        objectMetadata = new ObjectMetadata();
+        objectMetadata.setContentLength(5);
+        s3Object.setObjectMetadata(objectMetadata);
+        s3Object.setObjectContent(new S3ObjectInputStream(new ByteArrayInputStream("test".getBytes()), null));
     }
 
-    @GetMapping(value = "/s3download", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
-    public void downloadFile(@RequestParam String bucketName,
-                             @RequestParam String key,
-                             HttpServletResponse response) throws IOException {
-        String fileName = key.substring(key.lastIndexOf("/") + 1);
+    @Test
+    void testDownloadFile() throws IOException {
+        when(s3Client.getObject(anyString(), anyString())).thenReturn(s3Object);
 
-        S3Object s3Object = s3Client.getObject(bucketName, key);
-        try (S3ObjectInputStream inputStream = s3Object.getObjectContent()) {
-            response.setHeader("Content-Disposition", "attachment; filename=" + fileName);
-            response.setHeader("Content-Length", String.valueOf(s3Object.getObjectMetadata().getContentLength()));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        s3Controller.downloadFile("bucket-name", "key/file.txt", response);
 
-            try (OutputStream outputStream = response.getOutputStream()) {
-                int len;
-                byte[] buffer = new byte[4096];
-                while ((len = inputStream.read(buffer, 0, buffer.length)) != -1) {
-                    outputStream.write(buffer, 0, len);
-                }
-                outputStream.flush();
-            }
-        }
+        assertEquals("attachment; filename=file.txt", response.getHeader("Content-Disposition"));
+        assertEquals("5", response.getHeader("Content-Length"));
+        assertEquals("test", response.getContentAsString());
+    }
+
+    @Test
+    void testDownloadFileIOException() throws IOException {
+        when(s3Client.getObject(anyString(), anyString())).thenReturn(s3Object);
+
+        S3ObjectInputStream inputStream = mock(S3ObjectInputStream.class);
+        when(inputStream.read(any(byte[].class), anyInt(), anyInt())).thenThrow(new IOException("Test IOException"));
+        s3Object.setObjectContent(inputStream);
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        assertThrows(IOException.class, () -> {
+            s3Controller.downloadFile("bucket-name", "key/file.txt", response);
+        });
+    }
+
+    @Test
+    void testDownloadFilePartialRead() throws IOException {
+        S3ObjectInputStream inputStream = mock(S3ObjectInputStream.class);
+        when(inputStream.read(any(byte[].class), anyInt(), anyInt()))
+                .thenReturn(2)
+                .thenReturn(2)
+                .thenReturn(-1);
+        s3Object.setObjectContent(inputStream);
+        when(s3Client.getObject(anyString(), anyString())).thenReturn(s3Object);
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        s3Controller.downloadFile("bucket-name", "key/file.txt", response);
+
+        verify(inputStream, times(3)).read(any(byte[].class), anyInt(), anyInt());
     }
 }
