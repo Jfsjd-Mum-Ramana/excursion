@@ -1,31 +1,6 @@
-Feature: S3 File Download
-
-  Scenario: Downloading a file from S3
-    Given the S3 bucket named "test-bucket" contains a file with key "test-folder/test-file.txt"
-    When a user requests to download the file with bucket name "test-bucket" and key "test-folder/test-file.txt"
-    Then the file should be downloaded successfully with the correct name and content
-
-  Scenario: Downloading a non-existent file from S3
-    Given the S3 bucket named "test-bucket" does not contain any file with key "non-existent-file.txt"
-    When a user requests to download a non-existent file with bucket name "test-bucket" and key "non-existent-file.txt"
-    Then the system should respond with an appropriate error message
-
-  Scenario: Downloading a file with invalid bucket name
-    Given the S3 bucket named "invalid-bucket" does not exist
-    When a user requests to download a file with an invalid bucket name "invalid-bucket" and key "test-folder/test-file.txt"
-    Then the system should respond with an appropriate error message
-
-  Scenario: Downloading a file with invalid key
-    Given the S3 bucket named "test-bucket" contains files but not the specified key "invalid-key.txt"
-    When a user requests to download a file with bucket name "test-bucket" and an invalid key "invalid-key.txt"
-    Then the system should respond with an appropriate error message
-
-
-
-
-
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.AmazonS3Exception;
+import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectInputStream;
 import io.cucumber.java.en.Given;
@@ -52,10 +27,12 @@ public class S3ControllerSteps {
         s3Client = Mockito.mock(AmazonS3.class);
         S3Object s3Object = Mockito.mock(S3Object.class);
         S3ObjectInputStream inputStream = new S3ObjectInputStream(new ByteArrayInputStream("file content".getBytes()), null);
+        ObjectMetadata metadata = new ObjectMetadata();
+        metadata.setContentLength("file content".length());
 
         when(s3Client.getObject(bucketName, key)).thenReturn(s3Object);
         when(s3Object.getObjectContent()).thenReturn(inputStream);
-        when(s3Object.getObjectMetadata().getContentLength()).thenReturn((long) "file content".length());
+        when(s3Object.getObjectMetadata()).thenReturn(metadata);
 
         response = new MockHttpServletResponse();
         s3Controller = new S3Controller(s3Client);
@@ -84,7 +61,7 @@ public class S3ControllerSteps {
         try {
             s3Controller.downloadFile(bucketName, key, response);
         } catch (IOException e) {
-            // handle exception if needed
+            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
         }
     }
 
