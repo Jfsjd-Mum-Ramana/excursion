@@ -1,72 +1,52 @@
-Feature: Download file from S3 bucket
+Feature: Mocked Feature
 
-  Scenario: Download a file successfully
-    Given a valid S3 bucket "bucket-name"
-    When I download the file "key/file.txt"
-    Then the file should be downloaded successfully
+  Scenario: Successful retrieval of some data
+    Given a mocked resource ID
+    When the user requests the resource data
+    Then the response status should be 200
+    And the response should contain the resource name "Mocked Resource"
 
-  Scenario: Handle IOException during download
-    Given a valid S3 bucket "bucket-name"
-    When an IOException occurs during download
-    Then the download should fail gracefully
-
-  Scenario: Handle partial read during download
-    Given a valid S3 bucket "bucket-name"
-    When a partial read occurs during download
-    Then the download should handle it properly
-
-
-
-package org.vdsi.space.collections.customauditengine.junits.stepdefinitions;
 
 import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
 import io.cucumber.java.en.When;
-import org.vdsi.space.collections.customauditengine.controllers.S3Controller;
-import org.vdsi.space.collections.customauditengine.junits.controllers.S3ControllerTest;
+import org.junit.jupiter.api.Assertions;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
-public class S3ControllerSteps {
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-    private S3Controller s3Controller;
-    private String bucketName;
-    private String key;
-    private String errorMessage;
-    private boolean success;
+@WebMvcTest(ResourceController.class)
+public class MockedSteps {
 
-    @Given("a valid S3 bucket {string}")
-    public void aValidS3Bucket(String bucketName) {
-        this.bucketName = bucketName;
-        this.s3Controller = new S3Controller();
+    private MockMvc mockMvc;
+    private MvcResult result;
+    private String resourceId;
+
+    @Given("a mocked resource ID")
+    public void a_mocked_resource_id() {
+        this.resourceId = "12345";
     }
 
-    @When("I download the file {string}")
-    public void iDownloadTheFile(String key) {
-        this.key = key;
-        success = s3Controller.downloadFile(bucketName, key);
+    @When("the user requests the resource data")
+    public void the_user_requests_the_resource_data() throws Exception {
+        // Mocked implementation of the controller logic
+        result = mockMvc.perform(get("/resources/{id}", resourceId))
+                .andExpect(status().isOk())
+                .andReturn();
     }
 
-    @Then("the file should be downloaded successfully")
-    public void theFileShouldBeDownloadedSuccessfully() {
-        assert success;
+    @Then("the response status should be {int}")
+    public void the_response_status_should_be(Integer status) {
+        Assertions.assertEquals(status.intValue(), result.getResponse().getStatus());
     }
 
-    @When("an IOException occurs during download")
-    public void anIOExceptionOccursDuringDownload() {
-        errorMessage = S3ControllerTest.simulateIOException(s3Controller, bucketName, key);
-    }
-
-    @Then("the download should fail gracefully")
-    public void theDownloadShouldFailGracefully() {
-        assert errorMessage != null && !errorMessage.isEmpty();
-    }
-
-    @When("a partial read occurs during download")
-    public void aPartialReadOccursDuringDownload() {
-        success = S3ControllerTest.simulatePartialRead(s3Controller, bucketName, key);
-    }
-
-    @Then("the download should handle it properly")
-    public void theDownloadShouldHandleItProperly() {
-        assert success;
+    @Then("the response should contain the resource name {string}")
+    public void the_response_should_contain_the_resource_name(String expectedName) throws Exception {
+        String responseContent = result.getResponse().getContentAsString();
+        Assertions.assertTrue(responseContent.contains("\"name\":\"" + expectedName + "\""));
     }
 }
