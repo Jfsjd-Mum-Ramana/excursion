@@ -1,100 +1,90 @@
-Feature: Download file from mock S3
+public boolean retrieveData(SpaceCollector sp, String dateReceived, String auditTopic) throws Exception {
+        LOGGER.info("Entered SSH service");
+        String sshUsername = sp.getUserName();
+        String sshHost = sp.getUrl();
+        String sshPassword = sp.getPassword();
+        int port = sp.getPort().intValue();
 
-  Scenario: Downloading a file successfully
-    Given an S3 bucket "my-bucket" with file key "my-file.txt"
-    When the user requests to download the file
-    Then the response status should be 200
-    And the response should contain the file content "test content"
-    And the response header "Content-Disposition" should be "attachment; filename=my-file.txt"
+        JSch jsch = getJsch(sshHost, sshPassword);
+
+        Session session = getSession(sshUsername, sshHost, sshPassword, port, jsch);
+        session.connect();
+
+        ChannelSftp channelSftp = null;
+        try {
+            String remoteDirectory = FileUtil.getDirectory(sp.getInputFilePath());
+            String localDirectory = FileUtil.getDirectory(sp.getOutputFilePath());
+            LOGGER.info("remoteDirectory : " + remoteDirectory + " localDirectory : " + localDirectory);
+
+            channelSftp = getChannelSftp(session, remoteDirectory);
+            Vector<ChannelSftp.LsEntry> files = channelSftp.ls(".");
+
+            Map<String, String> auditStatusMap = getAuditStatusMap(files, remoteDirectory);
+
+            // Download each file to the local directory
+            for (ChannelSftp.LsEntry file : files) {
+                if (!file.getAttrs().isDir()) {
+                    String filePath = remoteDirectory + file.getFilename(); // Use absolute file path
+                    retrieveAttributesOfRemoteFile(channelSftp, file, remoteDirectory, sp.getInputFilePath());
+
+                    String status = auditStatusMap.get(filePath);
+                    if (status == null || "COLLECTION_FAILED".equals(status)) {
+                        try {
+                            String outputFile = localDirectory + file.getFilename();
+                            LOGGER.info("in filePath : " + filePath + " out filePath : " + outputFile);
+
+                            FileUtil.downloadFile(outputStreamCreator.create(outputFile), channelSftp.get(file.getFilename()),
+                                    filePath, outputFile, sp.getOutputFilePath());
+
+                            List<String> filesList = new ArrayList<>();
+                            if (ZipUtil.isZipFile(outputFile)) {
+                                String fileNameWithoutExtn = FileUtil.getFileNameWithoutExtn(filePath);
+                                FileUtil.createDirectoryIfNotExists(sp.getOutputFilePath() + "/"+fileNameWithoutExtn);
 
 
+                                ZipUtil.extract(outputFile, sp.getOutputFilePath() + "/"+fileNameWithoutExtn);
+                                filesList.addAll(FileUtil.readFilesInDirectory(sp.getOutputFilePath() + "/"+fileNameWithoutExtn));
+                            } else {
+                                filesList.add(outputFile);
+                            }
 
+                            for (String fileName : filesList) {
+                                Path Insidefilepath = Paths.get(fileName);
+                                Path folderPath = Paths.get(sp.getOutputFilePath()).relativize(Insidefilepath.getParent());
+                                String key = String.format("%s/%s/%s/%s/%s", ProfileCheckConfig.activeProfile,
+                                        sp.getFileType(), sshHost,
+                                        dateUtil.getDateInMMddyyyy(),
+                                        folderPath, Insidefilepath.getFileName());
+                                s3Service.pushToS3(fileName, key);
 
-
-package org.vdsi.space.collections.customauditengine.cucumber.glue;
-
-import io.cucumber.java.en.Given;
-import io.cucumber.java.en.Then;
-import io.cucumber.java.en.When;
-import org.junit.jupiter.api.Assertions;
-import org.mockito.MockitoAnnotations;
-import org.springframework.http.MediaType;
-import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.context.WebApplicationContext;
-
-import java.io.IOException;
-import java.io.OutputStream;
-
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
-public class S3ControllerStepDefinitions {
-
-    private MockMvc mockMvc;
-    private MvcResult result;
-    private String bucketName;
-    private String key;
-
-    @Given("^an S3 bucket \"([^\"]*)\" with file key \"([^\"]*)\"$")
-    public void an_s3_bucket_with_file_key(String bucketName, String key) {
-        this.bucketName = bucketName;
-        this.key = key;
-
-        // Initialize the MockMvc object with the embedded mock controller
-        MockitoAnnotations.openMocks(this);
-        this.mockMvc = MockMvcBuilders.standaloneSetup(new S3MockController()).build();
-    }
-
-    @When("^the user requests to download the file$")
-    public void the_user_requests_to_download_the_file() throws Exception {
-        result = mockMvc.perform(get("/s3download")
-                .param("bucketName", bucketName)
-                .param("key", key))
-                .andExpect(status().isOk())
-                .andReturn();
-    }
-
-    @Then("^the response status should be (\\d+)$")
-    public void the_response_status_should_be(int status) {
-        MockHttpServletResponse response = result.getResponse();
-        Assertions.assertEquals(status, response.getStatus());
-    }
-
-    @Then("^the response should contain the file content \"([^\"]*)\"$")
-    public void the_response_should_contain_the_file_content(String content) throws Exception {
-        MockHttpServletResponse response = result.getResponse();
-        Assertions.assertEquals(content, response.getContentAsString());
-    }
-
-    @Then("^the response header \"([^\"]*)\" should be \"([^\"]*)\"$")
-    public void the_response_header_should_be(String headerName, String headerValue) {
-        MockHttpServletResponse response = result.getResponse();
-        Assertions.assertEquals(headerValue, response.getHeader(headerName));
-    }
-
-    @RestController
-    private static class S3MockController {
-
-        @GetMapping(value = "/s3download", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
-        public void downloadFile(@RequestParam String bucketName,
-                                 @RequestParam String key,
-                                 MockHttpServletResponse response) throws IOException {
-            String fileName = key.substring(key.lastIndexOf("/") + 1);
-            String fileContent = "test content";
-
-            response.setHeader("Content-Disposition", "attachment; filename=" + fileName);
-            response.setHeader("Content-Length", String.valueOf(fileContent.length()));
-
-            try (OutputStream outputStream = response.getOutputStream()) {
-                outputStream.write(fileContent.getBytes());
-                outputStream.flush();
+                                System.out.println("**************************");
+                                System.out.println("Filename: "+fileName);
+                                System.out.println("Key: "+key);
+                                System.out.println("**************************");
+                                CollectionAudit audit = createAuditObject(sp,
+                                        key, JobStatus.COLLECTION_SUCCESSFUL.toString(), "");
+                                kafkaProducerService.writeMessage(collectorUtil.buildAuditQueueJSON(audit),
+                                        "", auditTopic);
+                            }
+                        } catch (Exception e) {
+                            CollectionAudit audit = createAuditObject(sp,
+                                    filePath, JobStatus.COLLECTION_FAILED.toString(), e.getMessage());
+                            kafkaProducerService.writeMessage(collectorUtil.buildAuditQueueJSON(audit), "",
+                                    auditTopic);
+                            LOGGER.error("Error on retrieveData {}", e);
+                        }
+                    }
+                }else{
+                    LOGGER.info("DIR found : " + file.getFilename());
+                }
+            }
+        } finally {
+            if (channelSftp != null) {
+                channelSftp.disconnect();
+            }
+            if (session != null) {
+                session.disconnect();
             }
         }
+        return true;
     }
-}
