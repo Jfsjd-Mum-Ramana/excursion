@@ -1,90 +1,84 @@
 public boolean retrieveData(SpaceCollector sp, String dateReceived, String auditTopic) throws Exception {
-        LOGGER.info("Entered SSH service");
-        String sshUsername = sp.getUserName();
-        String sshHost = sp.getUrl();
-        String sshPassword = sp.getPassword();
-        int port = sp.getPort().intValue();
+    LOGGER.info("Entered SSH service");
 
-        JSch jsch = getJsch(sshHost, sshPassword);
+    String sshUsername = sp.getUserName();
+    String sshHost = sp.getUrl();
+    String sshPassword = sp.getPassword();
+    int port = sp.getPort().intValue();
 
-        Session session = getSession(sshUsername, sshHost, sshPassword, port, jsch);
-        session.connect();
+    JSch jsch = getJsch(sshHost, sshPassword);
+    Session session = getSession(sshUsername, sshHost, sshPassword, port, jsch);
+    session.connect();
 
-        ChannelSftp channelSftp = null;
-        try {
-            String remoteDirectory = FileUtil.getDirectory(sp.getInputFilePath());
-            String localDirectory = FileUtil.getDirectory(sp.getOutputFilePath());
-            LOGGER.info("remoteDirectory : " + remoteDirectory + " localDirectory : " + localDirectory);
+    ChannelSftp channelSftp = null;
+    try {
+        String remoteDirectory = FileUtil.getDirectory(sp.getInputFilePath());
+        String localDirectory = FileUtil.getDirectory(sp.getOutputFilePath());
+        LOGGER.info("Remote Directory: " + remoteDirectory + " Local Directory: " + localDirectory);
 
-            channelSftp = getChannelSftp(session, remoteDirectory);
-            Vector<ChannelSftp.LsEntry> files = channelSftp.ls(".");
+        channelSftp = getChannelSftp(session, remoteDirectory);
+        Vector<ChannelSftp.LsEntry> files = channelSftp.ls(".");
 
-            Map<String, String> auditStatusMap = getAuditStatusMap(files, remoteDirectory);
+        Map<String, String> auditStatusMap = getAuditStatusMap(files, remoteDirectory);
 
-            // Download each file to the local directory
-            for (ChannelSftp.LsEntry file : files) {
-                if (!file.getAttrs().isDir()) {
-                    String filePath = remoteDirectory + file.getFilename(); // Use absolute file path
-                    retrieveAttributesOfRemoteFile(channelSftp, file, remoteDirectory, sp.getInputFilePath());
+        // Download each file to the local directory
+        for (ChannelSftp.LsEntry file : files) {
+            if (!file.getAttrs().isDir()) {
+                String filePath = remoteDirectory + "/" + file.getFilename();
+                retrieveAttributesOfRemoteFile(channelSftp, file, remoteDirectory, sp.getInputFilePath());
 
-                    String status = auditStatusMap.get(filePath);
-                    if (status == null || "COLLECTION_FAILED".equals(status)) {
-                        try {
-                            String outputFile = localDirectory + file.getFilename();
-                            LOGGER.info("in filePath : " + filePath + " out filePath : " + outputFile);
+                String status = auditStatusMap.get(filePath);
+                if (status == null || "COLLECTION_FAILED".equals(status)) {
+                    try {
+                        String outputFile = localDirectory + "/" + file.getFilename();
+                        LOGGER.info("Input File Path: " + filePath + " Output File Path: " + outputFile);
 
-                            FileUtil.downloadFile(outputStreamCreator.create(outputFile), channelSftp.get(file.getFilename()),
-                                    filePath, outputFile, sp.getOutputFilePath());
+                        // Download file
+                        FileUtil.downloadFile(outputStreamCreator.create(outputFile), channelSftp.get(file.getFilename()),
+                                filePath, outputFile, sp.getOutputFilePath());
 
-                            List<String> filesList = new ArrayList<>();
-                            if (ZipUtil.isZipFile(outputFile)) {
-                                String fileNameWithoutExtn = FileUtil.getFileNameWithoutExtn(filePath);
-                                FileUtil.createDirectoryIfNotExists(sp.getOutputFilePath() + "/"+fileNameWithoutExtn);
-
-
-                                ZipUtil.extract(outputFile, sp.getOutputFilePath() + "/"+fileNameWithoutExtn);
-                                filesList.addAll(FileUtil.readFilesInDirectory(sp.getOutputFilePath() + "/"+fileNameWithoutExtn));
-                            } else {
-                                filesList.add(outputFile);
-                            }
-
-                            for (String fileName : filesList) {
-                                Path Insidefilepath = Paths.get(fileName);
-                                Path folderPath = Paths.get(sp.getOutputFilePath()).relativize(Insidefilepath.getParent());
-                                String key = String.format("%s/%s/%s/%s/%s", ProfileCheckConfig.activeProfile,
-                                        sp.getFileType(), sshHost,
-                                        dateUtil.getDateInMMddyyyy(),
-                                        folderPath, Insidefilepath.getFileName());
-                                s3Service.pushToS3(fileName, key);
-
-                                System.out.println("**************************");
-                                System.out.println("Filename: "+fileName);
-                                System.out.println("Key: "+key);
-                                System.out.println("**************************");
-                                CollectionAudit audit = createAuditObject(sp,
-                                        key, JobStatus.COLLECTION_SUCCESSFUL.toString(), "");
-                                kafkaProducerService.writeMessage(collectorUtil.buildAuditQueueJSON(audit),
-                                        "", auditTopic);
-                            }
-                        } catch (Exception e) {
-                            CollectionAudit audit = createAuditObject(sp,
-                                    filePath, JobStatus.COLLECTION_FAILED.toString(), e.getMessage());
-                            kafkaProducerService.writeMessage(collectorUtil.buildAuditQueueJSON(audit), "",
-                                    auditTopic);
-                            LOGGER.error("Error on retrieveData {}", e);
+                        List<String> filesList = new ArrayList<>();
+                        if (ZipUtil.isZipFile(outputFile)) {
+                            String fileNameWithoutExtn = FileUtil.getFileNameWithoutExtn(filePath);
+                            FileUtil.createDirectoryIfNotExists(sp.getOutputFilePath() + "/" + fileNameWithoutExtn);
+                            ZipUtil.extract(outputFile, sp.getOutputFilePath() + "/" + fileNameWithoutExtn);
+                            filesList.addAll(FileUtil.readFilesInDirectory(sp.getOutputFilePath() + "/" + fileNameWithoutExtn));
+                        } else {
+                            filesList.add(outputFile);
                         }
+
+                        // Process each file (including both zip contents and non-zip files)
+                        for (String fileName : filesList) {
+                            Path insideFilePath = Paths.get(fileName);
+                            Path folderPath = Paths.get(sp.getOutputFilePath()).relativize(insideFilePath.getParent());
+                            String key = String.format("%s/%s/%s/%s/%s", ProfileCheckConfig.activeProfile,
+                                    sp.getFileType(), sshHost, dateUtil.getDateInMMddyyyy(),
+                                    folderPath, insideFilePath.getFileName());
+
+                            // Push to S3
+                            s3Service.pushToS3(fileName, key);
+
+                            LOGGER.info("Filename: " + fileName + " Key: " + key);
+                            CollectionAudit audit = createAuditObject(sp, key, JobStatus.COLLECTION_SUCCESSFUL.toString(), "");
+                            kafkaProducerService.writeMessage(collectorUtil.buildAuditQueueJSON(audit), "", auditTopic);
+                        }
+                    } catch (Exception e) {
+                        CollectionAudit audit = createAuditObject(sp, filePath, JobStatus.COLLECTION_FAILED.toString(), e.getMessage());
+                        kafkaProducerService.writeMessage(collectorUtil.buildAuditQueueJSON(audit), "", auditTopic);
+                        LOGGER.error("Error on retrieveData {}", e);
                     }
-                }else{
-                    LOGGER.info("DIR found : " + file.getFilename());
                 }
-            }
-        } finally {
-            if (channelSftp != null) {
-                channelSftp.disconnect();
-            }
-            if (session != null) {
-                session.disconnect();
+            } else {
+                LOGGER.info("Directory found: " + file.getFilename());
             }
         }
-        return true;
+    } finally {
+        if (channelSftp != null) {
+            channelSftp.disconnect();
+        }
+        if (session != null) {
+            session.disconnect();
+        }
     }
+    return true;
+}
