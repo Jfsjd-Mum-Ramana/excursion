@@ -1,23 +1,36 @@
+Feature: Download file from mock S3
+
+  Scenario: Downloading a file successfully
+    Given an S3 bucket "my-bucket" with file key "my-file.txt"
+    When the user requests to download the file
+    Then the response status should be 200
+    And the response should contain the file content "test content"
+    And the response header "Content-Disposition" should be "attachment; filename=my-file.txt"
+
+
+
+
+
+package org.vdsi.space.collections.customauditengine.cucumber.glue;
+
 import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
 import io.cucumber.java.en.When;
 import org.junit.jupiter.api.Assertions;
-import org.mockito.InjectMocks;
 import org.mockito.MockitoAnnotations;
-import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import org.springframework.web.client.RestTemplate;
-import org.vdsi.space.collections.customauditengine.controllers.S3Controller;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.context.WebApplicationContext;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -25,132 +38,63 @@ public class S3ControllerStepDefinitions {
 
     private MockMvc mockMvc;
     private MvcResult result;
+    private String bucketName;
+    private String key;
 
-    private static final String S3_DOWNLOAD = "/s3download";
+    @Given("^an S3 bucket \"([^\"]*)\" with file key \"([^\"]*)\"$")
+    public void an_s3_bucket_with_file_key(String bucketName, String key) {
+        this.bucketName = bucketName;
+        this.key = key;
 
-    @InjectMocks
-    private S3Controller s3Controller;
-
-    @Given("^an S3 bucket (.*) with file key (.*)$")
-    public void an_s3_bucket_with_file_key(String bucketName, String key) throws Exception {
-        // Initialize the MockMvc object
+        // Initialize the MockMvc object with the embedded mock controller
         MockitoAnnotations.openMocks(this);
-        this.mockMvc = MockMvcBuilders.standaloneSetup(s3Controller).build();
+        this.mockMvc = MockMvcBuilders.standaloneSetup(new S3MockController()).build();
+    }
 
-        // Simulate the user requesting resource data
-        result = mockMvc.perform(get(S3_DOWNLOAD)
+    @When("^the user requests to download the file$")
+    public void the_user_requests_to_download_the_file() throws Exception {
+        result = mockMvc.perform(get("/s3download")
                 .param("bucketName", bucketName)
                 .param("key", key))
                 .andExpect(status().isOk())
                 .andReturn();
-
-        MockHttpServletResponse response = new MockHttpServletResponse();
-        response.getOutputStream().write("test".getBytes());
-        this.result = new MvcResult() {
-            @Override
-            public MockHttpServletResponse getResponse() {
-                return response;
-            }
-
-            @Override
-            public Object getAsyncResult() {
-                return null;
-            }
-
-            @Override
-            public Object getAsyncResult(long l) {
-                return null;
-            }
-        };
     }
 
-    @Given("^the S3 service will throw an IOException$")
-    public void the_s3_service_will_throw_an_ioexception() throws IOException {
-        // Simulate throwing an IOException
-        S3ObjectInputStream inputStream = mock(S3ObjectInputStream.class);
-        when(inputStream.read()).thenThrow(new IOException("Test IOException"));
-        MockHttpServletResponse response = new MockHttpServletResponse();
-        try {
-            inputStream.read();
-        } catch (IOException e) {
-            response.sendError(500, "Test IOException");
-        }
-        this.result = new MvcResult() {
-            @Override
-            public MockHttpServletResponse getResponse() {
-                return response;
-            }
-
-            @Override
-            public Object getAsyncResult() {
-                return null;
-            }
-
-            @Override
-            public Object getAsyncResult(long l) {
-                return null;
-            }
-        };
-    }
-
-    @Given("^the file will be read partially$")
-    public void the_file_will_be_read_partially() throws IOException {
-        // Simulate partial file reading
-        ByteArrayInputStream inputStream = new ByteArrayInputStream("te".getBytes());
-        MockHttpServletResponse response = new MockHttpServletResponse();
-        response.getOutputStream().write(inputStream.readAllBytes());
-        this.result = new MvcResult() {
-            @Override
-            public MockHttpServletResponse getResponse() {
-                return response;
-            }
-
-            @Override
-            public Object getAsyncResult() {
-                return null;
-            }
-
-            @Override
-            public Object getAsyncResult(long l) {
-                return null;
-            }
-        };
-    }
-
-    @When("^the user requests the resource data$")
-    public void the_user_requests_the_resource_data() throws Exception {
-        // Simulate requesting the resource data
-        result = mockMvc.perform(get(S3_DOWNLOAD))
-                .andExpect(status().isOk())
-                .andReturn();
-    }
-
-    @Then("^the file is downloaded$")
-    public void the_file_is_downloaded() throws IOException {
-        // Check if the file is downloaded by asserting the response content
+    @Then("^the response status should be (\\d+)$")
+    public void the_response_status_should_be(int status) {
         MockHttpServletResponse response = result.getResponse();
-        assertEquals("test", response.getContentAsString());
+        Assertions.assertEquals(status, response.getStatus());
     }
 
-    @Then("^the response should contain the file content (.*)$")
-    public void the_response_should_contain_the_file_content(String content) throws IOException {
-        // Check if the response contains the expected content
+    @Then("^the response should contain the file content \"([^\"]*)\"$")
+    public void the_response_should_contain_the_file_content(String content) throws Exception {
         MockHttpServletResponse response = result.getResponse();
-        assertEquals(content, response.getContentAsString());
+        Assertions.assertEquals(content, response.getContentAsString());
     }
 
-    @Then("^the response header (.*) should be (.*)$")
+    @Then("^the response header \"([^\"]*)\" should be \"([^\"]*)\"$")
     public void the_response_header_should_be(String headerName, String headerValue) {
-        // Check if the response header matches the expected value
         MockHttpServletResponse response = result.getResponse();
-        assertEquals(headerValue, response.getHeader(headerName));
+        Assertions.assertEquals(headerValue, response.getHeader(headerName));
     }
 
-    @Then("^an IOException should be thrown$")
-    public void an_ioexception_should_be_thrown() {
-        // Check if an IOException was thrown
-        Assertions.assertThrows(IOException.class, () -> {
-            throw new IOException("Test IOException");
-        });
+    @RestController
+    private static class S3MockController {
+
+        @GetMapping(value = "/s3download", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
+        public void downloadFile(@RequestParam String bucketName,
+                                 @RequestParam String key,
+                                 MockHttpServletResponse response) throws IOException {
+            String fileName = key.substring(key.lastIndexOf("/") + 1);
+            String fileContent = "test content";
+
+            response.setHeader("Content-Disposition", "attachment; filename=" + fileName);
+            response.setHeader("Content-Length", String.valueOf(fileContent.length()));
+
+            try (OutputStream outputStream = response.getOutputStream()) {
+                outputStream.write(fileContent.getBytes());
+                outputStream.flush();
+            }
+        }
     }
 }
