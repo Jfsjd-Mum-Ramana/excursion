@@ -3,12 +3,11 @@ import io.cucumber.java.en.Then;
 import io.cucumber.java.en.When;
 import org.junit.jupiter.api.Assertions;
 import org.mockito.InjectMocks;
-import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -25,15 +24,12 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+@ContextConfiguration(classes = {S3Controller.class})
 public class S3ControllerStepDefinitions {
 
     private RestTemplate restTemplate = new RestTemplate();
     private MockMvc mockMvc;
     private MvcResult result;
-
-    private MockHttpServletResponse response;
-
-    private static final String S3_DOWNLOAD = "/s3download";
 
     @Autowired
     private WebApplicationContext webApplicationContext;
@@ -41,22 +37,18 @@ public class S3ControllerStepDefinitions {
     @InjectMocks
     private S3Controller s3Controller;
 
-    @BeforeEach
-    public void setup() {
-        MockitoAnnotations.openMocks(this);
-        this.mockMvc = MockMvcBuilders.standaloneSetup(s3Controller).build();
-    }
-
     @Given("^an S3 bucket (.*) with file key (.*)$")
     public void an_s3_bucket_with_file_key(String bucketName, String key) throws Exception {
-        // No AWS S3 interaction here, simulate the setup
+        // Initialize the MockMvc object
+        MockitoAnnotations.openMocks(this);
+        this.mockMvc = MockMvcBuilders.standaloneSetup(s3Controller).build();
+
+        // Simulate the user requesting resource data
         result = mockMvc.perform(get(S3_DOWNLOAD)
                 .param("bucketName", bucketName)
                 .param("key", key))
                 .andExpect(status().isOk())
                 .andReturn();
-        response = new MockHttpServletResponse();
-        response.getOutputStream().write("test".getBytes());
     }
 
     @Given("^the S3 service will throw an IOException$")
@@ -64,20 +56,52 @@ public class S3ControllerStepDefinitions {
         // Simulate throwing an IOException
         S3ObjectInputStream inputStream = mock(S3ObjectInputStream.class);
         when(inputStream.read()).thenThrow(new IOException("Test IOException"));
-        response = new MockHttpServletResponse();
+        MockHttpServletResponse response = new MockHttpServletResponse();
         try {
             inputStream.read();
         } catch (IOException e) {
             response.sendError(500, "Test IOException");
         }
+        this.result = new MvcResult() {
+            @Override
+            public MockHttpServletResponse getResponse() {
+                return response;
+            }
+
+            @Override
+            public Object getAsyncResult() {
+                return null;
+            }
+
+            @Override
+            public Object getAsyncResult(long l) {
+                return null;
+            }
+        };
     }
 
     @Given("^the file will be read partially$")
     public void the_file_will_be_read_partially() throws IOException {
         // Simulate partial file reading
         ByteArrayInputStream inputStream = new ByteArrayInputStream("te".getBytes());
-        response = new MockHttpServletResponse();
+        MockHttpServletResponse response = new MockHttpServletResponse();
         response.getOutputStream().write(inputStream.readAllBytes());
+        this.result = new MvcResult() {
+            @Override
+            public MockHttpServletResponse getResponse() {
+                return response;
+            }
+
+            @Override
+            public Object getAsyncResult() {
+                return null;
+            }
+
+            @Override
+            public Object getAsyncResult(long l) {
+                return null;
+            }
+        };
     }
 
     @When("^the user requests the resource data$")
@@ -90,19 +114,22 @@ public class S3ControllerStepDefinitions {
 
     @Then("^the file is downloaded$")
     public void the_file_is_downloaded() throws IOException {
-        // No need to invoke the real API, simulate the call and check the response
+        // Check if the file is downloaded by asserting the response content
+        MockHttpServletResponse response = result.getResponse();
         assertEquals("test", response.getContentAsString());
     }
 
     @Then("^the response should contain the file content (.*)$")
     public void the_response_should_contain_the_file_content(String content) throws IOException {
         // Check if the response contains the expected content
+        MockHttpServletResponse response = result.getResponse();
         assertEquals(content, response.getContentAsString());
     }
 
     @Then("^the response header (.*) should be (.*)$")
     public void the_response_header_should_be(String headerName, String headerValue) {
         // Check if the response header matches the expected value
+        MockHttpServletResponse response = result.getResponse();
         assertEquals(headerValue, response.getHeader(headerName));
     }
 
