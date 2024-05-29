@@ -314,3 +314,152 @@ public class CsvTransformerJob {
     }
 
 }
+
+
+org.vdsi.space.collections.customcsvdatatransformer.csvtojsontransformer.CsvTransformerJob - Error while trying to transform from CSV to JSON {}
+java.lang.ArrayIndexOutOfBoundsException: Index 1 out of bounds for length 1
+	at org.vdsi.space.collections.customcsvdatatransformer.csvtojsontransformer.CsvtoJsonMRFCnTransformer.flatMap(CsvtoJsonMRFCnTransformer.java:52)
+	at org.vdsi.space.collections.customcsvdatatransformer.csvtojsontransformer.CsvTransformerJob$2.flatMap(CsvTransformerJob.java:129)
+	at org.vdsi.space.collections.customcsvdatatransformer.csvtojsontransformer.CsvTransformerJob$2.flatMap(CsvTransformerJob.java:107)
+	at org.apache.flink.streaming.api.operators.StreamFlatMap.processElement(StreamFlatMap.java:47)
+	at org.apache.flink.streaming.runtime.tasks.CopyingChainingOutput.pushToOperator(CopyingChainingOutput.java:75)
+	at org.apache.flink.streaming.runtime.tasks.CopyingChainingOutput.collect(CopyingChainingOutput.java:50)
+	at org.apache.flink.streaming.runtime.tasks.CopyingChainingOutput.collect(CopyingChainingOutput.java:29)
+	at org.apache.flink.streaming.api.operators.TimestampedCollector.collect(TimestampedCollector.java:51)
+	at org.vdsi.space.collections.customcsvdatatransformer.csvtojsontransformer.CsvTransformerJob$3.flatMap(CsvTransformerJob.java:169)
+	at org.vdsi.space.collections.customcsvdatatransformer.csvtojsontransformer.CsvTransformerJob$3.flatMap(CsvTransformerJob.java:159)
+	at org.apache.flink.streaming.api.operators.StreamFlatMap.processElement(StreamFlatMap.java:47)
+	at org.apache.flink.streaming.runtime.tasks.CopyingChainingOutput.pushToOperator(CopyingChainingOutput.java:75)
+	at org.apache.flink.streaming.runtime.tasks.CopyingChainingOutput.collect(CopyingChainingOutput.java:50)
+	at org.apache.flink.streaming.runtime.tasks.CopyingChainingOutput.collect(CopyingChainingOutput.java:29)
+	at org.apache.flink.streaming.api.operators.StreamMap.processElement(StreamMap.java:38)
+	at org.apache.flink.streaming.runtime.tasks.CopyingChainingOutput.pushToOperator(CopyingChainingOutput.java:75)
+	at org.apache.flink.streaming.runtime.tasks.CopyingChainingOutput.collect(CopyingChainingOutput.java:50)
+	at org.apache.flink.streaming.runtime.tasks.CopyingChainingOutput.collect(CopyingChainingOutput.java:29)
+	at org.apache.flink.streaming.runtime.tasks.SourceOperatorStreamTask$AsyncDataOutputToOutput.emitRecord(SourceOperatorStreamTask.java:309)
+	at org.apache.flink.streaming.api.operators.source.SourceOutputWithWatermarks.collect(SourceOutputWithWatermarks.java:110)
+	at org.apache.flink.connector.kafka.source.reader.KafkaRecordEmitter$SourceOutputWrapper.collect(KafkaRecordEmitter.java:67)
+	at org.apache.flink.api.common.serialization.DeserializationSchema.deserialize(DeserializationSchema.java:84)
+	at org.apache.flink.connector.kafka.source.reader.deserializer.KafkaValueOnlyDeserializationSchemaWrapper.deserialize(KafkaValueOnlyDeserializationSchemaWrapper.java:51)
+	at org.apache.flink.connector.kafka.source.reader.KafkaRecordEmitter.emitRecord(KafkaRecordEmitter.java:53)
+	at org.apache.flink.connector.kafka.source.reader.KafkaRecordEmitter.emitRecord(KafkaRecordEmitter.java:33)
+	at org.apache.flink.connector.base.source.reader.SourceReaderBase.pollNext(SourceReaderBase.java:160)
+	at org.apache.flink.streaming.api.operators.SourceOperator.emitNext(SourceOperator.java:419)
+	at org.apache.flink.streaming.runtime.io.StreamTaskSourceInput.emitNext(StreamTaskSourceInput.java:68)
+	at org.apache.flink.streaming.runtime.io.StreamOneInputProcessor.processInput(StreamOneInputProcessor.java:65)
+	at org.apache.flink.streaming.runtime.tasks.StreamTask.processInput(StreamTask.java:562)
+	at org.apache.flink.streaming.runtime.tasks.mailbox.MailboxProcessor.runMailboxLoop(MailboxProcessor.java:231)
+	at org.apache.flink.streaming.runtime.tasks.StreamTask.runMailboxLoop(StreamTask.java:858)
+	at org.apache.flink.streaming.runtime.tasks.StreamTask.invoke(StreamTask.java:807)
+	at org.apache.flink.runtime.taskmanager.Task.runWithSystemExitMonitoring(Task.java:953)
+	at org.apache.flink.runtime.taskmanager.Task.restoreAndInvoke(Task.java:932)
+	at org.apache.flink.runtime.taskmanager.Task.doRun(Task.java:746)
+	at org.apache.flink.runtime.taskmanager.Task.run(Task.java:562)
+
+
+
+
+
+package org.vdsi.space.collections.customcsvdatatransformer.csvtojsontransformer;
+
+import org.apache.flink.api.common.accumulators.IntCounter;
+import org.apache.flink.api.java.tuple.Tuple2;
+import org.json.JSONObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.vdsi.space.collections.customcsvdatatransformer.csvtojsontransformer.enums.JobStatus;
+import org.vdsi.space.collections.customcsvdatatransformer.csvtojsontransformer.utilities.PublishAuditMessage;
+import org.vdsi.space.collections.lucene.CollectionAudit;
+
+import java.util.ArrayList;
+import java.util.List;
+
+public class CsvtoJsonMRFCnTransformer {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(CsvTransformerJob.class);
+    PublishAuditMessage pubAuditMsg = new PublishAuditMessage();
+    private String[] headers;
+    private String fileName;
+    private IntCounter successIntCounter = new IntCounter();
+    private IntCounter failureIntCounter = new IntCounter();
+
+    public CsvtoJsonMRFCnTransformer(String fileName) {
+        this.fileName = fileName;
+    }
+
+    //@Override
+//	    public void open(Configuration parameters) throws Exception {
+//	        getRuntimeContext().addAccumulator("successIntCounter", this.successIntCounter);
+//	        getRuntimeContext().addAccumulator("failureIntCounter", this.failureIntCounter);
+//	    }
+
+    //@Override
+    public List<Tuple2<JSONObject, CollectionAudit>> flatMap(Tuple2<String, CollectionAudit> tupleValue) throws Exception {
+        List<Tuple2<JSONObject, CollectionAudit>> result = new ArrayList<>();
+
+
+        CollectionAudit message = tupleValue.f1;
+        String csvContent = tupleValue.f0;
+        String filePath = message.getInputFilePath();
+        String fileType = message.getFileType();
+        String[] pathArr = filePath.split("/");
+        String fileName = pathArr[pathArr.length - 1];
+//			fileName = Constants.FILE_TYPE.getOrDefault(fileType, "");
+
+        try {
+            if (message != null && csvContent != null) {
+                String[] lines = csvContent.split(System.lineSeparator());
+
+                String systemIdLine = lines[0];
+                String nodeIpLine = lines[1];
+
+                String systemId = systemIdLine.substring(systemIdLine.indexOf(":") + 1).trim();
+                String nodeIp = nodeIpLine.substring(nodeIpLine.indexOf(":") + 1).trim();
+
+                headers = lines[2].split(",");
+
+
+                for (int i = 3; i < lines.length; i++) {
+                    String str = lines[i];
+                    String[] arr = str.split(",");
+
+                    if (headers == null || headers.length != arr.length) {
+                        this.failureIntCounter.add(1);
+                        continue;
+                    }
+
+                    JSONObject obj = new JSONObject();
+                    obj.put("#SystemId", systemId);
+                    obj.put("#NodeIP", nodeIp);
+                    // Add FILENAME to JSONOBJECT
+                    obj.put("FILENAME", fileName);
+
+                    for (int j = 0; j < arr.length; j++) {
+                        String jsonkey = headers[j].trim().replace("\"", "");
+                        String jsonvalue = arr[j].trim().replace("\"", "");
+                        obj.put(jsonkey, jsonvalue);
+                    }
+                    this.successIntCounter.add(1);
+                    //out.collect(Tuple2.of(obj, message));
+
+                }
+                LOGGER.info("Completed CSV to JSON transformation");
+            }
+        } catch (Exception e) {
+            LOGGER.info("Error while trying to transform from CSV to JSON {}", e);
+            pubAuditMsg.publishFlinkConversionStatus(message, null, JobStatus.FLINK_JOB_FAILED);
+        }
+        return result;
+    }
+
+    public Integer getSuccessIntCounter() {
+        return this.successIntCounter.getLocalValue();
+    }
+
+    public Integer getFailureIntCounter() {
+        return this.successIntCounter.getLocalValue();
+    }
+
+
+}
+
