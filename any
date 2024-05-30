@@ -9,7 +9,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.zip.GZIPInputStream;
 
-
 public class ZipUtil {
 
     public static boolean isZipFile(String filePath) {
@@ -113,100 +112,6 @@ public class ZipUtil {
 
 
 
-public boolean retrieveData(SpaceCollector sp, String dateReceived, String auditTopic) throws Exception {
-        LOGGER.info("Entered SSH service");
-        String sshUsername = sp.getUserName();
-        String sshHost = sp.getUrl();
-        String sshPassword = sp.getPassword();
-        int port = sp.getPort().intValue();
-
-        JSch jsch = getJsch(sshHost, sshPassword);
-
-        Session session = getSession(sshUsername, sshHost, sshPassword, port, jsch);
-        session.connect();
-
-        ChannelSftp channelSftp = null;
-        try {
-            String remoteDirectory = FileUtil.getDirectory(sp.getInputFilePath());
-            String localDirectory = FileUtil.getDirectory(sp.getOutputFilePath());
-            LOGGER.info("Remote Directory: " + remoteDirectory + " Local Directory: " + localDirectory);
-
-            channelSftp = getChannelSftp(session, remoteDirectory);
-            Vector<ChannelSftp.LsEntry> files = channelSftp.ls(".");
-
-            Map<String, String> auditStatusMap = getAuditStatusMap(files, remoteDirectory);
-
-            // Download each file to the local directory
-            for (ChannelSftp.LsEntry file : files) {
-                if (!file.getAttrs().isDir()) {
-                    String filePath = remoteDirectory + "/" + file.getFilename();
-                    retrieveAttributesOfRemoteFile(channelSftp, file, remoteDirectory, sp.getInputFilePath());
-
-                    String status = auditStatusMap.get(filePath);
-                    if (status == null || "COLLECTION_FAILED".equals(status)) {
-                        try {
-                            String outputFile = localDirectory + "/" + file.getFilename();
-                            LOGGER.info("Input File Path: " + filePath + " Output File Path: " + outputFile);
-
-                            // Download file
-                            FileUtil.downloadFile(outputStreamCreator.create(outputFile), channelSftp.get(file.getFilename()),
-                                    filePath, outputFile, sp.getOutputFilePath());
-
-                            List<String> filesList = new ArrayList<>();
-                            if (ZipUtil.isZipFile(outputFile)) {
-                                String fileNameWithoutExtn = FileUtil.getFileNameWithoutExtn(filePath);
-                                FileUtil.createDirectoryIfNotExists(sp.getOutputFilePath() + "/" + fileNameWithoutExtn);
-                                ZipUtil.extract(outputFile, sp.getOutputFilePath() + "/" + fileNameWithoutExtn);
-                                filesList.addAll(FileUtil.readFilesInDirectory(sp.getOutputFilePath() + "/" + fileNameWithoutExtn));
-                            } else {
-                                filesList.add(outputFile);
-                            }
-
-                            // Process each file (including both zip contents and non-zip files)
-                            for (String fileName : filesList) {
-                                Path insideFilePath = Paths.get(fileName);
-                                Path folderPath = Paths.get(sp.getOutputFilePath()).relativize(insideFilePath.getParent());
-                                String unixBasedPath = folderPath.toString().replace("\\", "/");
-                                String key = String.format("%s/%s/%s/%s/%s",
-                                        ProfileCheckConfig.activeProfile,
-                                        sp.getFileType(),
-                                        sshHost,
-                                        dateUtil.getDateInMMddyyyy(),
-                                        !StringUtils.isBlank(unixBasedPath)
-                                                ? (unixBasedPath.toString() + "/" + insideFilePath.getFileName())
-                                                : insideFilePath.getFileName());
-
-                                LOGGER.info("Filename: " + fileName + " Key: " + key);
-                                System.out.println("**************************");
-                                System.out.println("Filename: " + fileName);
-                                System.out.println("Key: " + key);
-                                System.out.println("folderPath: " + folderPath);
-                                System.out.println("Inside File Path: " + insideFilePath);
-                                System.out.println("**************************");
-                                s3Service.pushToS3(fileName, key);
-                                CollectionAudit audit = createAuditObject(sp, key, JobStatus.COLLECTION_SUCCESSFUL.toString(), "");
-                                kafkaProducerService.writeMessage(collectorUtil.buildAuditQueueJSON(audit), "", auditTopic);
-                            }
-                        } catch (Exception e) {
-                            CollectionAudit audit = createAuditObject(sp, filePath, JobStatus.COLLECTION_FAILED.toString(), e.getMessage());
-                            kafkaProducerService.writeMessage(collectorUtil.buildAuditQueueJSON(audit), "", auditTopic);
-                            LOGGER.error("Error on retrieveData {}", e);
-                        }
-                    }
-                } else {
-                    LOGGER.info("Directory found: " + file.getFilename());
-                }
-            }
-        } finally {
-            if (channelSftp != null) {
-                channelSftp.disconnect();
-            }
-            if (session != null) {
-                session.disconnect();
-            }
-        }
-        return true;
-    }
 
 
 package org.vdsi.space.collections.customsshcollector.util;
@@ -222,7 +127,6 @@ import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 public class FileUtil {
 
@@ -239,6 +143,12 @@ public class FileUtil {
                     }
                     return FileVisitResult.CONTINUE;
                 }
+
+                @Override
+                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                    fileList.add(dir.toString());
+                    return FileVisitResult.CONTINUE;
+                }
             });
             return fileList;
         } catch (IOException e) {
@@ -247,7 +157,7 @@ public class FileUtil {
     }
 
     public static void transferFile(InputStream inputStream, OutputStream outputStream, String outputFile)
-            throws IOException, IOException {
+            throws IOException {
         byte[] buffer = new byte[1024];
         int bytesRead;
         while ((bytesRead = inputStream.read(buffer)) != -1) {
@@ -256,6 +166,7 @@ public class FileUtil {
         outputStream.close();
         inputStream.close();
     }
+
     public static String getDirectory(String sp) {
         String remoteDirectory = sp;
         if (!remoteDirectory.endsWith("/")) {
@@ -314,3 +225,117 @@ public class FileUtil {
     }
 }
 
+
+
+
+
+public boolean retrieveData(SpaceCollector sp, String dateReceived, String auditTopic) throws Exception {
+    LOGGER.info("Entered SSH service");
+    String sshUsername = sp.getUserName();
+    String sshHost = sp.getUrl();
+    String sshPassword = sp.getPassword();
+    int port = sp.getPort().intValue();
+
+    JSch jsch = new JSch();
+    Session session = null;
+    ChannelSftp channelSftp = null;
+
+    try {
+        session = jsch.getSession(sshUsername, sshHost, port);
+        session.setPassword(sshPassword);
+        session.setConfig("StrictHostKeyChecking", "no");
+        session.connect();
+
+        String remoteDirectory = FileUtil.getDirectory(sp.getInputFilePath());
+        String localDirectory = FileUtil.getDirectory(sp.getOutputFilePath());
+        LOGGER.info("Remote Directory: " + remoteDirectory + " Local Directory: " + localDirectory);
+
+        channelSftp = (ChannelSftp) session.openChannel("sftp");
+        channelSftp.connect();
+
+        retrieveDirectoryContents(sp, auditTopic, remoteDirectory, localDirectory, channelSftp, dateReceived);
+
+    } finally {
+        if (channelSftp != null) {
+            channelSftp.disconnect();
+        }
+        if (session != null) {
+            session.disconnect();
+        }
+    }
+    return true;
+}
+
+private void retrieveDirectoryContents(SpaceCollector sp, String auditTopic, String remoteDirectory,
+                                       String localDirectory, ChannelSftp channelSftp, String dateReceived) throws Exception {
+    Vector<ChannelSftp.LsEntry> files = channelSftp.ls(remoteDirectory);
+
+    Map<String, String> auditStatusMap = getAuditStatusMap(files, remoteDirectory);
+
+    // Download each file to the local directory
+    for (ChannelSftp.LsEntry file : files) {
+        if (!file.getAttrs().isDir()) {
+            String filePath = remoteDirectory + "/" + file.getFilename();
+            retrieveAttributesOfRemoteFile(channelSftp, file, remoteDirectory, sp.getInputFilePath());
+
+            String status = auditStatusMap.get(filePath);
+            if (status == null || "COLLECTION_FAILED".equals(status)) {
+                try {
+                    String outputFile = localDirectory + "/" + file.getFilename();
+                    LOGGER.info("Input File Path: " + filePath + " Output File Path: " + outputFile);
+
+                    // Download file
+                    OutputStream outputStream = FileUtil.createOutputStream(outputFile);
+                    channelSftp.get(filePath, outputStream);
+
+                    List<String> filesList = new ArrayList<>();
+                    if (ZipUtil.isZipFile(outputFile)) {
+                        String fileNameWithoutExtn = FileUtil.getFileNameWithoutExtn(filePath);
+                        FileUtil.createDirectoryIfNotExists(sp.getOutputFilePath() + "/" + fileNameWithoutExtn);
+                        ZipUtil.extract(outputFile, sp.getOutputFilePath() + "/" + fileNameWithoutExtn);
+                        filesList.addAll(FileUtil.readFilesInDirectory(sp.getOutputFilePath() + "/" + fileNameWithoutExtn));
+                    } else {
+                        filesList.add(outputFile);
+                    }
+
+                    // Process each file (including both zip contents and non-zip files)
+                    for (String fileName : filesList) {
+                        Path insideFilePath = Paths.get(fileName);
+                        Path folderPath = Paths.get(sp.getOutputFilePath()).relativize(insideFilePath.getParent());
+                        String unixBasedPath = folderPath.toString().replace("\\", "/");
+                        String key = String.format("%s/%s/%s/%s/%s",
+                                ProfileCheckConfig.activeProfile,
+                                sp.getFileType(),
+                                sshHost,
+                                dateUtil.getDateInMMddyyyy(),
+                                !StringUtils.isBlank(unixBasedPath)
+                                        ? (unixBasedPath.toString() + "/" + insideFilePath.getFileName())
+                                        : insideFilePath.getFileName());
+
+                        LOGGER.info("Filename: " + fileName + " Key: " + key);
+                        System.out.println("**************************");
+                        System.out.println("Filename: " + fileName);
+                        System.out.println("Key: " + key);
+                        System.out.println("folderPath: " + folderPath);
+                        System.out.println("Inside File Path: " + insideFilePath);
+                        System.out.println("**************************");
+                        s3Service.pushToS3(fileName, key);
+                        CollectionAudit audit = createAuditObject(sp, key, JobStatus.COLLECTION_SUCCESSFUL.toString(), "");
+                        kafkaProducerService.writeMessage(collectorUtil.buildAuditQueueJSON(audit), "", auditTopic);
+                    }
+                } catch (Exception e) {
+                    CollectionAudit audit = createAuditObject(sp, filePath, JobStatus.COLLECTION_FAILED.toString(), e.getMessage());
+                    kafkaProducerService.writeMessage(collectorUtil.buildAuditQueueJSON(audit), "", auditTopic);
+                    LOGGER.error("Error on retrieveData {}", e);
+                }
+            }
+        } else {
+            LOGGER.info("Directory found: " + file.getFilename());
+            if (!".".equals(file.getFilename()) && !"..".equals(file.getFilename())) {
+                String subDirPath = remoteDirectory + "/" + file.getFilename();
+                String subLocalDirPath = localDirectory + "/" + file.getFilename();
+                retrieveDirectoryContents(sp, auditTopic, subDirPath, subLocalDirPath, channelSftp, dateReceived); // Recursively retrieve nested directories
+            }
+        }
+    }
+}
