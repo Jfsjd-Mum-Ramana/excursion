@@ -323,3 +323,36 @@ public class ZipUtil {
         }
     }
 }
+
+
+
+As a developer,
+I want to enable folder traversal in the custom-ssh-collector,
+So that when our collector connects to a host and tries to find files inside it,
+we can find the file from the nested directory structure and upload the individual files to S3.
+
+ 
+
+folder1 -> S-folder-1
+                    -> file1
+                    -> file2
+                    -> file3
+                    -> file4.gz
+        -> S-folder-2
+                    -> file1
+                    -> file2
+                    -> file3
+                    -> file4.gz
+        -> S-folder-3
+                    -> file1
+                    -> file2
+                    -> file3
+                    -> file4.gz
+        -> S-folder-4
+                    -> file1
+                    -> file2
+                    -> file3
+                    -> file4.gz
+                    ->file5.tar.gz 
+
+Enable Folder Traversal in custom-ssh-collector
