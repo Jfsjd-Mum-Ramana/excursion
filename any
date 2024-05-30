@@ -1,465 +1,327 @@
-package org.vdsi.space.collections.customcsvdatatransformer.csvtojsontransformer;
+public class ZipUtil {
 
+    public static boolean isZipFile(String filePath) {
+        String extn = ZipUtil.getFileExtension(filePath);
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.flink.api.common.JobID;
-import org.apache.flink.api.common.eventtime.WatermarkStrategy;
-import org.apache.flink.api.common.functions.FlatMapFunction;
-import org.apache.flink.api.common.functions.MapFunction;
-import org.apache.flink.api.common.functions.RichMapFunction;
-import org.apache.flink.api.common.serialization.SimpleStringSchema;
-import org.apache.flink.api.common.typeinfo.Types;
-import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.connector.base.DeliveryGuarantee;
-import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
-import org.apache.flink.connector.kafka.sink.KafkaSink;
-import org.apache.flink.connector.kafka.source.KafkaSource;
-import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
-import org.apache.flink.connector.pulsar.common.config.PulsarOptions;
-import org.apache.flink.connector.pulsar.sink.PulsarSink;
-import org.apache.flink.core.execution.JobClient;
-import org.apache.flink.streaming.api.datastream.DataStream;
-import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.util.Collector;
-import org.json.JSONObject;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.vdsi.space.collections.customcsvdatatransformer.csvtojsontransformer.CsvtoJsonConversion.CsvtoJsonGigamonAndSAMSUNGFEMSnTransformer;
-import org.vdsi.space.collections.customcsvdatatransformer.csvtojsontransformer.CsvtoJsonConversion.CsvtoJsonTonesTransformer;
-import org.vdsi.space.collections.customcsvdatatransformer.csvtojsontransformer.enums.JobStatus;
-import org.vdsi.space.collections.customcsvdatatransformer.csvtojsontransformer.exception.CsvToJsonConverterException;
-import org.vdsi.space.collections.customcsvdatatransformer.csvtojsontransformer.services.KafkaProducerService;
-import org.vdsi.space.collections.customcsvdatatransformer.csvtojsontransformer.utilities.AppProperties;
-import org.vdsi.space.collections.customcsvdatatransformer.csvtojsontransformer.utilities.ClassicHttpClient;
-import org.vdsi.space.collections.customcsvdatatransformer.csvtojsontransformer.utilities.Constants;
-import org.vdsi.space.collections.customcsvdatatransformer.csvtojsontransformer.utilities.CsvDataTransformerUtil;
-import org.vdsi.space.collections.customcsvdatatransformer.csvtojsontransformer.utilities.PublishAuditMessage;
-import org.vdsi.space.collections.lucene.CollectionAudit;
+        String[] array = {"zip", "tar", "tar.gz", "gz"};
+        List<String> list = Arrays.asList(array);
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Properties;
-
-public class CsvTransformerJob {
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(CsvTransformerJob.class);
-    public static KafkaProducerService kProducerService = new KafkaProducerService();
-    static AppProperties appProp = AppProperties.getInstance();
-    static ClassicHttpClient classicHttpClient = new ClassicHttpClient();
-    static PublishAuditMessage pubAuditMsg = new PublishAuditMessage();
-    static String flinkJobName = "Csv to JSON Transformer Job";
-
-    public void execute() throws Exception {
-
-        String bootstrapServer = appProp.getAppProperties("spring.kafka.consumer.bootstrap-servers");
-        String auditTopic = appProp.getAppProperties("spring.kafka.audit-topic-name");
-        String groupId = appProp.getAppProperties("spring.kafka.consumer.group-id");
-        String offsets = appProp.getAppProperties("spring.kafka.consumer.auto-offset-reset");
-
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-        try {
-            CollectionAudit collectionAudit = getCollectionAudit(bootstrapServer);
-            try {
-                CsvDataTransformerUtil.validateKafka(collectionAudit.getBootstrapServer(), collectionAudit.getOutputFilePath(), auditTopic);
-            } catch (Exception e) {
-                LOGGER.error("Error in CsvTransformerApplication main connecting to Kafka or topic not available {}", e);
-            }
-
-            LOGGER.info("bootstrapServer {}, auditTopic {}, groupId {}, offsets {}", bootstrapServer, auditTopic, groupId, offsets);
-            DataStream<CollectionAudit> collectionAuditStream = getCollectionAuditStream(env, bootstrapServer, auditTopic, groupId, offsets, collectionAudit);
-
-            DataStream<Tuple2<String, CollectionAudit>> csvDataStream = getCsvDataStream(collectionAuditStream);
-            DataStream<Tuple2<JSONObject, CollectionAudit>> jsonNodeStream = getJsonNodeStream(csvDataStream);
-            DataStream<Tuple2<String, CollectionAudit>> finalDataStream = getFinalDataStream(jsonNodeStream);
-            if (finalDataStream != null) {
-                publishTransformedData(finalDataStream, null);
-            }
-
-            JobClient jobClient = env.executeAsync(flinkJobName);
-            JobID jobId = jobClient.getJobID();
-            LOGGER.info("JobID is********************** {}", jobId);
-        } catch (Exception e) {
-            LOGGER.error("Error while executing CsvTransformerJob {}", e);
-        }
+        return list.contains(extn) ? true : false;
     }
-
-    private static DataStream<Tuple2<String, CollectionAudit>> getFinalDataStream(DataStream<Tuple2<JSONObject, CollectionAudit>> jsonNodeStream) {
-        //return jsonNodeStream.map(new MapFunction<Tuple2<JSONObject, CollectionAudit>, Tuple2<String, CollectionAudit>>()){
-        // Use map function on jsonNodeStream to get finalDataStream
-        DataStream<Tuple2<String, CollectionAudit>> finalDataStream = jsonNodeStream.map(new MapFunction<Tuple2<JSONObject, CollectionAudit>, Tuple2<String, CollectionAudit>>() {
-            @Override
-            public Tuple2<String, CollectionAudit> map(Tuple2<JSONObject, CollectionAudit> jsonObject) {
-                LOGGER.debug("jsonNodeStream json: {}", jsonObject.f0);
-                try {
-                    return Tuple2.of(new JsonEncapsulator().map(jsonObject.f0), jsonObject.f1);
-                } catch (Exception e) {
-                    LOGGER.error("Error while encapsulating the json record", e);
-                    pubAuditMsg.publishFlinkConversionStatus(jsonObject.f1, null, JobStatus.FLINK_JOB_FAILED);
-                    return null;
-                }
-            }
-        }).name("EncapsulateJson").returns(Types.TUPLE(Types.STRING, Types.POJO(CollectionAudit.class)));
-        return finalDataStream;
-    }
-
-    private static DataStream<Tuple2<JSONObject, CollectionAudit>> getJsonNodeStream(DataStream<Tuple2<String, CollectionAudit>> csvDataStream) {
-        return csvDataStream.flatMap(new FlatMapFunction<Tuple2<String, CollectionAudit>, Tuple2<JSONObject, CollectionAudit>>() {
-            @Override
-            public void flatMap(Tuple2<String, CollectionAudit> value, Collector<Tuple2<JSONObject, CollectionAudit>> out) throws Exception {
-                CollectionAudit collectionAudit = value.f1;
-                String fileType = collectionAudit.getFileType();
-                String inputFilePath = collectionAudit.getInputFilePath();
-                String[] pathArr = inputFilePath.split("/");
-                String fileName = pathArr[pathArr.length - 1];
-
-                List<Tuple2<JSONObject, CollectionAudit>> transformedData = new ArrayList<>();
-                switch (fileType) {
-                    case "CSV_Gigamon":
-                    case "CSV_SAMSUNGFEMSn":
-                        transformedData = new CsvtoJsonGigamonAndSAMSUNGFEMSnTransformer(fileName).flatMap(value);
-                        break;
-                    case "CSV_OracleSTPn":
-                        transformedData = new CsvtoJsonOracleSTPnTransformer(fileName).flatMap(value);
-                        break;
-                    case "CSV_Tones":
-                        transformedData = new CsvtoJsonTonesTransformer(fileName).flatMap(value);
-                        break;
-                    case "CSV_MRFCn":
-                        transformedData = new CsvtoJsonMRFCnTransformer(fileName).flatMap(value);
-                        break;
-                    case "CSV_RTROCSn":
-                        transformedData = new CsvtoJsonRTROCSnTransformer(fileName).flatMap(value);
-                        break;
-                    case "CSV_DRAn":
-                        transformedData = new CsvtoJsonRTROCSnTransformer(fileName).flatMap(value);
-                        break;
-                    case "CSV_RCSMESSAGINGn":
-                        transformedData = new CsvtoJsonRCSMESSAGINGnTransformer(fileName).flatMap(value);
-                        break;
-                    case "CSV_CISCO":
-                        transformedData = new CsvtoJsonCISCOTransformer(fileName).flatMap(value);
-                        break;
-                    case "CSV_AFFIRMEDn":
-                        transformedData = new CsvtoJsonAFFIRMEDnTransformer(fileName).flatMap(value);
-                        break;
-                    default:
-                        transformedData = new CsvtoJsonConversion(fileName).flatMap(value);
-                }
-                for (Tuple2<JSONObject, CollectionAudit> data : transformedData) {
-                    out.collect(data);
-                }
-            }
-        }).name("ConvertCsvToJson");
-    }
-
-
-    private DataStream<Tuple2<String, CollectionAudit>> getCsvDataStream(DataStream<CollectionAudit> collectionAuditStream) {
-        // Use flatMap function on collectionAuditStream to get csvContent
-        DataStream<Tuple2<String, CollectionAudit>> csvDataStream = collectionAuditStream.flatMap(new FlatMapFunction<CollectionAudit, Tuple2<String, CollectionAudit>>() {
-            @Override
-            public void flatMap(CollectionAudit collectionAudit, Collector<Tuple2<String, CollectionAudit>> out) {
-                try {
-                    if (collectionAudit != null && (collectionAudit.getInputFilePath() != null && !collectionAudit.getInputFilePath().isEmpty())) {
-                        LOGGER.debug("collectionAudit inside Stream{}", collectionAudit);
-                        String csvContent = classicHttpClient.getData(collectionAudit.getInputFilePath());
-                        if (csvContent.contains("NoSuchKey")) {
-                            throw new CsvToJsonConverterException("No such File in S3 " + collectionAudit.getInputFilePath());
-                        }
-                        out.collect(Tuple2.of(csvContent, collectionAudit));
-                    }
-                } catch (Exception e) {
-                    LOGGER.error("Error while reading record from S3 {}", e);
-                    pubAuditMsg.publishFlinkConversionStatus(collectionAudit, null, JobStatus.FLINK_JOB_FAILED);
-                }
-            }
-        }).name("ReadFileFromS3");
-        return csvDataStream;
-    }
-
-    private DataStream<CollectionAudit> getCollectionAuditStream(StreamExecutionEnvironment env, String bootstrapServer, String auditTopic, String groupId, String offsets, CollectionAudit collectionAudit) {
-        KafkaSource<String> source = getKafkaSource(bootstrapServer, auditTopic, groupId, offsets);
-        DataStream<String> stream = env.fromSource(source, WatermarkStrategy.noWatermarks(), "Kafka Source");
-
-        // Convert the input stream to CollectionAudit objects
-        DataStream<CollectionAudit> collectionAuditStream = stream.map(new MapFunction<String, CollectionAudit>() {
-            @Override
-            public CollectionAudit map(String value) {
-                LOGGER.debug("KafkaSource value{}", value);
-                try {
-                    return CsvTransformerJobUtil.getCollectionAudit(value, collectionAudit);
-                } catch (Exception e) {
-                    LOGGER.info("Error while Converting the input stream to CollectionAudit objects : {}", e);
-                    try {
-                        pubAuditMsg.publishFlinkConversionStatus(new ObjectMapper().readValue(value, CollectionAudit.class), null, JobStatus.FLINK_JOB_FAILED);
-                    } catch (JsonProcessingException e1) {
-                        LOGGER.error("Error while publishing Audit msg inside collectionAuditStream", e1);
-                    }
-                    return null;
-                }
-            }
-        }).name("InputToAuditObjects");
-        return collectionAuditStream;
-    }
-
-
-    private KafkaSource<String> getKafkaSource(String bootstrapServer, String auditTopic, String groupId, String offsets) {
-        KafkaSource<String> source = KafkaSource.<String>builder().setBootstrapServers(bootstrapServer).setTopics(auditTopic).setGroupId(groupId).setStartingOffsets(getOffsetsInitializer(offsets))
-                // .setValueOnlyDeserializer(deserializationSchema)
-                .setValueOnlyDeserializer(new SimpleStringSchema()).build();
-        return source;
-    }
-
-    private CollectionAudit getCollectionAudit(String bootstrapServer) {
-        CollectionAudit collectionAudit = new CollectionAudit();
-        collectionAudit.setOutputFilePath(appProp.getAppProperties("spring.kafka.data-topic-name"));
-        collectionAudit.setFlinkURL(appProp.getAppProperties("flink.api.url"));
-        collectionAudit.setBootstrapServer(bootstrapServer);
-        return collectionAudit;
-    }
-
-    private OffsetsInitializer getOffsetsInitializer(String offsets) {
-        OffsetsInitializer offsetsInitializer;
-        if ("earliest".equals(offsets)) {
-            offsetsInitializer = OffsetsInitializer.earliest();
-        } else if ("latest".equals(offsets)) {
-            offsetsInitializer = OffsetsInitializer.latest();
+//extracting
+    public static void extract(String filePath, String destDir) throws IOException {
+        String fileExtension = getFileExtension(filePath);
+        if ("tar".equalsIgnoreCase(fileExtension)) {
+            untar(filePath, destDir);
+        } else if ("tar.gz".equalsIgnoreCase(fileExtension)) {
+            unGzipAndUntar(filePath, destDir);
+        } else if ("gz".equalsIgnoreCase(fileExtension)) {
+            unzipGZ(filePath, destDir);
         } else {
-            throw new IllegalArgumentException("Invalid offset: " + offsets);
+            System.err.println("Unsupported file type: " + fileExtension);
+            throw new IOException("Unsupported file type: " + fileExtension);
         }
-        return offsetsInitializer;
     }
 
-    public KafkaProducerService getKProducerService() {
-        return kProducerService;
+    private static String getFileExtension(String filePath) {
+        if (filePath.endsWith(".tar.gz")) {
+            return "tar.gz";
+        } else if (filePath.endsWith(".gz")) {
+            return "gz";
+        } else {
+            return filePath.substring(filePath.lastIndexOf('.') + 1);
+        }
     }
 
-    public void publishTransformedData(DataStream<Tuple2<String, CollectionAudit>> encapsulatedJsonStream, String jobId) {
+    public static void untar(String tarFilePath, String destDir) throws IOException {
+        try (TarArchiveInputStream tarInput = new TarArchiveInputStream(new FileInputStream(tarFilePath))) {
+            TarArchiveEntry entry;
+            while ((entry = tarInput.getNextTarEntry()) != null) {
+                File destPath = new File(destDir, entry.getName());
+                if (entry.isDirectory()) {
+                    destPath.mkdirs();
+                } else {
+                    destPath.getParentFile().mkdirs();
+                    try (BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(destPath))) {
+                        byte[] buffer = new byte[1024];
+                        int len;
+                        while ((len = tarInput.read(buffer)) != -1) {
+                            bos.write(buffer, 0, len);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    public static void unGzipAndUntar(String tarGzFilePath, String destDir) throws IOException {
+        try (TarArchiveInputStream tarInput = new TarArchiveInputStream(
+                new GzipCompressorInputStream(new FileInputStream(tarGzFilePath)))) {
+            TarArchiveEntry entry;
+            while ((entry = tarInput.getNextTarEntry()) != null) {
+                File destPath = new File(destDir, entry.getName());
+                if (entry.isDirectory()) {
+                    destPath.mkdirs();
+                } else {
+                    destPath.getParentFile().mkdirs();
+                    try (BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(destPath))) {
+                        byte[] buffer = new byte[1024];
+                        int len;
+                        while ((len = tarInput.read(buffer)) != -1) {
+                            bos.write(buffer, 0, len);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    public static void unzipGZ(String gzFilePath, String outputDir) {
         try {
-            String publishKafka = appProp.getAppProperties("publishKafka");
-            String publishVMB = appProp.getAppProperties("publishVMB");
-            String bootstrapServer = appProp.getAppProperties("spring.kafka.consumer.bootstrap-servers");
-
-            DataStream<String> jsonStringStream = encapsulatedJsonStream.map(new MapFunction<Tuple2<String, CollectionAudit>, String>() {
-                @Override
-                public String map(Tuple2<String, CollectionAudit> value) throws Exception {
-                    LOGGER.debug("Actual Data {}", value.f0);
-                    return value.f0;
+            File file = new File(gzFilePath);
+            try (GZIPInputStream in = new GZIPInputStream(new FileInputStream(file))) {
+                File target = new File(outputDir, FileUtil.stripFileExt(file.getName()));
+                try (OutputStream os = new FileOutputStream(target)) {
+                    // Transfer bytes from the compressed file to the output file
+                    byte[] buf = new byte[1024];
+                    int len;
+                    while ((len = in.read(buf)) > 0) {
+                        os.write(buf, 0, len);
+                    }
                 }
-            }).name("GetJsonData");
-
-            // Publish to Kafka
-            if (Boolean.valueOf(publishKafka)) {
-                /*
-                 * KafkaSink<Tuple2<String, CollectionAudit>> sink = KafkaSink.<Tuple2<String,
-                 * CollectionAudit>>builder() .setBootstrapServers(bootstrapServer)
-                 * .setRecordSerializer(new CustomKafkaRecordSerializationSchema())
-                 * .setDeliveryGuarantee(DeliveryGuarantee.AT_LEAST_ONCE) .build();
-                 * encapsulatedJsonStream.sinkTo(sink);
-                 */
-                KafkaSink<String> sink = KafkaSink.<String>builder().setBootstrapServers(bootstrapServer).setRecordSerializer(KafkaRecordSerializationSchema.builder().setTopic(appProp.getAppProperties("spring.kafka.data-topic-name")).setValueSerializationSchema(new SimpleStringSchema()).build()).setDeliveryGuarantee(DeliveryGuarantee.AT_LEAST_ONCE).build();
-
-                jsonStringStream.sinkTo(sink).name("Kafka Sink");
-                LOGGER.info("Published Data to Kafka");
             }
-
-            // Publish to VMB
-            if (Boolean.valueOf(publishVMB)) {
-                CsvTransformerJobUtil.copyVMBCerts();
-                // Get the cert files
-                String caCert = appProp.getAppProperties("caCert");
-                String enmvCert = appProp.getAppProperties("enmvCert");
-                String enmvKey = appProp.getAppProperties("enmvKey");
-
-                Properties properties = new Properties();
-                properties.setProperty("pulsar.client.tlsTrustCertsFilePath", "/tmp/" + caCert);
-                properties.setProperty(PulsarOptions.PULSAR_CONNECTION_TIMEOUT_MS.toString(), "30000");
-                properties.setProperty(PulsarOptions.PULSAR_REQUEST_TIMEOUT_MS.toString(), "600000");
-
-                PulsarSink<String> pSink = PulsarSink.<String>builder().setServiceUrl(appProp.getAppProperties("pulsarServiceUrl")).setAuthentication("org.apache.pulsar.client.impl.auth.AuthenticationTls", "tlsCertFile:/tmp/" + enmvCert + ",tlsKeyFile:/tmp/" + enmvKey).setProperties(properties).setTopics(appProp.getAppProperties("pulsarTopics")).setSerializationSchema(new SimpleStringSchema()).build();
-                jsonStringStream.sinkTo(pSink).name("Pulsar Sink");
-                LOGGER.info("Published Data to Pulsar");
-            }
-            DataStream<CollectionAudit> collectionAuditStream = encapsulatedJsonStream.map(new RichMapFunction<Tuple2<String, CollectionAudit>, CollectionAudit>() {
-                @Override
-                public CollectionAudit map(Tuple2<String, CollectionAudit> value) throws Exception {
-                    // int subtaskId = getRuntimeContext().getIndexOfThisSubtask();
-                    LOGGER.debug("Publishing Flink Successful Audit message to KaFka");
-                    CollectionAudit message = value.f1;
-                    pubAuditMsg.publishFlinkConversionStatus(message, jobId, JobStatus.FLINK_JOB_SUCCESSFUL);
-                    return message;
-                }
-            }).name("Flink Job Success");
-            /*
-             * encapsulatedJsonStream.map(new MapFunction<Tuple2<String, CollectionAudit>,
-             * String>() {
-             *
-             * @Override public String map(Tuple2<String, CollectionAudit> value) throws
-             * Exception { int subtaskId = getRuntimeContext().getIndexOfThisSubtask();
-             * return value.f1.toString(); } }).print();
-             */
-
-        } catch (Exception e) {
-            LOGGER.error("Error while publishing data to Sink {} ", e);
-            encapsulatedJsonStream.map(new RichMapFunction<Tuple2<String, CollectionAudit>, CollectionAudit>() {
-                @Override
-                public CollectionAudit map(Tuple2<String, CollectionAudit> value) throws Exception {
-                    LOGGER.debug("Publishing Flink Failed Audit message to KaFka");
-                    CollectionAudit message = value.f1;
-                    pubAuditMsg.publishFlinkConversionStatus(message, jobId, JobStatus.FLINK_JOB_FAILED);
-                    return message;
-                }
-            }).name("Flink Job Failed");
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 
-}
 
 
-org.vdsi.space.collections.customcsvdatatransformer.csvtojsontransformer.CsvTransformerJob - Error while trying to transform from CSV to JSON {}
-java.lang.ArrayIndexOutOfBoundsException: Index 1 out of bounds for length 1
-	at org.vdsi.space.collections.customcsvdatatransformer.csvtojsontransformer.CsvtoJsonMRFCnTransformer.flatMap(CsvtoJsonMRFCnTransformer.java:52)
-	at org.vdsi.space.collections.customcsvdatatransformer.csvtojsontransformer.CsvTransformerJob$2.flatMap(CsvTransformerJob.java:129)
-	at org.vdsi.space.collections.customcsvdatatransformer.csvtojsontransformer.CsvTransformerJob$2.flatMap(CsvTransformerJob.java:107)
-	at org.apache.flink.streaming.api.operators.StreamFlatMap.processElement(StreamFlatMap.java:47)
-	at org.apache.flink.streaming.runtime.tasks.CopyingChainingOutput.pushToOperator(CopyingChainingOutput.java:75)
-	at org.apache.flink.streaming.runtime.tasks.CopyingChainingOutput.collect(CopyingChainingOutput.java:50)
-	at org.apache.flink.streaming.runtime.tasks.CopyingChainingOutput.collect(CopyingChainingOutput.java:29)
-	at org.apache.flink.streaming.api.operators.TimestampedCollector.collect(TimestampedCollector.java:51)
-	at org.vdsi.space.collections.customcsvdatatransformer.csvtojsontransformer.CsvTransformerJob$3.flatMap(CsvTransformerJob.java:169)
-	at org.vdsi.space.collections.customcsvdatatransformer.csvtojsontransformer.CsvTransformerJob$3.flatMap(CsvTransformerJob.java:159)
-	at org.apache.flink.streaming.api.operators.StreamFlatMap.processElement(StreamFlatMap.java:47)
-	at org.apache.flink.streaming.runtime.tasks.CopyingChainingOutput.pushToOperator(CopyingChainingOutput.java:75)
-	at org.apache.flink.streaming.runtime.tasks.CopyingChainingOutput.collect(CopyingChainingOutput.java:50)
-	at org.apache.flink.streaming.runtime.tasks.CopyingChainingOutput.collect(CopyingChainingOutput.java:29)
-	at org.apache.flink.streaming.api.operators.StreamMap.processElement(StreamMap.java:38)
-	at org.apache.flink.streaming.runtime.tasks.CopyingChainingOutput.pushToOperator(CopyingChainingOutput.java:75)
-	at org.apache.flink.streaming.runtime.tasks.CopyingChainingOutput.collect(CopyingChainingOutput.java:50)
-	at org.apache.flink.streaming.runtime.tasks.CopyingChainingOutput.collect(CopyingChainingOutput.java:29)
-	at org.apache.flink.streaming.runtime.tasks.SourceOperatorStreamTask$AsyncDataOutputToOutput.emitRecord(SourceOperatorStreamTask.java:309)
-	at org.apache.flink.streaming.api.operators.source.SourceOutputWithWatermarks.collect(SourceOutputWithWatermarks.java:110)
-	at org.apache.flink.connector.kafka.source.reader.KafkaRecordEmitter$SourceOutputWrapper.collect(KafkaRecordEmitter.java:67)
-	at org.apache.flink.api.common.serialization.DeserializationSchema.deserialize(DeserializationSchema.java:84)
-	at org.apache.flink.connector.kafka.source.reader.deserializer.KafkaValueOnlyDeserializationSchemaWrapper.deserialize(KafkaValueOnlyDeserializationSchemaWrapper.java:51)
-	at org.apache.flink.connector.kafka.source.reader.KafkaRecordEmitter.emitRecord(KafkaRecordEmitter.java:53)
-	at org.apache.flink.connector.kafka.source.reader.KafkaRecordEmitter.emitRecord(KafkaRecordEmitter.java:33)
-	at org.apache.flink.connector.base.source.reader.SourceReaderBase.pollNext(SourceReaderBase.java:160)
-	at org.apache.flink.streaming.api.operators.SourceOperator.emitNext(SourceOperator.java:419)
-	at org.apache.flink.streaming.runtime.io.StreamTaskSourceInput.emitNext(StreamTaskSourceInput.java:68)
-	at org.apache.flink.streaming.runtime.io.StreamOneInputProcessor.processInput(StreamOneInputProcessor.java:65)
-	at org.apache.flink.streaming.runtime.tasks.StreamTask.processInput(StreamTask.java:562)
-	at org.apache.flink.streaming.runtime.tasks.mailbox.MailboxProcessor.runMailboxLoop(MailboxProcessor.java:231)
-	at org.apache.flink.streaming.runtime.tasks.StreamTask.runMailboxLoop(StreamTask.java:858)
-	at org.apache.flink.streaming.runtime.tasks.StreamTask.invoke(StreamTask.java:807)
-	at org.apache.flink.runtime.taskmanager.Task.runWithSystemExitMonitoring(Task.java:953)
-	at org.apache.flink.runtime.taskmanager.Task.restoreAndInvoke(Task.java:932)
-	at org.apache.flink.runtime.taskmanager.Task.doRun(Task.java:746)
-	at org.apache.flink.runtime.taskmanager.Task.run(Task.java:562)
+package org.vdsi.space.collections.customsshcollector.util;
 
-
-
-
-
-package org.vdsi.space.collections.customcsvdatatransformer.csvtojsontransformer;
-
-import org.apache.flink.api.common.accumulators.IntCounter;
-import org.apache.flink.api.java.tuple.Tuple2;
-import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.vdsi.space.collections.customcsvdatatransformer.csvtojsontransformer.enums.JobStatus;
-import org.vdsi.space.collections.customcsvdatatransformer.csvtojsontransformer.utilities.PublishAuditMessage;
-import org.vdsi.space.collections.lucene.CollectionAudit;
 
-import java.util.ArrayList;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
+import java.util.stream.Collectors;
 
-public class CsvtoJsonMRFCnTransformer {
+public class FileUtil {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(CsvTransformerJob.class);
-    PublishAuditMessage pubAuditMsg = new PublishAuditMessage();
-    private String[] headers;
-    private String fileName;
-    private IntCounter successIntCounter = new IntCounter();
-    private IntCounter failureIntCounter = new IntCounter();
-
-    public CsvtoJsonMRFCnTransformer(String fileName) {
-        this.fileName = fileName;
-    }
-
-    //@Override
-//	    public void open(Configuration parameters) throws Exception {
-//	        getRuntimeContext().addAccumulator("successIntCounter", this.successIntCounter);
-//	        getRuntimeContext().addAccumulator("failureIntCounter", this.failureIntCounter);
-//	    }
-
-    //@Override
-    public List<Tuple2<JSONObject, CollectionAudit>> flatMap(Tuple2<String, CollectionAudit> tupleValue) throws Exception {
-        List<Tuple2<JSONObject, CollectionAudit>> result = new ArrayList<>();
+    private static final Logger LOGGER = LoggerFactory.getLogger(FileUtil.class);
 
 
-        CollectionAudit message = tupleValue.f1;
-        String csvContent = tupleValue.f0;
-        String filePath = message.getInputFilePath();
-        String fileType = message.getFileType();
-        String[] pathArr = filePath.split("/");
-        String fileName = pathArr[pathArr.length - 1];
-//			fileName = Constants.FILE_TYPE.getOrDefault(fileType, "");
-
+    /***
+     * @param directoryPath
+     * @return
+     * @throws NoSuchFieldException
+     */
+    public static List<String> readFilesInDirectory(String directoryPath) throws NoSuchFieldException {
         try {
-            if (message != null && csvContent != null) {
-                String[] lines = csvContent.split(System.lineSeparator());
-
-                String systemIdLine = lines[0];
-                String nodeIpLine = lines[1];
-
-                String systemId = systemIdLine.substring(systemIdLine.indexOf(":") + 1).trim();
-                String nodeIp = nodeIpLine.substring(nodeIpLine.indexOf(":") + 1).trim();
-
-                headers = lines[2].split(",");
-
-
-                for (int i = 3; i < lines.length; i++) {
-                    String str = lines[i];
-                    String[] arr = str.split(",");
-
-                    if (headers == null || headers.length != arr.length) {
-                        this.failureIntCounter.add(1);
-                        continue;
-                    }
-
-                    JSONObject obj = new JSONObject();
-                    obj.put("#SystemId", systemId);
-                    obj.put("#NodeIP", nodeIp);
-                    // Add FILENAME to JSONOBJECT
-                    obj.put("FILENAME", fileName);
-
-                    for (int j = 0; j < arr.length; j++) {
-                        String jsonkey = headers[j].trim().replace("\"", "");
-                        String jsonvalue = arr[j].trim().replace("\"", "");
-                        obj.put(jsonkey, jsonvalue);
-                    }
-                    this.successIntCounter.add(1);
-                    //out.collect(Tuple2.of(obj, message));
-
-                }
-                LOGGER.info("Completed CSV to JSON transformation");
-            }
-        } catch (Exception e) {
-            LOGGER.info("Error while trying to transform from CSV to JSON {}", e);
-            pubAuditMsg.publishFlinkConversionStatus(message, null, JobStatus.FLINK_JOB_FAILED);
+            return Files.walk(Paths.get(directoryPath))
+                    .filter(Files::isRegularFile)
+                    .map(Path::toString)
+                    .collect(Collectors.toList());
+        } catch (IOException e) {
+            throw new NoSuchFieldException(directoryPath);
         }
-        return result;
     }
 
-    public Integer getSuccessIntCounter() {
-        return this.successIntCounter.getLocalValue();
+    /**
+     * @param inputStream
+     * @param outputStream
+     * @param outputFile
+     * @throws IOException
+     * @throws IOException
+     */
+    public static void transferFile(InputStream inputStream, OutputStream outputStream, String outputFile)
+            throws IOException, IOException {
+        byte[] buffer = new byte[1024];
+        int bytesRead;
+        while ((bytesRead = inputStream.read(buffer)) != -1) {
+            outputStream.write(buffer, 0, bytesRead);
+        }
+        outputStream.close();
+        inputStream.close();
     }
 
-    public Integer getFailureIntCounter() {
-        return this.successIntCounter.getLocalValue();
+
+    /**
+     * @param sp
+     * @return
+     */
+    public static String getDirectory(String sp) {
+        String remoteDirectory = sp;
+        if (!remoteDirectory.endsWith("/")) {
+            remoteDirectory += "/";
+        }
+        return remoteDirectory;
+    }
+
+    /**
+     * @param inputStream
+     * @param filePath
+     * @param outputFile
+     * @throws IOException
+     */
+    public static void downloadFile(OutputStream outputStream, InputStream inputStream,
+                                    String filePath, String outputFile, String outputFilePath)
+            throws IOException {
+        File localFile = new File(outputFilePath);
+        if (!localFile.exists()) {
+            LOGGER.error("Local file does not exist: " + outputFilePath);
+        } else {
+            LOGGER.info("out filePath : " + outputFilePath + " exists");
+        }
+
+        byte[] buffer = new byte[1024];
+        int bytesRead;
+        while ((bytesRead = inputStream.read(buffer)) != -1) {
+            outputStream.write(buffer, 0, bytesRead);
+        }
     }
 
 
+    public static String getFileName(String filePath) {
+        Path path = Paths.get(filePath);
+        return path.getFileName().toString();
+    }
+
+    static String stripFileExt(String fileName) {
+        return fileName.replaceFirst("[.][^.]+$", "");
+    }
+
+    public static String stripFileExtMultipleTimes(String fileName) {
+        while (fileName.contains(".")) {
+            fileName = fileName.substring(0, fileName.lastIndexOf('.'));
+        }
+        return fileName;
+    }
+
+    public static String getFileNameWithoutExtn(String filePath) {
+        String fileName = FileUtil.getFileName(filePath);
+        LOGGER.info("fileName : " + fileName);
+        String fileNameWithoutExtn = FileUtil.stripFileExtMultipleTimes(fileName);
+        LOGGER.info("File name without extension: " + fileNameWithoutExtn);
+        return fileNameWithoutExtn;
+    }
+
+    public static void createDirectoryIfNotExists(String directoryPath) {
+        Path path = Paths.get(directoryPath);
+        if (!Files.exists(path)) {
+            try {
+                Files.createDirectories(path);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
 }
 
+
+
+ public boolean retrieveData(SpaceCollector sp, String dateReceived, String auditTopic) throws Exception {
+        LOGGER.info("Entered SSH service");
+        String sshUsername = sp.getUserName();
+        String sshHost = sp.getUrl();
+        String sshPassword = sp.getPassword();
+        int port = sp.getPort().intValue();
+
+        JSch jsch = getJsch(sshHost, sshPassword);
+
+        Session session = getSession(sshUsername, sshHost, sshPassword, port, jsch);
+        session.connect();
+
+        ChannelSftp channelSftp = null;
+        try {
+            String remoteDirectory = FileUtil.getDirectory(sp.getInputFilePath());
+            String localDirectory = FileUtil.getDirectory(sp.getOutputFilePath());
+            LOGGER.info("remoteDirectory : " + remoteDirectory + " localDirectory : " + localDirectory);
+
+            channelSftp = getChannelSftp(session, remoteDirectory);
+            Vector<ChannelSftp.LsEntry> files = channelSftp.ls(".");
+
+            Map<String, String> auditStatusMap = getAuditStatusMap(files, remoteDirectory);
+
+            // Download each file to the local directory
+            for (ChannelSftp.LsEntry file : files) {
+                if (!file.getAttrs().isDir()) {
+                    String filePath = remoteDirectory + file.getFilename(); // Use absolute file path
+                    retrieveAttributesOfRemoteFile(channelSftp, file, remoteDirectory, sp.getInputFilePath());
+
+                    String status = auditStatusMap.get(filePath);
+                    if (status == null || "COLLECTION_FAILED".equals(status)) {
+                        try {
+                            String outputFile = localDirectory + file.getFilename();
+                            LOGGER.info("in filePath : " + filePath + " out filePath : " + outputFile);
+
+                            FileUtil.downloadFile(outputStreamCreator.create(outputFile), channelSftp.get(file.getFilename()),
+                                    filePath, outputFile, sp.getOutputFilePath());
+
+                            List<String> filesList = new ArrayList<>();
+                            if (ZipUtil.isZipFile(outputFile)) {
+                                String fileNameWithoutExtn = FileUtil.getFileNameWithoutExtn(filePath);
+                                FileUtil.createDirectoryIfNotExists(sp.getOutputFilePath() + "/" + fileNameWithoutExtn);
+
+                                ZipUtil.extract(outputFile, sp.getOutputFilePath() + "/" + fileNameWithoutExtn);
+                                filesList.addAll(FileUtil.readFilesInDirectory(sp.getOutputFilePath() + "/" + fileNameWithoutExtn));
+                            } else {
+                                filesList.add(outputFile);
+                            }
+
+                            for (String fileName : filesList) {
+                                Path insideFilePath = Paths.get(fileName);
+                                Path folderPath = Paths.get(sp.getOutputFilePath()).relativize(insideFilePath.getParent());
+
+                                String unixBasedPath = folderPath.toString().replace("\\", "/");
+
+                                String key = String.format("%s/%s/%s/%s/%s",
+                                        ProfileCheckConfig.activeProfile,
+                                        sp.getFileType(),
+                                        sshHost,
+                                        dateUtil.getDateInMMddyyyy(),
+                                        !StringUtils.isBlank(unixBasedPath)
+                                                ? (unixBasedPath.toString() + "/" + insideFilePath.getFileName())
+                                                : insideFilePath.getFileName());
+                                System.out.println("**************************");
+                                System.out.println("Filename: " + fileName);
+                                System.out.println("Key: " + key);
+                                System.out.println("folderPath: " + folderPath);
+                                System.out.println("Inside File Path: " + insideFilePath);
+                                System.out.println("**************************");
+
+                                s3Service.pushToS3(fileName, key);
+
+                                CollectionAudit audit = createAuditObject(sp,
+                                        key, JobStatus.COLLECTION_SUCCESSFUL.toString(), "");
+                                kafkaProducerService.writeMessage(collectorUtil.buildAuditQueueJSON(audit),
+                                        "", auditTopic);
+                            }
+                        } catch (Exception e) {
+                            CollectionAudit audit = createAuditObject(sp,
+                                    filePath, JobStatus.COLLECTION_FAILED.toString(), e.getMessage());
+                            kafkaProducerService.writeMessage(collectorUtil.buildAuditQueueJSON(audit), "",
+                                    auditTopic);
+                            LOGGER.error("Error on retrieveData {}", e);
+                        }
+                    }
+                } else {
+                    LOGGER.info("DIR found : " + file.getFilename());
+                }
+            }
+        } finally {
+            if (channelSftp != null) {
+                channelSftp.disconnect();
+            }
+            if (session != null) {
+                session.disconnect();
+            }
+        }
+        return true;
+    }
