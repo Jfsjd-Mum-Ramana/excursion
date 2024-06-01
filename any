@@ -1,18 +1,3 @@
-public void retrieveAttributesOfRemoteFile(ChannelSftp channelSftp, ChannelSftp.LsEntry file,
-                                           String remoteDirectory, String inputFilePath) throws Exception {
-    String filePath = remoteDirectory + "/" + file.getFilename(); // Use absolute file path
-    try {
-        SftpATTRS attrs = channelSftp.stat(filePath);
-        LOGGER.info("File attributes for {}: {}", filePath, attrs);
-    } catch (SftpException e) {
-        LOGGER.error("Failed to retrieve attributes for file: " + filePath, e);
-        throw new Exception("Failed to retrieve attributes for file: " + filePath, e);
-    }
-}
-
-
-
-
 public boolean retrieveData(SpaceCollector sp, String dateReceived, String auditTopic) throws Exception {
     LOGGER.info("Entered SSH service");
     String sshUsername = sp.getUserName();
@@ -55,7 +40,6 @@ private void retrieveAndProcessDirectory(SpaceCollector sp, String dateReceived,
     for (ChannelSftp.LsEntry file : files) {
         if (!file.getAttrs().isDir()) {
             String filePath = remoteDirectory + "/" + file.getFilename(); // Use absolute file path
-            retrieveAttributesOfRemoteFile(channelSftp, file, remoteDirectory, sp.getInputFilePath());
 
             String status = auditStatusMap.get(filePath);
             if (status == null || "COLLECTION_FAILED".equals(status)) {
@@ -63,10 +47,10 @@ private void retrieveAndProcessDirectory(SpaceCollector sp, String dateReceived,
                     String outputFile = localDirectory + "/" + file.getFilename();
                     LOGGER.info("in filePath : " + filePath + " out filePath : " + outputFile);
 
-                    FileUtil.downloadFile(outputStreamCreator.create(outputFile), channelSftp.get(file.getFilename()),
+                    FileUtil.downloadFile(outputStreamCreator.create(outputFile), channelSftp.get(filePath),
                             filePath, outputFile, sp.getOutputFilePath());
 
-                    processDownloadedFile(sp, dateReceived, auditTopic, outputFile, remoteDirectory, localDirectory, channelSftp);
+                    processDownloadedFile(sp, dateReceived, auditTopic, outputFile, localDirectory);
                 } catch (Exception e) {
                     CollectionAudit audit = createAuditObject(sp,
                             filePath, JobStatus.COLLECTION_FAILED.toString(), e.getMessage());
@@ -88,7 +72,7 @@ private void retrieveAndProcessDirectory(SpaceCollector sp, String dateReceived,
 }
 
 private void processDownloadedFile(SpaceCollector sp, String dateReceived, String auditTopic,
-                                   String outputFile, String remoteDirectory, String localDirectory, ChannelSftp channelSftp) throws Exception {
+                                   String outputFile, String localDirectory) throws Exception {
     List<String> filesList = new ArrayList<>();
     if (ZipUtil.isZipFile(outputFile)) {
         String fileNameWithoutExtn = FileUtil.getFileNameWithoutExtn(outputFile);
@@ -137,7 +121,7 @@ private void processDownloadedFile(SpaceCollector sp, String dateReceived, Strin
             List<String> nestedFilesList = FileUtil.readFilesInDirectory(localDirectory + "/" + nestedFileNameWithoutExtn);
 
             for (String nestedFile : nestedFilesList) {
-                processDownloadedFile(sp, dateReceived, auditTopic, nestedFile, remoteDirectory, localDirectory, channelSftp);
+                processDownloadedFile(sp, dateReceived, auditTopic, nestedFile, localDirectory);
             }
         }
     }
@@ -201,4 +185,8 @@ private Map<String, String> getAuditStatusMap(Vector<ChannelSftp.LsEntry> files,
     // Get latest status for each file path
     List<CollectionAudit> audits = lucenceColletionAuditRepo.findLatestByFilePaths(filePaths);
 
-    //
+    // Create a map for quick lookup
+    Map<String, String> auditStatusMap = audits.stream().filter(audit -> audit != null)
+            .collect(Collectors.toMap(audit -> audit.getInputFilePath(), audit -> audit.getJobStatus()));
+    return auditStatusMap;
+}
