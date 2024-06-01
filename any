@@ -1,3 +1,18 @@
+public void retrieveAttributesOfRemoteFile(ChannelSftp channelSftp, ChannelSftp.LsEntry file,
+                                           String remoteDirectory, String inputFilePath) throws Exception {
+    String filePath = remoteDirectory + "/" + file.getFilename(); // Use absolute file path
+    try {
+        SftpATTRS attrs = channelSftp.stat(filePath);
+        LOGGER.info("File attributes for {}: {}", filePath, attrs);
+    } catch (SftpException e) {
+        LOGGER.error("Failed to retrieve attributes for file: " + filePath, e);
+        throw new Exception("Failed to retrieve attributes for file: " + filePath, e);
+    }
+}
+
+
+
+
 public boolean retrieveData(SpaceCollector sp, String dateReceived, String auditTopic) throws Exception {
     LOGGER.info("Entered SSH service");
     String sshUsername = sp.getUserName();
@@ -81,12 +96,6 @@ private void processDownloadedFile(SpaceCollector sp, String dateReceived, Strin
 
         ZipUtil.extract(outputFile, localDirectory + "/" + fileNameWithoutExtn);
         filesList.addAll(FileUtil.readFilesInDirectory(localDirectory + "/" + fileNameWithoutExtn));
-    } else if (TarUtil.isTarGzFile(outputFile)) {
-        String fileNameWithoutExtn = FileUtil.getFileNameWithoutExtn(outputFile);
-        FileUtil.createDirectoryIfNotExists(localDirectory + "/" + fileNameWithoutExtn);
-
-        TarUtil.extract(outputFile, localDirectory + "/" + fileNameWithoutExtn);
-        filesList.addAll(FileUtil.readFilesInDirectory(localDirectory + "/" + fileNameWithoutExtn));
     } else {
         filesList.add(outputFile);
     }
@@ -125,16 +134,6 @@ private void processDownloadedFile(SpaceCollector sp, String dateReceived, Strin
             FileUtil.createDirectoryIfNotExists(localDirectory + "/" + nestedFileNameWithoutExtn);
 
             ZipUtil.extract(fileName, localDirectory + "/" + nestedFileNameWithoutExtn);
-            List<String> nestedFilesList = FileUtil.readFilesInDirectory(localDirectory + "/" + nestedFileNameWithoutExtn);
-
-            for (String nestedFile : nestedFilesList) {
-                processDownloadedFile(sp, dateReceived, auditTopic, nestedFile, remoteDirectory, localDirectory, channelSftp);
-            }
-        } else if (TarUtil.isTarGzFile(fileName)) {
-            String nestedFileNameWithoutExtn = FileUtil.getFileNameWithoutExtn(fileName);
-            FileUtil.createDirectoryIfNotExists(localDirectory + "/" + nestedFileNameWithoutExtn);
-
-            TarUtil.extract(fileName, localDirectory + "/" + nestedFileNameWithoutExtn);
             List<String> nestedFilesList = FileUtil.readFilesInDirectory(localDirectory + "/" + nestedFileNameWithoutExtn);
 
             for (String nestedFile : nestedFilesList) {
@@ -193,4 +192,13 @@ private CollectionAudit getCollectionAudit(SpaceCollector sp) {
     return audit;
 }
 
-private Map<String, String> getAuditStatusMap(Vector<ChannelSftp.LsEntry> files, String remote
+private Map<String, String> getAuditStatusMap(Vector<ChannelSftp.LsEntry> files, String remoteDirectory) {
+    List<String> filePaths = files.stream()
+            .filter(file -> !file.getAttrs().isDir())
+            .map(file -> remoteDirectory + "/" + file.getFilename()) // Use absolute file path
+            .collect(Collectors.toList());
+
+    // Get latest status for each file path
+    List<CollectionAudit> audits = lucenceColletionAuditRepo.findLatestByFilePaths(filePaths);
+
+    //
