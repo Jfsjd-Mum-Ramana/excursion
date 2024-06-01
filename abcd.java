@@ -1,4 +1,58 @@
-public boolean retrieveData(SpaceCollector sp, String dateReceived, String auditTopic) throws Exception {
+package org.vdsi.space.collections.customsshcollector.services;
+
+import com.jcraft.jsch.*;
+import io.micrometer.common.util.StringUtils;
+import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.vdsi.space.collections.customsshcollector.config.ProfileCheckConfig;
+import org.vdsi.space.collections.customsshcollector.repository.LuceneCollectionAuditRepository;
+import org.vdsi.space.collections.customsshcollector.util.CollectorUtil;
+import org.vdsi.space.collections.customsshcollector.util.DateUtil;
+import org.vdsi.space.collections.customsshcollector.util.FileUtil;
+import org.vdsi.space.collections.customsshcollector.util.ZipUtil;
+import org.vdsi.space.collections.lucene.enums.JobStatus;
+import org.vdsi.space.collections.lucene.enums.ProcessType;
+import org.vdsi.space.collections.lucene.model.CollectionAudit;
+import org.vdsi.space.collections.lucene.model.SpaceCollector;
+
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.time.LocalDateTime;
+import java.util.*;
+import java.util.stream.Collectors;
+
+@Service
+@Slf4j
+public class SSHService {
+    public static final String SSH_KNOWN_HOSTS = "/.ssh/known_hosts";
+    private static final Logger LOGGER = LoggerFactory.getLogger(SSHService.class);
+    @Autowired
+    CollectorUtil collectorUtil;
+    @Autowired
+    DateUtil dateUtil;
+    @Autowired
+    private LuceneCollectionAuditRepository lucenceColletionAuditRepo;
+    private JSchFactory jschFactory;
+    private OutputStreamCreator outputStreamCreator;
+    @Autowired
+    KafkaProducerService kafkaProducerService;
+    @Autowired
+    private S3Service s3Service;
+
+    private JSch jsch = new JSch();
+
+    public SSHService(LuceneCollectionAuditRepository lucenceColletionAuditRepo,
+                      JSchFactory jschFactory, OutputStreamCreator outputStreamCreator) {
+        this.lucenceColletionAuditRepo = lucenceColletionAuditRepo;
+        this.jschFactory = jschFactory;
+        this.outputStreamCreator = outputStreamCreator;
+        //this.s3Service = s3Service;
+    }
+
+    public boolean retrieveData(SpaceCollector sp, String dateReceived, String auditTopic) throws Exception {
         LOGGER.info("Entered SSH service");
         String sshUsername = sp.getUserName();
         String sshHost = sp.getUrl();
@@ -14,7 +68,7 @@ public boolean retrieveData(SpaceCollector sp, String dateReceived, String audit
         try {
             String remoteDirectory = FileUtil.getDirectory(sp.getInputFilePath());
             String localDirectory = FileUtil.getDirectory(sp.getOutputFilePath());
-            LOGGER.info("Remote Directory: " + remoteDirectory + " Local Directory: " + localDirectory);
+            LOGGER.info("remoteDirectory : " + remoteDirectory + " localDirectory : " + localDirectory);
 
             channelSftp = getChannelSftp(session, remoteDirectory);
             Vector<ChannelSftp.LsEntry> files = channelSftp.ls(".");
@@ -24,16 +78,15 @@ public boolean retrieveData(SpaceCollector sp, String dateReceived, String audit
             // Download each file to the local directory
             for (ChannelSftp.LsEntry file : files) {
                 if (!file.getAttrs().isDir()) {
-                    String filePath = remoteDirectory + "/" + file.getFilename();
+                    String filePath = remoteDirectory + file.getFilename(); // Use absolute file path
                     retrieveAttributesOfRemoteFile(channelSftp, file, remoteDirectory, sp.getInputFilePath());
 
                     String status = auditStatusMap.get(filePath);
                     if (status == null || "COLLECTION_FAILED".equals(status)) {
                         try {
-                            String outputFile = localDirectory + "/" + file.getFilename();
-                            LOGGER.info("Input File Path: " + filePath + " Output File Path: " + outputFile);
+                            String outputFile = localDirectory + file.getFilename();
+                            LOGGER.info("in filePath : " + filePath + " out filePath : " + outputFile);
 
-                            // Download file
                             FileUtil.downloadFile(outputStreamCreator.create(outputFile), channelSftp.get(file.getFilename()),
                                     filePath, outputFile, sp.getOutputFilePath());
 
@@ -41,17 +94,19 @@ public boolean retrieveData(SpaceCollector sp, String dateReceived, String audit
                             if (ZipUtil.isZipFile(outputFile)) {
                                 String fileNameWithoutExtn = FileUtil.getFileNameWithoutExtn(filePath);
                                 FileUtil.createDirectoryIfNotExists(sp.getOutputFilePath() + "/" + fileNameWithoutExtn);
+
                                 ZipUtil.extract(outputFile, sp.getOutputFilePath() + "/" + fileNameWithoutExtn);
                                 filesList.addAll(FileUtil.readFilesInDirectory(sp.getOutputFilePath() + "/" + fileNameWithoutExtn));
                             } else {
                                 filesList.add(outputFile);
                             }
 
-                            // Process each file (including both zip contents and non-zip files)
                             for (String fileName : filesList) {
                                 Path insideFilePath = Paths.get(fileName);
                                 Path folderPath = Paths.get(sp.getOutputFilePath()).relativize(insideFilePath.getParent());
+
                                 String unixBasedPath = folderPath.toString().replace("\\", "/");
+
                                 String key = String.format("%s/%s/%s/%s/%s",
                                         ProfileCheckConfig.activeProfile,
                                         sp.getFileType(),
@@ -60,26 +115,30 @@ public boolean retrieveData(SpaceCollector sp, String dateReceived, String audit
                                         !StringUtils.isBlank(unixBasedPath)
                                                 ? (unixBasedPath.toString() + "/" + insideFilePath.getFileName())
                                                 : insideFilePath.getFileName());
-
-                                LOGGER.info("Filename: " + fileName + " Key: " + key);
                                 System.out.println("**************************");
                                 System.out.println("Filename: " + fileName);
                                 System.out.println("Key: " + key);
                                 System.out.println("folderPath: " + folderPath);
                                 System.out.println("Inside File Path: " + insideFilePath);
                                 System.out.println("**************************");
+
                                 s3Service.pushToS3(fileName, key);
-                                CollectionAudit audit = createAuditObject(sp, key, JobStatus.COLLECTION_SUCCESSFUL.toString(), "");
-                                kafkaProducerService.writeMessage(collectorUtil.buildAuditQueueJSON(audit), "", auditTopic);
+
+                                CollectionAudit audit = createAuditObject(sp,
+                                        key, JobStatus.COLLECTION_SUCCESSFUL.toString(), "");
+                                kafkaProducerService.writeMessage(collectorUtil.buildAuditQueueJSON(audit),
+                                        "", auditTopic);
                             }
                         } catch (Exception e) {
-                            CollectionAudit audit = createAuditObject(sp, filePath, JobStatus.COLLECTION_FAILED.toString(), e.getMessage());
-                            kafkaProducerService.writeMessage(collectorUtil.buildAuditQueueJSON(audit), "", auditTopic);
+                            CollectionAudit audit = createAuditObject(sp,
+                                    filePath, JobStatus.COLLECTION_FAILED.toString(), e.getMessage());
+                            kafkaProducerService.writeMessage(collectorUtil.buildAuditQueueJSON(audit), "",
+                                    auditTopic);
                             LOGGER.error("Error on retrieveData {}", e);
                         }
                     }
                 } else {
-                    LOGGER.info("Directory found: " + file.getFilename());
+                    LOGGER.info("DIR found : " + file.getFilename());
                 }
             }
         } finally {
@@ -93,7 +152,95 @@ public boolean retrieveData(SpaceCollector sp, String dateReceived, String audit
         return true;
     }
 
+    private CollectionAudit createAuditObject(SpaceCollector sp,
+                                              String auditInputFilePath,
+                                              String auditJobStatus,
+                                              String auditExceptions) {
+        CollectionAudit audit = getCollectionAudit(sp);
+        audit.setInputFilePath(auditInputFilePath);
+        audit.setJobStatus(auditJobStatus);
+        audit.setExceptions(auditExceptions);
+        return audit;
+    }
 
+    public void retrieveAttributesOfRemoteFile(ChannelSftp channelSftp,
+                                               ChannelSftp.LsEntry file,
+                                               String remoteDirectory,
+                                               String inputFilePath)
+            throws Exception {
+        String filePath = file.getFilename(); // Use relative file path to fetch the actual file because we have already moved inside the remote directory
+        try {
+            channelSftp.stat(filePath);
+            LOGGER.info("in filePath : " + filePath + " exists");
+        } catch (SftpException e) {
+            if (e.id == ChannelSftp.SSH_FX_NO_SUCH_FILE) {
+                LOGGER.error("Remote file does not exist: " + inputFilePath);
+            }
+            throw e;
+        }
+    }
+
+    private Map<String, String> getAuditStatusMap(Vector<ChannelSftp.LsEntry> files, String remoteDirectory) {
+        List<String> filePaths = files.stream()
+                .filter(file -> !file.getAttrs().isDir())
+                .map(file -> remoteDirectory + file.getFilename()) // Use absolute file path
+                .collect(Collectors.toList());
+
+        // Get latest status for each file path
+        List<CollectionAudit> audits = lucenceColletionAuditRepo.findLatestByFilePaths(filePaths);
+
+        // Create a map for quick lookup
+        Map<String, String> auditStatusMap = audits.stream().filter(audit -> audit
+                != null).collect(Collectors.toMap(audit -> audit.getInputFilePath(), audit ->
+                audit.getJobStatus()));
+        return auditStatusMap;
+    }
+
+    private static Session getSession(String sshUsername, String sshHost, String sshPassword, int port, JSch jsch)
+            throws JSchException {
+        Session session = jsch.getSession(sshUsername, sshHost, port);
+        session.setConfig("StrictHostKeyChecking", "no");
+        if (!sshPassword.isEmpty()) {
+            session.setPassword(sshPassword);
+        }
+        return session;
+    }
+
+    public JSch getJsch(String sshHost, String sshPassword) throws JSchException {
+        jschFactory.createJSch();
+        if (sshPassword.equals("")) {
+            jsch.addIdentity("/prod/eclapp/lib/id_rsa_decoded");
+        }
+        //sk changes
+        if (sshHost.equals("localhost")) {
+            String knownHostsFile = System.getProperty("user.home") + SSH_KNOWN_HOSTS;
+            jsch.setKnownHosts(knownHostsFile);
+        }
+        return jsch;
+    }
+
+    private CollectionAudit getCollectionAudit(SpaceCollector sp) {
+        CollectionAudit audit = new CollectionAudit();
+        audit.setId(UUID.randomUUID().toString());
+        audit.setDateProcessed(collectorUtil.localDateToString(LocalDateTime.now()));
+        audit.setFileType(sp.getFileType());
+        audit.setDelimiters(sp.getDelimiter());
+        audit.setUrl(sp.getUrl());
+        audit.setPort(Integer.valueOf(sp.getPort().toString()));
+        audit.setCollectorId(sp.getId());
+        audit.setProcessType(ProcessType.Collector);
+        return audit;
+    }
+
+    private ChannelSftp getChannelSftp(Session session, String remoteDirectory) throws JSchException, SftpException {
+        ChannelSftp channelSftp = (ChannelSftp) session.openChannel("sftp");
+        channelSftp.connect();
+        // Navigate to the remote directory
+        channelSftp.cd(remoteDirectory);
+
+        return channelSftp;
+    }
+}
 
 
 
