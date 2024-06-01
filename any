@@ -43,7 +43,7 @@ private void retrieveAndProcessDirectory(SpaceCollector sp, String dateReceived,
             // Download file
             try (InputStream inputStream = channelSftp.get(remoteFilePath);
                  OutputStream outputStream = new FileOutputStream(localFilePath)) {
-                FileUtil.downloadFile(outputStream, inputStream, localFilePath);
+                FileUtil.downloadFile(outputStream, inputStream, remoteFilePath, localFilePath, sp.getOutputFilePath());
             }
 
             // Process the downloaded file
