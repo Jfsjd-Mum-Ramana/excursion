@@ -21,6 +21,11 @@ public class ZipUtilTest {
 
             // Check if the unzipped file exists in the output directory
             assertTrue(new File(outputDir, expectedFileName).exists());
+
+            // Additional checks to ensure all lines are covered
+            // For example, check if the method does not throw exceptions for non-existent files
+            assertDoesNotThrow(() -> ZipUtil.unzipGZ("nonexistent.gz", outputDir));
+
         } catch (IOException e) {
             e.printStackTrace();
         } finally {
