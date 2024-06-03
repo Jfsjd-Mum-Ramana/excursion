@@ -1,105 +1,13 @@
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.*;
-import org.mockito.junit.MockitoJUnitRunner;
-import org.mockito.MockedStatic;
-import org.mockito.Mockito;
-
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.Arrays;
-import java.util.List;
-
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
-
-@RunWith(MockitoJUnitRunner.class)
-public class SshServiceTest {
-
-    @Mock
-    private S3Service s3Service;
-
-    @Mock
-    private KafkaProducerService kafkaProducerService;
-
-    @Mock
-    private CollectorUtil collectorUtil;
-
-    @Mock
-    private DateUtil dateUtil;
-
-    @Mock
-    private ProfileCheckConfig profileCheckConfig;
-
-    @InjectMocks
-    private SshService sshService;
-
-    @Before
-    public void setUp() {
-        MockitoAnnotations.openMocks(this);
-    }
-
-    @Test
-    public void testProcessFileRecords() throws Exception {
-        SpaceCollector sp = mock(SpaceCollector.class);
-        String dateReceived = "2023-01-01";
-        String auditTopic = "auditTopic";
-        String localDirectory = "/local/dir";
-        String fileName = "/local/dir/SampleFile.csv";
-
-        when(sp.getOutputFilePath()).thenReturn(localDirectory);
-        when(sp.getFileType()).thenReturn("fileType");
-        when(sp.getUrl()).thenReturn("url");
-        when(dateUtil.getDateInMMddyyyy()).thenReturn("12312023");
-        when(profileCheckConfig.getActiveProfile()).thenReturn("dev");
-
-        List<String> filesList = Arrays.asList(fileName);
-        String fileNameWithoutExtn = "SampleFile";
-
-        try (MockedStatic<FileUtil> mockedFileUtil = Mockito.mockStatic(FileUtil.class);
-             MockedStatic<ZipUtil> mockedZipUtil = Mockito.mockStatic(ZipUtil.class)) {
-
-            // Mock FileUtil methods
-            mockedFileUtil.when(() -> FileUtil.getFileNameWithoutExtn(fileName)).thenReturn(fileNameWithoutExtn);
-            mockedFileUtil.when(() -> FileUtil.readFilesInDirectory(anyString())).thenReturn(filesList);
-            mockedFileUtil.when(() -> FileUtil.createDirectoryIfNotExists(anyString())).thenReturn(true);
-
-            // Mock ZipUtil methods
-            mockedZipUtil.when(() -> ZipUtil.isZipFile(fileName)).thenReturn(false);
-
-            // Call the method
-            sshService.processFileRecords(sp, dateReceived, auditTopic, fileName, localDirectory);
-
-            // Verify interactions
-            Path insideFilePath = Paths.get(fileName);
-            Path folderPath = Paths.get(sp.getOutputFilePath()).relativize(insideFilePath.getParent());
-            String unixBasedPath = folderPath.toString().replace("\\", "/");
-            String key = String.format("%s/%s/%s/%s/%s",
-                    profileCheckConfig.getActiveProfile(),
-                    sp.getFileType(),
-                    sp.getUrl(),
-                    dateUtil.getDateInMMddyyyy(),
-                    !unixBasedPath.isEmpty() ? (unixBasedPath + "/" + insideFilePath.getFileName()) : insideFilePath.getFileName());
-
-            verify(s3Service).pushToS3(fileName, key);
-            verify(kafkaProducerService).writeMessage(anyString(), anyString(), eq(auditTopic));
-
-            // Test for zip file processing
-            String zipFileName = "/local/dir/SampleFile.zip";
-            String nestedFileNameWithoutExtn = "SampleFile";
-            List<String> nestedFilesList = Arrays.asList("/local/dir/SampleFile/nestedFile1.csv", "/local/dir/SampleFile/nestedFile2.csv");
-
-            mockedZipUtil.when(() -> ZipUtil.isZipFile(zipFileName)).thenReturn(true);
-            mockedFileUtil.when(() -> FileUtil.getFileNameWithoutExtn(zipFileName)).thenReturn(nestedFileNameWithoutExtn);
-            mockedFileUtil.when(() -> FileUtil.readFilesInDirectory(anyString())).thenReturn(nestedFilesList);
-
-            sshService.processFileRecords(sp, dateReceived, auditTopic, zipFileName, localDirectory);
-
-            mockedZipUtil.verify(() -> ZipUtil.extract(zipFileName, localDirectory + "/" + nestedFileNameWithoutExtn));
-            for (String nestedFile : nestedFilesList) {
-                mockedFileUtil.verify(() -> FileUtil.readFilesInDirectory(localDirectory + "/" + nestedFileNameWithoutExtn));
+public static void unzipGZ(String gzFilePath, String outputDir) throws IOException {
+        File file = new File(gzFilePath);
+        try (GZIPInputStream in = new GZIPInputStream(new FileInputStream(file))) {
+            File target = new File(outputDir, FileUtil.stripFileExt(file.getName()));
+            try (OutputStream os = new FileOutputStream(target)) {
+                byte[] buf = new byte[1024];
+                int len;
+                while ((len = in.read(buf)) > 0) {
+                    os.write(buf, 0, len);
+                }
             }
         }
     }
-}
