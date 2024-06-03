@@ -1,107 +1,46 @@
-@Test
-    public void testRetrieveData_FileRetrievalFailureForSpecificFile() throws Exception {
-        // Mock the channelSftp.get method
-        InputStream mockInputStream = mock(InputStream.class);
-        when(channelSftp.get(anyString())).thenReturn(mockInputStream);
-        when(channelSftp.get("/path/to/input/Sample2.csv")).thenThrow(new SftpException(0, "file retrieval failed"));
-
-        // Mock the outputStreamCreator.create method
-        OutputStream mockOutputStream = mock(OutputStream.class);
-        when(outputStreamCreator.create(anyString())).thenReturn(mockOutputStream);
-
-        // Mock the behavior of the InputStream and OutputStream
-        when(mockInputStream.read(ArgumentMatchers.any(byte[].class))).thenReturn(-1); // Simulate end of stream
-        doNothing().when(mockOutputStream).close();
-        doNothing().when(mockInputStream).close();
-
-        // Mock the ls() method to return three files
-        Vector<ChannelSftp.LsEntry> files = new Vector<>();
-        for (String fileName : new String[]{"Sample1.csv", "Sample2.csv", "Sample3.csv"}) {
-            ChannelSftp.LsEntry file = mock(ChannelSftp.LsEntry.class);
-            SftpATTRS attrs = mock(SftpATTRS.class);
-            when(file.getFilename()).thenReturn(fileName);
-            when(file.getAttrs()).thenReturn(attrs);
-            when(attrs.isDir()).thenReturn(false);
-            files.add(file);
+    filesList.addAll(FileUtil.readFilesInDirectory(localDirectory + "/" + fileNameWithoutExtn));
+        } else {
+            filesList.add(outputFile);
         }
-        when(channelSftp.ls(anyString())).thenReturn(files);
 
-        // Mock the findLatestByFilePaths() method to return two records
-        List<CollectionAudit> audits = new ArrayList<>();
-        for (String fileName : new String[]{"/path/to/input/Sample1.csv", "/path/to/input/Sample3.csv"}) {
-            CollectionAudit audit = mock(CollectionAudit.class);
-            when(audit.getInputFilePath()).thenReturn(fileName);
-            when(audit.getJobStatus()).thenReturn(fileName.equals("/path/to/input/Sample1.csv") ? "COLLECTION_FAILED" : "COLLECTION_SUCCESS");
-            audits.add(audit);
+        for (String fileName : filesList) {
+            Path insideFilePath = Paths.get(fileName);
+            Path folderPath = Paths.get(sp.getOutputFilePath()).relativize(insideFilePath.getParent());
+
+            String unixBasedPath = folderPath.toString().replace("\\", "/");
+
+            String key = String.format("%s/%s/%s/%s/%s",
+                    ProfileCheckConfig.activeProfile,
+                    sp.getFileType(),
+                    sp.getUrl(),
+                    dateUtil.getDateInMMddyyyy(),
+                    !StringUtils.isBlank(unixBasedPath)
+                            ? (unixBasedPath.toString() + "/" + insideFilePath.getFileName())
+                            : insideFilePath.getFileName());
+            System.out.println("**************************");
+            System.out.println("Filename: " + fileName);
+            System.out.println("Key: " + key);
+            System.out.println("folderPath: " + folderPath);
+            System.out.println("Inside File Path: " + insideFilePath);
+            System.out.println("**************************");
+
+            s3Service.pushToS3(fileName, key);
+
+            CollectionAudit audit = createAuditObject(sp,
+                    key, JobStatus.COLLECTION_SUCCESSFUL.toString(), "");
+            kafkaProducerService.writeMessage(collectorUtil.buildAuditQueueJSON(audit),
+                    "", auditTopic);
+
+            // Check if the file is an archive and process it further
+            if (ZipUtil.isZipFile(fileName)) {
+                String nestedFileNameWithoutExtn = FileUtil.getFileNameWithoutExtn(fileName);
+                FileUtil.createDirectoryIfNotExists(localDirectory + "/" + nestedFileNameWithoutExtn);
+
+                ZipUtil.extract(fileName, localDirectory + "/" + nestedFileNameWithoutExtn);
+                List<String> nestedFilesList = FileUtil.readFilesInDirectory(localDirectory + "/" + nestedFileNameWithoutExtn);
+
+                for (String nestedFile : nestedFilesList) {
+                    processDownloadedFile(sp, dateReceived, auditTopic, nestedFile, localDirectory);
+                }
+            }
         }
-//        when(collectionAuditRepository.findLatestByFilePaths(anyList())).thenReturn(audits);
-        doReturn(audits).when(collectionAuditRepository).findLatestByFilePaths(anyList());
-
-        SpaceCollector spaceCollector = new SpaceCollector();
-        // Set the fields of the spaceCollector object here
-        spaceCollector.setUrl("localhost");
-        spaceCollector.setPort(22);
-        spaceCollector.setUserName("username");
-        spaceCollector.setPassword("password");
-        spaceCollector.setInputFilePath("/path/to/input");
-        spaceCollector.setOutputFilePath("/path/to/output");
-
-        boolean result = sshService.retrieveData(spaceCollector, collectorUtil.getDateAsString(new Date()), "3459-DEV-COLLECTION-AUDIT-QUEUE");
-
-        // Verify that get() method is called twice
-        verify(channelSftp, times(2)).get(anyString());
-
-
-
-@Test
-    public void testRetrieveData_FileRetrievalFailureForSpecificFile() throws Exception {
-        // Mock the channelSftp.get method
-        InputStream mockInputStream = mock(InputStream.class);
-        when(channelSftp.get(anyString())).thenReturn(mockInputStream);
-        when(channelSftp.get("/path/to/input/Sample2.csv")).thenThrow(new SftpException(0, "file retrieval failed"));
-
-        // Mock the outputStreamCreator.create method
-        OutputStream mockOutputStream = mock(OutputStream.class);
-        when(outputStreamCreator.create(anyString())).thenReturn(mockOutputStream);
-
-        // Mock the behavior of the InputStream and OutputStream
-        when(mockInputStream.read(ArgumentMatchers.any(byte[].class))).thenReturn(-1); // Simulate end of stream
-        doNothing().when(mockOutputStream).close();
-        doNothing().when(mockInputStream).close();
-
-        // Mock the ls() method to return three files
-        Vector<ChannelSftp.LsEntry> files = new Vector<>();
-        for (String fileName : new String[]{"Sample1.csv", "Sample2.csv", "Sample3.csv"}) {
-            ChannelSftp.LsEntry file = mock(ChannelSftp.LsEntry.class);
-            SftpATTRS attrs = mock(SftpATTRS.class);
-            when(file.getFilename()).thenReturn(fileName);
-            when(file.getAttrs()).thenReturn(attrs);
-            when(attrs.isDir()).thenReturn(false);
-            files.add(file);
-        }
-        when(channelSftp.ls(anyString())).thenReturn(files);
-
-        // Mock the findLatestByFilePaths() method to return two records
-        List<CollectionAudit> audits = new ArrayList<>();
-        for (String fileName : new String[]{"/path/to/input/Sample1.csv", "/path/to/input/Sample3.csv"}) {
-            CollectionAudit audit = mock(CollectionAudit.class);
-            when(audit.getInputFilePath()).thenReturn(fileName);
-            when(audit.getJobStatus()).thenReturn(fileName.equals("/path/to/input/Sample1.csv") ? "COLLECTION_FAILED" : "COLLECTION_SUCCESS");
-            audits.add(audit);
-        }
-//        when(collectionAuditRepository.findLatestByFilePaths(anyList())).thenReturn(audits);
-        doReturn(audits).when(collectionAuditRepository).findLatestByFilePaths(anyList());
-
-        SpaceCollector spaceCollector = new SpaceCollector();
-        // Set the fields of the spaceCollector object here
-        spaceCollector.setUrl("localhost");
-        spaceCollector.setPort(22);
-        spaceCollector.setUserName("username");
-        spaceCollector.setPassword("password");
-        spaceCollector.setInputFilePath("/path/to/input");
-        spaceCollector.setOutputFilePath("/path/to/output");
-
-        boolean result = sshService.retrieveData(spaceCollector, collectorUtil.getDateAsString(new Date()), "3459-DEV-COLLECTION-AUDIT-QUEUE");
-
-        // Verify that get() method is called twice
-        verify(channelSftp, times(2)).get(anyString());
