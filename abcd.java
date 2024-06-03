@@ -54,6 +54,10 @@ public class SSHServiceSteps {
         Mockito.when(jsch.getSession(Mockito.anyString(), Mockito.anyString(), Mockito.anyInt())).thenReturn(session);
         Mockito.when(session.openChannel("sftp")).thenReturn(channelSftp);
         Mockito.when(session.isConnected()).thenReturn(true);
+        Mockito.doNothing().when(session).connect();
+        Mockito.doNothing().when(session).disconnect();
+        Mockito.doNothing().when(channelSftp).connect();
+        Mockito.doNothing().when(channelSftp).disconnect();
         Mockito.when(channelSftp.getSession()).thenReturn(session);
 
         remoteFiles = new Vector<>();
@@ -111,6 +115,19 @@ public class SSHServiceSteps {
                 return remoteFileStreams.get(path);
             }
         });
+    }
+
+    @Given("files inside the ZIP files")
+    public void givenFilesInsideTheZIPFiles(List<String> zipFiles) throws IOException {
+        for (String zipFile : zipFiles) {
+            String[] parts = zipFile.split("/");
+            String zipFileName = parts[parts.length - 2]; // Assuming the second last part is the ZIP file name
+            String fileNameInsideZip = parts[parts.length - 1];
+
+            // Mocking the behavior of extracting files from the ZIP
+            ByteArrayInputStream fileStream = new ByteArrayInputStream(("Content of " + fileNameInsideZip).getBytes());
+            remoteFileStreams.put(zipFile, fileStream);
+        }
     }
 
     @When("the retrieveData method is called")
@@ -171,26 +188,3 @@ public class SSHServiceSteps {
                 unixBasedPath);
     }
 }
-
-
-
-
-
-
-Feature: Retrieve and Process Nested Directories and ZIP Files
-
-  Scenario: Retrieve files from nested directories and extract ZIP files
-    Given a SpaceCollector with SSH connection details
-    And a remote directory structure with nested directories, files, and ZIP files
-      | remoteDirectory             | localDirectory              |
-      | /remote/dir1                | /local/dir1                 |
-      | /remote/dir1/subdir1        | /local/dir1/subdir1         |
-    And files and ZIP files in the remote directories
-      | /remote/dir1/file1.txt      |
-      | /remote/dir1/subdir1/file2.zip |
-    And files inside the ZIP files
-      | /remote/dir1/subdir1/file2.zip/subfile1.txt |
-    When the retrieveData method is called
-    Then all files from the remote directories should be downloaded to the corresponding local directories
-    And all ZIP files should be extracted to the corresponding local directories
-    And the files should be pushed to S3 with the correct keys
