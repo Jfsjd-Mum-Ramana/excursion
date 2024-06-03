@@ -1,13 +1,69 @@
-public static void unzipGZ(String gzFilePath, String outputDir) throws IOException {
-        File file = new File(gzFilePath);
-        try (GZIPInputStream in = new GZIPInputStream(new FileInputStream(file))) {
-            File target = new File(outputDir, FileUtil.stripFileExt(file.getName()));
-            try (OutputStream os = new FileOutputStream(target)) {
-                byte[] buf = new byte[1024];
-                int len;
-                while ((len = in.read(buf)) > 0) {
-                    os.write(buf, 0, len);
-                }
+import org.junit.jupiter.api.Test;
+import java.io.*;
+
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+public class ZipUtilTest {
+
+    @Test
+    public void testUnzipGZ() {
+        // Create a temporary directory for testing
+        File tempDir = null;
+        try {
+            tempDir = createTempDir();
+            String gzFilePath = createGzFile(tempDir);
+            String outputDir = tempDir.getAbsolutePath();
+            String expectedFileName = FileUtil.stripFileExt(new File(gzFilePath).getName());
+
+            // Call the method to be tested
+            assertDoesNotThrow(() -> ZipUtil.unzipGZ(gzFilePath, outputDir));
+
+            // Check if the unzipped file exists in the output directory
+            assertTrue(new File(outputDir, expectedFileName).exists());
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            // Clean up: delete the temporary directory and its contents
+            if (tempDir != null) {
+                deleteDirectory(tempDir);
             }
         }
     }
+
+    private File createTempDir() throws IOException {
+        return File.createTempFile("temp", Long.toString(System.nanoTime()));
+    }
+
+    private String createGzFile(File tempDir) throws IOException {
+        File file = new File(tempDir, "testFile.txt");
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(file))) {
+            writer.write("Hello, this is a test file.");
+        }
+
+        // Create a GZIP file
+        String gzFilePath = file.getAbsolutePath() + ".gz";
+        try (FileInputStream fileInputStream = new FileInputStream(file);
+             GZIPOutputStream gzipOutputStream = new GZIPOutputStream(new FileOutputStream(gzFilePath))) {
+            byte[] buffer = new byte[1024];
+            int len;
+            while ((len = fileInputStream.read(buffer)) > 0) {
+                gzipOutputStream.write(buffer, 0, len);
+            }
+        }
+
+        return gzFilePath;
+    }
+
+    private void deleteDirectory(File dir) {
+        if (dir.isDirectory()) {
+            File[] files = dir.listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    deleteDirectory(file);
+                }
+            }
+        }
+        dir.delete();
+    }
+}
