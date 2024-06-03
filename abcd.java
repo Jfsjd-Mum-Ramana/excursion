@@ -34,7 +34,7 @@ public class SSHServiceSteps {
         spaceCollector.setInputFilePath("/remote/dir1");
         spaceCollector.setOutputFilePath("/local/dir1");
 
-        // Mocking JSch and Session
+        // Mocking JSch, Session, and ChannelSftp
         JSch jsch = Mockito.mock(JSch.class);
         session = Mockito.mock(Session.class);
         channelSftp = Mockito.mock(ChannelSftp.class);
@@ -58,6 +58,7 @@ public class SSHServiceSteps {
         Mockito.doNothing().when(session).disconnect();
         Mockito.doNothing().when(channelSftp).connect();
         Mockito.doNothing().when(channelSftp).disconnect();
+        Mockito.doNothing().when(channelSftp).cd(Mockito.anyString());
         Mockito.when(channelSftp.getSession()).thenReturn(session);
 
         remoteFiles = new Vector<>();
@@ -65,10 +66,10 @@ public class SSHServiceSteps {
     }
 
     @Given("a remote directory structure with nested directories, files, and ZIP files")
-    public void givenRemoteDirectoryStructureWithNestedDirectoriesAndFiles(Map<String, String> directories) throws SftpException {
-        for (Map.Entry<String, String> entry : directories.entrySet()) {
-            String remoteDir = entry.getKey();
-            String localDir = entry.getValue();
+    public void givenRemoteDirectoryStructureWithNestedDirectoriesAndFiles(List<Map<String, String>> directories) throws SftpException {
+        for (Map<String, String> entry : directories) {
+            String remoteDir = entry.get("remoteDirectory");
+            String localDir = entry.get("localDirectory");
 
             // Mock directory entries
             ChannelSftp.LsEntry dirEntry = Mockito.mock(ChannelSftp.LsEntry.class);
@@ -132,6 +133,7 @@ public class SSHServiceSteps {
 
     @When("the retrieveData method is called")
     public void whenRetrieveDataMethodIsCalled() throws Exception {
+        // Ensure that the connection methods do not perform real actions
         Mockito.doNothing().when(channelSftp).connect();
         Mockito.doNothing().when(channelSftp).cd(Mockito.anyString());
 
