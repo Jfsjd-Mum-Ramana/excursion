@@ -1,137 +1,100 @@
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.*;
-import org.mockito.junit.MockitoJUnitRunner;
+public class ZipUtil {
 
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.util.*;
+    public static boolean isZipFile(String filePath) {
+        String extn = ZipUtil.getFileExtension(filePath);
 
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.*;
+        String[] array = {"zip", "tar", "tar.gz", "gz"};
+        List<String> list = Arrays.asList(array);
 
-@RunWith(MockitoJUnitRunner.class)
-public class SSHServiceTest {
-
-    @Mock
-    private KafkaProducerService kafkaProducerService;
-
-    @Mock
-    private ChannelSftp channelSftp;
-
-    @Mock
-    private OutputStreamCreator outputStreamCreator;
-
-    @Mock
-    private CollectionAuditRepository collectionAuditRepository;
-
-    @Mock
-    private CollectorUtil collectorUtil;
-
-    @Mock
-    private S3Service s3Service;
-
-    @InjectMocks
-    private SSHService sshService; // Your service class
-
-    @Before
-    public void setUp() {
-        MockitoAnnotations.openMocks(this); // Initialize mocks
+        return list.contains(extn);
     }
 
-    @Test
-    public void testRetrieveData_Success() throws Exception {
-        when(kafkaProducerService.writeMessage(Mockito.any(), anyString(), anyString())).thenReturn(true);
-
-        InputStream mockInputStream = mock(InputStream.class);
-        when(channelSftp.get(anyString())).thenReturn(mockInputStream);
-
-        OutputStream mockOutputStream = mock(OutputStream.class);
-        when(outputStreamCreator.create(anyString())).thenReturn(mockOutputStream);
-
-        when(mockInputStream.read(ArgumentMatchers.any(byte[].class))).thenReturn(-1); // Simulate end of stream
-        doNothing().when(mockOutputStream).close();
-        doNothing().when(mockInputStream).close();
-
-        Vector<ChannelSftp.LsEntry> files = new Vector<>();
-        for (String fileName : new String[]{"Sample1.csv", "Sample2.csv", "Sample3.csv"}) {
-            ChannelSftp.LsEntry file = mock(ChannelSftp.LsEntry.class);
-            SftpATTRS attrs = mock(SftpATTRS.class);
-            when(file.getFilename()).thenReturn(fileName);
-            when(file.getAttrs()).thenReturn(attrs);
-            when(attrs.isDir()).thenReturn(false);
-            files.add(file);
+    public static void extract(String filePath, String destDir) throws IOException, NoSuchFieldException {
+        String fileExtension = getFileExtension(filePath);
+        if ("tar".equalsIgnoreCase(fileExtension)) {
+            untar(filePath, destDir);
+        } else if ("tar.gz".equalsIgnoreCase(fileExtension)) {
+            unGzipAndUntar(filePath, destDir);
+        } else if ("gz".equalsIgnoreCase(fileExtension)) {
+            unzipGZ(filePath, destDir);
+        } else {
+            System.err.println("Unsupported file type: " + fileExtension);
+            throw new IOException("Unsupported file type: " + fileExtension);
         }
-        when(channelSftp.ls(anyString())).thenReturn(files);
 
-        List<CollectionAudit> audits = new ArrayList<>();
-        for (String fileName : new String[]{"/path/to/input/Sample1.csv", "/path/to/input/Sample3.csv"}) {
-            CollectionAudit audit = mock(CollectionAudit.class);
-            when(audit.getInputFilePath()).thenReturn(fileName);
-            when(audit.getJobStatus()).thenReturn(fileName.equals("/path/to/input/Sample1.csv") ? "COLLECTION_FAILED" : "COLLECTION_SUCCESS");
-            audits.add(audit);
+        // Recursively extract nested archives
+        List<String> files = FileUtil.readFilesInDirectory(destDir);
+        for (String file : files) {
+            if (isZipFile(file)) {
+                extract(file, destDir);
+            }
         }
-        doReturn(audits).when(collectionAuditRepository).findLatestByFilePaths(anyList());
-
-        SpaceCollector spaceCollector = new SpaceCollector();
-        spaceCollector.setUrl("localhost");
-        spaceCollector.setPort(22);
-        spaceCollector.setUserName("username");
-        spaceCollector.setPassword("password");
-        spaceCollector.setInputFilePath("/path/to/input");
-        spaceCollector.setOutputFilePath("/path/to/output");
-
-        when(collectorUtil.getDateAsString(Mockito.any())).thenReturn("2021-01-01");
-
-        boolean result = sshService.retrieveData(spaceCollector, collectorUtil.getDateAsString(new Date()), "3459-DEV-COLLECTION-AUDIT-QUEUE");
-
-        verify(channelSftp, times(2)).get(anyString());
     }
 
-    @Test
-    public void testRetrieveData_FileRetrievalFailureForSpecificFile() throws Exception {
-        InputStream mockInputStream = mock(InputStream.class);
-        when(channelSftp.get(anyString())).thenReturn(mockInputStream);
-        when(channelSftp.get("/path/to/input/Sample2.csv")).thenThrow(new SftpException(0, "file retrieval failed"));
-
-        OutputStream mockOutputStream = mock(OutputStream.class);
-        when(outputStreamCreator.create(anyString())).thenReturn(mockOutputStream);
-
-        when(mockInputStream.read(ArgumentMatchers.any(byte[].class))).thenReturn(-1); // Simulate end of stream
-        doNothing().when(mockOutputStream).close();
-        doNothing().when(mockInputStream).close();
-
-        Vector<ChannelSftp.LsEntry> files = new Vector<>();
-        for (String fileName : new String[]{"Sample1.csv", "Sample2.csv", "Sample3.csv"}) {
-            ChannelSftp.LsEntry file = mock(ChannelSftp.LsEntry.class);
-            SftpATTRS attrs = mock(SftpATTRS.class);
-            when(file.getFilename()).thenReturn(fileName);
-            when(file.getAttrs()).thenReturn(attrs);
-            when(attrs.isDir()).thenReturn(false);
-            files.add(file);
+    private static String getFileExtension(String filePath) {
+        if (filePath.endsWith(".tar.gz")) {
+            return "tar.gz";
+        } else if (filePath.endsWith(".gz")) {
+            return "gz";
+        } else {
+            return filePath.substring(filePath.lastIndexOf('.') + 1);
         }
-        when(channelSftp.ls(anyString())).thenReturn(files);
+    }
 
-        List<CollectionAudit> audits = new ArrayList<>();
-        for (String fileName : new String[]{"/path/to/input/Sample1.csv", "/path/to/input/Sample3.csv"}) {
-            CollectionAudit audit = mock(CollectionAudit.class);
-            when(audit.getInputFilePath()).thenReturn(fileName);
-            when(audit.getJobStatus()).thenReturn(fileName.equals("/path/to/input/Sample1.csv") ? "COLLECTION_FAILED" : "COLLECTION_SUCCESS");
-            audits.add(audit);
+    public static void untar(String tarFilePath, String destDir) throws IOException {
+        try (TarArchiveInputStream tarInput = new TarArchiveInputStream(new FileInputStream(tarFilePath))) {
+            TarArchiveEntry entry;
+            while ((entry = tarInput.getNextTarEntry()) != null) {
+                File destPath = new File(destDir, entry.getName());
+                if (entry.isDirectory()) {
+                    destPath.mkdirs();
+                } else {
+                    destPath.getParentFile().mkdirs();
+                    try (BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(destPath))) {
+                        byte[] buffer = new byte[1024];
+                        int len;
+                        while ((len = tarInput.read(buffer)) != -1) {
+                            bos.write(buffer, 0, len);
+                        }
+                    }
+                }
+            }
         }
-        doReturn(audits).when(collectionAuditRepository).findLatestByFilePaths(anyList());
+    }
 
-        SpaceCollector spaceCollector = new SpaceCollector();
-        spaceCollector.setUrl("localhost");
-        spaceCollector.setPort(22);
-        spaceCollector.setUserName("username");
-        spaceCollector.setPassword("password");
-        spaceCollector.setInputFilePath("/path/to/input");
-        spaceCollector.setOutputFilePath("/path/to/output");
+    public static void unGzipAndUntar(String tarGzFilePath, String destDir) throws IOException {
+        try (TarArchiveInputStream tarInput = new TarArchiveInputStream(
+                new GzipCompressorInputStream(new FileInputStream(tarGzFilePath)))) {
+            TarArchiveEntry entry;
+            while ((entry = tarInput.getNextTarEntry()) != null) {
+                File destPath = new File(destDir, entry.getName());
+                if (entry.isDirectory()) {
+                    destPath.mkdirs();
+                } else {
+                    destPath.getParentFile().mkdirs();
+                    try (BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(destPath))) {
+                        byte[] buffer = new byte[1024];
+                        int len;
+                        while ((len = tarInput.read(buffer)) != -1) {
+                            bos.write(buffer, 0, len);
+                        }
+                    }
+                }
+            }
+        }
+    }
 
-        boolean result = sshService.retrieveData(spaceCollector, collectorUtil.getDateAsString(new Date()), "3459-DEV-COLLECTION-AUDIT-QUEUE");
-
-        verify(channelSftp, times(2)).get(anyString());
+    public static void unzipGZ(String gzFilePath, String outputDir) throws IOException {
+        File file = new File(gzFilePath);
+        try (GZIPInputStream in = new GZIPInputStream(new FileInputStream(file))) {
+            File target = new File(outputDir, FileUtil.stripFileExt(file.getName()));
+            try (OutputStream os = new FileOutputStream(target)) {
+                byte[] buf = new byte[1024];
+                int len;
+                while ((len = in.read(buf)) > 0) {
+                    os.write(buf, 0, len);
+                }
+            }
+        }
     }
 }
