@@ -1,89 +1,137 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Modak Form</title>
-    <!-- Include Bootstrap CSS for styling -->
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
-    <!-- Include jQuery -->
-    <script src="https://code.jquery.com/jquery-3.3.1.min.js"></script>
-</head>
-<body>
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.*;
+import org.mockito.junit.MockitoJUnitRunner;
 
-    <div class="container mt-5">
-        <h2>Modak Form</h2>
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.*;
 
-        <form id="modakForm">
-            <div class="form-group">
-                <label for="age">Age:</label>
-                <input type="number" class="form-control" id="age" name="age" required>
-            </div>
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.*;
 
-            <div class="form-group">
-                <label for="date">Date:</label>
-                <input type="date" class="form-control" id="date" name="date" required>
-            </div>
+@RunWith(MockitoJUnitRunner.class)
+public class SSHServiceTest {
 
-            <div class="form-group">
-                <label for="organization">Organization:</label>
-                <select class="form-control" id="organization" name="organization" required>
-                    <option value="company1">Company 1</option>
-                    <option value="company2">Company 2</option>
-                    <option value="company3">Company 3</option>
-                </select>
-            </div>
+    @Mock
+    private KafkaProducerService kafkaProducerService;
 
-            <button type="button" class="btn btn-primary" onclick="saveFormData()">Save</button>
-        </form>
+    @Mock
+    private ChannelSftp channelSftp;
 
-        <div class="mt-4">
-            <h3>Stored Data</h3>
-            <div id="dataGrid" class="row"></div>
-        </div>
-    </div>
+    @Mock
+    private OutputStreamCreator outputStreamCreator;
 
-    <script>
-        function saveFormData() {
-            const age = $('#age').val();
-            const date = $('#date').val();
-            const organization = $('#organization').val();
+    @Mock
+    private CollectionAuditRepository collectionAuditRepository;
 
-            const payload = {
-                age: age,
-                date: date,
-                organization: organization
-            };
+    @Mock
+    private CollectorUtil collectorUtil;
 
-            // Simulate sending data to a dummy endpoint
-            $.post('https://dummy-endpoint.com', JSON.stringify(payload))
-                .done(function (data) {
-                    console.log('Request payload:', data);
-                    displayData(data);
-                    alert('Data saved successfully!');
-                })
-                .fail(function (xhr, textStatus, errorThrown) {
-                    console.error('Error:', textStatus, errorThrown);
-                    alert('Error saving data. Please try again.');
-                });
+    @Mock
+    private S3Service s3Service;
+
+    @InjectMocks
+    private SSHService sshService; // Your service class
+
+    @Before
+    public void setUp() {
+        MockitoAnnotations.openMocks(this); // Initialize mocks
+    }
+
+    @Test
+    public void testRetrieveData_Success() throws Exception {
+        when(kafkaProducerService.writeMessage(Mockito.any(), anyString(), anyString())).thenReturn(true);
+
+        InputStream mockInputStream = mock(InputStream.class);
+        when(channelSftp.get(anyString())).thenReturn(mockInputStream);
+
+        OutputStream mockOutputStream = mock(OutputStream.class);
+        when(outputStreamCreator.create(anyString())).thenReturn(mockOutputStream);
+
+        when(mockInputStream.read(ArgumentMatchers.any(byte[].class))).thenReturn(-1); // Simulate end of stream
+        doNothing().when(mockOutputStream).close();
+        doNothing().when(mockInputStream).close();
+
+        Vector<ChannelSftp.LsEntry> files = new Vector<>();
+        for (String fileName : new String[]{"Sample1.csv", "Sample2.csv", "Sample3.csv"}) {
+            ChannelSftp.LsEntry file = mock(ChannelSftp.LsEntry.class);
+            SftpATTRS attrs = mock(SftpATTRS.class);
+            when(file.getFilename()).thenReturn(fileName);
+            when(file.getAttrs()).thenReturn(attrs);
+            when(attrs.isDir()).thenReturn(false);
+            files.add(file);
         }
+        when(channelSftp.ls(anyString())).thenReturn(files);
 
-        function displayData(data) {
-            const dataGrid = $('#dataGrid');
-            const newRow = $('<div class="col-md-4 mb-3"></div>');
-
-            newRow.append(`<p><strong>Age:</strong> ${data.age}</p>`);
-            newRow.append(`<p><strong>Date:</strong> ${data.date}</p>`);
-            newRow.append(`<p><strong>Organization:</strong> ${data.organization}</p>`);
-
-            dataGrid.prepend(newRow);
+        List<CollectionAudit> audits = new ArrayList<>();
+        for (String fileName : new String[]{"/path/to/input/Sample1.csv", "/path/to/input/Sample3.csv"}) {
+            CollectionAudit audit = mock(CollectionAudit.class);
+            when(audit.getInputFilePath()).thenReturn(fileName);
+            when(audit.getJobStatus()).thenReturn(fileName.equals("/path/to/input/Sample1.csv") ? "COLLECTION_FAILED" : "COLLECTION_SUCCESS");
+            audits.add(audit);
         }
-    </script>
+        doReturn(audits).when(collectionAuditRepository).findLatestByFilePaths(anyList());
 
-    <!-- Include Bootstrap JS for button styling -->
-    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
+        SpaceCollector spaceCollector = new SpaceCollector();
+        spaceCollector.setUrl("localhost");
+        spaceCollector.setPort(22);
+        spaceCollector.setUserName("username");
+        spaceCollector.setPassword("password");
+        spaceCollector.setInputFilePath("/path/to/input");
+        spaceCollector.setOutputFilePath("/path/to/output");
 
-</body>
-</html>
+        when(collectorUtil.getDateAsString(Mockito.any())).thenReturn("2021-01-01");
+
+        boolean result = sshService.retrieveData(spaceCollector, collectorUtil.getDateAsString(new Date()), "3459-DEV-COLLECTION-AUDIT-QUEUE");
+
+        verify(channelSftp, times(2)).get(anyString());
+    }
+
+    @Test
+    public void testRetrieveData_FileRetrievalFailureForSpecificFile() throws Exception {
+        InputStream mockInputStream = mock(InputStream.class);
+        when(channelSftp.get(anyString())).thenReturn(mockInputStream);
+        when(channelSftp.get("/path/to/input/Sample2.csv")).thenThrow(new SftpException(0, "file retrieval failed"));
+
+        OutputStream mockOutputStream = mock(OutputStream.class);
+        when(outputStreamCreator.create(anyString())).thenReturn(mockOutputStream);
+
+        when(mockInputStream.read(ArgumentMatchers.any(byte[].class))).thenReturn(-1); // Simulate end of stream
+        doNothing().when(mockOutputStream).close();
+        doNothing().when(mockInputStream).close();
+
+        Vector<ChannelSftp.LsEntry> files = new Vector<>();
+        for (String fileName : new String[]{"Sample1.csv", "Sample2.csv", "Sample3.csv"}) {
+            ChannelSftp.LsEntry file = mock(ChannelSftp.LsEntry.class);
+            SftpATTRS attrs = mock(SftpATTRS.class);
+            when(file.getFilename()).thenReturn(fileName);
+            when(file.getAttrs()).thenReturn(attrs);
+            when(attrs.isDir()).thenReturn(false);
+            files.add(file);
+        }
+        when(channelSftp.ls(anyString())).thenReturn(files);
+
+        List<CollectionAudit> audits = new ArrayList<>();
+        for (String fileName : new String[]{"/path/to/input/Sample1.csv", "/path/to/input/Sample3.csv"}) {
+            CollectionAudit audit = mock(CollectionAudit.class);
+            when(audit.getInputFilePath()).thenReturn(fileName);
+            when(audit.getJobStatus()).thenReturn(fileName.equals("/path/to/input/Sample1.csv") ? "COLLECTION_FAILED" : "COLLECTION_SUCCESS");
+            audits.add(audit);
+        }
+        doReturn(audits).when(collectionAuditRepository).findLatestByFilePaths(anyList());
+
+        SpaceCollector spaceCollector = new SpaceCollector();
+        spaceCollector.setUrl("localhost");
+        spaceCollector.setPort(22);
+        spaceCollector.setUserName("username");
+        spaceCollector.setPassword("password");
+        spaceCollector.setInputFilePath("/path/to/input");
+        spaceCollector.setOutputFilePath("/path/to/output");
+
+        boolean result = sshService.retrieveData(spaceCollector, collectorUtil.getDateAsString(new Date()), "3459-DEV-COLLECTION-AUDIT-QUEUE");
+
+        verify(channelSftp, times(2)).get(anyString());
+    }
+}
