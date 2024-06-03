@@ -3,6 +3,8 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.*;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -55,48 +57,49 @@ public class SshServiceTest {
         List<String> filesList = Arrays.asList(fileName);
         String fileNameWithoutExtn = "SampleFile";
 
-        // Mock FileUtil methods
-        mockStatic(FileUtil.class);
-        when(FileUtil.getFileNameWithoutExtn(fileName)).thenReturn(fileNameWithoutExtn);
-        when(FileUtil.readFilesInDirectory(anyString())).thenReturn(filesList);
-        when(FileUtil.createDirectoryIfNotExists(anyString())).thenReturn(true);
+        try (MockedStatic<FileUtil> mockedFileUtil = Mockito.mockStatic(FileUtil.class);
+             MockedStatic<ZipUtil> mockedZipUtil = Mockito.mockStatic(ZipUtil.class)) {
 
-        // Mock ZipUtil methods
-        mockStatic(ZipUtil.class);
-        when(ZipUtil.isZipFile(fileName)).thenReturn(false);
+            // Mock FileUtil methods
+            mockedFileUtil.when(() -> FileUtil.getFileNameWithoutExtn(fileName)).thenReturn(fileNameWithoutExtn);
+            mockedFileUtil.when(() -> FileUtil.readFilesInDirectory(anyString())).thenReturn(filesList);
+            mockedFileUtil.when(() -> FileUtil.createDirectoryIfNotExists(anyString())).thenReturn(true);
 
-        // Call the method
-        sshService.processFileRecords(sp, dateReceived, auditTopic, fileName, localDirectory);
+            // Mock ZipUtil methods
+            mockedZipUtil.when(() -> ZipUtil.isZipFile(fileName)).thenReturn(false);
 
-        // Verify interactions
-        Path insideFilePath = Paths.get(fileName);
-        Path folderPath = Paths.get(sp.getOutputFilePath()).relativize(insideFilePath.getParent());
-        String unixBasedPath = folderPath.toString().replace("\\", "/");
-        String key = String.format("%s/%s/%s/%s/%s",
-                profileCheckConfig.getActiveProfile(),
-                sp.getFileType(),
-                sp.getUrl(),
-                dateUtil.getDateInMMddyyyy(),
-                !unixBasedPath.isEmpty() ? (unixBasedPath + "/" + insideFilePath.getFileName()) : insideFilePath.getFileName());
+            // Call the method
+            sshService.processFileRecords(sp, dateReceived, auditTopic, fileName, localDirectory);
 
-        verify(s3Service).pushToS3(fileName, key);
-        verify(kafkaProducerService).writeMessage(anyString(), anyString(), eq(auditTopic));
+            // Verify interactions
+            Path insideFilePath = Paths.get(fileName);
+            Path folderPath = Paths.get(sp.getOutputFilePath()).relativize(insideFilePath.getParent());
+            String unixBasedPath = folderPath.toString().replace("\\", "/");
+            String key = String.format("%s/%s/%s/%s/%s",
+                    profileCheckConfig.getActiveProfile(),
+                    sp.getFileType(),
+                    sp.getUrl(),
+                    dateUtil.getDateInMMddyyyy(),
+                    !unixBasedPath.isEmpty() ? (unixBasedPath + "/" + insideFilePath.getFileName()) : insideFilePath.getFileName());
 
-        // Test for zip file processing
-        String zipFileName = "/local/dir/SampleFile.zip";
-        String nestedFileNameWithoutExtn = "SampleFile";
-        List<String> nestedFilesList = Arrays.asList("/local/dir/SampleFile/nestedFile1.csv", "/local/dir/SampleFile/nestedFile2.csv");
+            verify(s3Service).pushToS3(fileName, key);
+            verify(kafkaProducerService).writeMessage(anyString(), anyString(), eq(auditTopic));
 
-        when(ZipUtil.isZipFile(zipFileName)).thenReturn(true);
-        when(FileUtil.getFileNameWithoutExtn(zipFileName)).thenReturn(nestedFileNameWithoutExtn);
-        when(FileUtil.readFilesInDirectory(anyString())).thenReturn(nestedFilesList);
+            // Test for zip file processing
+            String zipFileName = "/local/dir/SampleFile.zip";
+            String nestedFileNameWithoutExtn = "SampleFile";
+            List<String> nestedFilesList = Arrays.asList("/local/dir/SampleFile/nestedFile1.csv", "/local/dir/SampleFile/nestedFile2.csv");
 
-        sshService.processFileRecords(sp, dateReceived, auditTopic, zipFileName, localDirectory);
+            mockedZipUtil.when(() -> ZipUtil.isZipFile(zipFileName)).thenReturn(true);
+            mockedFileUtil.when(() -> FileUtil.getFileNameWithoutExtn(zipFileName)).thenReturn(nestedFileNameWithoutExtn);
+            mockedFileUtil.when(() -> FileUtil.readFilesInDirectory(anyString())).thenReturn(nestedFilesList);
 
-        verify(ZipUtil).extract(zipFileName, localDirectory + "/" + nestedFileNameWithoutExtn);
-        for (String nestedFile : nestedFilesList) {
-            verifyStatic(FileUtil.class, times(2));
-            FileUtil.readFilesInDirectory(localDirectory + "/" + nestedFileNameWithoutExtn);
+            sshService.processFileRecords(sp, dateReceived, auditTopic, zipFileName, localDirectory);
+
+            mockedZipUtil.verify(() -> ZipUtil.extract(zipFileName, localDirectory + "/" + nestedFileNameWithoutExtn));
+            for (String nestedFile : nestedFilesList) {
+                mockedFileUtil.verify(() -> FileUtil.readFilesInDirectory(localDirectory + "/" + nestedFileNameWithoutExtn));
+            }
         }
     }
 }
