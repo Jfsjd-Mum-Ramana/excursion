@@ -1,46 +1,102 @@
-    filesList.addAll(FileUtil.readFilesInDirectory(localDirectory + "/" + fileNameWithoutExtn));
-        } else {
-            filesList.add(outputFile);
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.*;
+import org.mockito.junit.MockitoJUnitRunner;
+
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Arrays;
+import java.util.List;
+
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+@RunWith(MockitoJUnitRunner.class)
+public class SshServiceTest {
+
+    @Mock
+    private S3Service s3Service;
+
+    @Mock
+    private KafkaProducerService kafkaProducerService;
+
+    @Mock
+    private CollectorUtil collectorUtil;
+
+    @Mock
+    private DateUtil dateUtil;
+
+    @Mock
+    private ProfileCheckConfig profileCheckConfig;
+
+    @InjectMocks
+    private SshService sshService;
+
+    @Before
+    public void setUp() {
+        MockitoAnnotations.openMocks(this);
+    }
+
+    @Test
+    public void testProcessFileRecords() throws Exception {
+        SpaceCollector sp = mock(SpaceCollector.class);
+        String dateReceived = "2023-01-01";
+        String auditTopic = "auditTopic";
+        String localDirectory = "/local/dir";
+        String fileName = "/local/dir/SampleFile.csv";
+
+        when(sp.getOutputFilePath()).thenReturn(localDirectory);
+        when(sp.getFileType()).thenReturn("fileType");
+        when(sp.getUrl()).thenReturn("url");
+        when(dateUtil.getDateInMMddyyyy()).thenReturn("12312023");
+        when(profileCheckConfig.getActiveProfile()).thenReturn("dev");
+
+        List<String> filesList = Arrays.asList(fileName);
+        String fileNameWithoutExtn = "SampleFile";
+
+        // Mock FileUtil methods
+        mockStatic(FileUtil.class);
+        when(FileUtil.getFileNameWithoutExtn(fileName)).thenReturn(fileNameWithoutExtn);
+        when(FileUtil.readFilesInDirectory(anyString())).thenReturn(filesList);
+        when(FileUtil.createDirectoryIfNotExists(anyString())).thenReturn(true);
+
+        // Mock ZipUtil methods
+        mockStatic(ZipUtil.class);
+        when(ZipUtil.isZipFile(fileName)).thenReturn(false);
+
+        // Call the method
+        sshService.processFileRecords(sp, dateReceived, auditTopic, fileName, localDirectory);
+
+        // Verify interactions
+        Path insideFilePath = Paths.get(fileName);
+        Path folderPath = Paths.get(sp.getOutputFilePath()).relativize(insideFilePath.getParent());
+        String unixBasedPath = folderPath.toString().replace("\\", "/");
+        String key = String.format("%s/%s/%s/%s/%s",
+                profileCheckConfig.getActiveProfile(),
+                sp.getFileType(),
+                sp.getUrl(),
+                dateUtil.getDateInMMddyyyy(),
+                !unixBasedPath.isEmpty() ? (unixBasedPath + "/" + insideFilePath.getFileName()) : insideFilePath.getFileName());
+
+        verify(s3Service).pushToS3(fileName, key);
+        verify(kafkaProducerService).writeMessage(anyString(), anyString(), eq(auditTopic));
+
+        // Test for zip file processing
+        String zipFileName = "/local/dir/SampleFile.zip";
+        String nestedFileNameWithoutExtn = "SampleFile";
+        List<String> nestedFilesList = Arrays.asList("/local/dir/SampleFile/nestedFile1.csv", "/local/dir/SampleFile/nestedFile2.csv");
+
+        when(ZipUtil.isZipFile(zipFileName)).thenReturn(true);
+        when(FileUtil.getFileNameWithoutExtn(zipFileName)).thenReturn(nestedFileNameWithoutExtn);
+        when(FileUtil.readFilesInDirectory(anyString())).thenReturn(nestedFilesList);
+
+        sshService.processFileRecords(sp, dateReceived, auditTopic, zipFileName, localDirectory);
+
+        verify(ZipUtil).extract(zipFileName, localDirectory + "/" + nestedFileNameWithoutExtn);
+        for (String nestedFile : nestedFilesList) {
+            verifyStatic(FileUtil.class, times(2));
+            FileUtil.readFilesInDirectory(localDirectory + "/" + nestedFileNameWithoutExtn);
         }
-
-        for (String fileName : filesList) {
-            Path insideFilePath = Paths.get(fileName);
-            Path folderPath = Paths.get(sp.getOutputFilePath()).relativize(insideFilePath.getParent());
-
-            String unixBasedPath = folderPath.toString().replace("\\", "/");
-
-            String key = String.format("%s/%s/%s/%s/%s",
-                    ProfileCheckConfig.activeProfile,
-                    sp.getFileType(),
-                    sp.getUrl(),
-                    dateUtil.getDateInMMddyyyy(),
-                    !StringUtils.isBlank(unixBasedPath)
-                            ? (unixBasedPath.toString() + "/" + insideFilePath.getFileName())
-                            : insideFilePath.getFileName());
-            System.out.println("**************************");
-            System.out.println("Filename: " + fileName);
-            System.out.println("Key: " + key);
-            System.out.println("folderPath: " + folderPath);
-            System.out.println("Inside File Path: " + insideFilePath);
-            System.out.println("**************************");
-
-            s3Service.pushToS3(fileName, key);
-
-            CollectionAudit audit = createAuditObject(sp,
-                    key, JobStatus.COLLECTION_SUCCESSFUL.toString(), "");
-            kafkaProducerService.writeMessage(collectorUtil.buildAuditQueueJSON(audit),
-                    "", auditTopic);
-
-            // Check if the file is an archive and process it further
-            if (ZipUtil.isZipFile(fileName)) {
-                String nestedFileNameWithoutExtn = FileUtil.getFileNameWithoutExtn(fileName);
-                FileUtil.createDirectoryIfNotExists(localDirectory + "/" + nestedFileNameWithoutExtn);
-
-                ZipUtil.extract(fileName, localDirectory + "/" + nestedFileNameWithoutExtn);
-                List<String> nestedFilesList = FileUtil.readFilesInDirectory(localDirectory + "/" + nestedFileNameWithoutExtn);
-
-                for (String nestedFile : nestedFilesList) {
-                    processDownloadedFile(sp, dateReceived, auditTopic, nestedFile, localDirectory);
-                }
-            }
-        }
+    }
+}
