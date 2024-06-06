@@ -1,129 +1,160 @@
-Feature: Retrieve and process data from a remote server with nested folder structures
+Feature: Retrieve and Process Nested File Folders to S3
 
-  Scenario: Retrieve and process files including nested directories and zip files
-    Given a SpaceCollector configuration with remote and local paths
-    And the remote server contains a nested directory structure with zip files
-    When the retrieveData method is called
-    Then all files and directories are retrieved
-    And the zip files are extracted and their contents are processed
-    And all files are pushed to S3
-    And audit messages are sent for successful and failed collections
+  Scenario: Successfully retrieve, process, and push nested files and ZIP archives to S3, including error handling
+    Given a SpaceCollector with valid SSH credentials
+    And a remote directory "/remote/data" containing nested files and folders including ZIP archives
+    And some local directories do not exist
+    When the retrieveData method is called with "2024-06-06" and "auditTopic"
+    Then the method should recursively retrieve all files and directories from the remote directory "/remote/data"
+    And create any missing local directories
+    And download files to the corresponding local directories
+    And extract any ZIP files and process the extracted files
+    And push all files to S3 with appropriate keys
+    And send a successful collection audit message to the Kafka audit topic for each successfully processed file
+    And log and handle any errors for missing or inaccessible files
+    And send a collection failure audit message to the Kafka audit topic for each missing or inaccessible file
 
 
 
 
 
-import com.jcraft.jsch.*;
 import io.cucumber.java.en.*;
-import org.junit.Assert;
+import org.junit.Before;
+import org.mockito.*;
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.OutputStream;
-import java.nio.file.*;
-import java.util.List;
-import java.util.Properties;
+import java.util.*;
 
-public class RetrieveDataSteps {
+import static org.mockito.Mockito.*;
+
+public class RetrieveAndProcessFilesSteps {
 
     private SpaceCollector spaceCollector;
+    private String dateReceived;
+    private String auditTopic;
     private boolean result;
+    private RetrieveAndProcessService retrieveAndProcessService;
 
-    @Given("a SpaceCollector configuration with remote and local paths")
-    public void givenSpaceCollectorConfiguration() {
-        spaceCollector = new SpaceCollector();
-        spaceCollector.setUserName("user");
-        spaceCollector.setUrl("example.com");
-        spaceCollector.setPassword("password");
-        spaceCollector.setPort(22);
-        spaceCollector.setInputFilePath("/remote/input/path");
-        spaceCollector.setOutputFilePath("/local/output/path");
-        spaceCollector.setFileType("fileType");
-
-        // Mocked local setup for the purpose of the test
-        FileUtil.createDirectoryIfNotExists("/local/output/path");
+    @Before
+    public void setUp() {
+        MockitoAnnotations.openMocks(this);
+        retrieveAndProcessService = new RetrieveAndProcessService();
     }
 
-    @And("the remote server contains a nested directory structure with zip files")
-    public void givenRemoteServerWithNestedZipFiles() throws Exception {
-        // Setting up a test SFTP server with nested directories and zip files
-        JSch jsch = new JSch();
-        Session session = jsch.getSession("user", "example.com", 22);
-        session.setPassword("password");
-
-        Properties config = new Properties();
-        config.put("StrictHostKeyChecking", "no");
-        session.setConfig(config);
-        session.connect();
-
-        ChannelSftp channelSftp = (ChannelSftp) session.openChannel("sftp");
-        channelSftp.connect();
-
-        // Creating nested directories on the remote server
-        createRemoteDirectory(channelSftp, "/remote/input/path/dir1");
-        createRemoteDirectory(channelSftp, "/remote/input/path/dir2");
-
-        // Uploading a zip file to the remote server for testing
-        String localZipFilePath = createTestZipFile("/local/test.zip");
-        channelSftp.put(localZipFilePath, "/remote/input/path/test.zip");
-
-        channelSftp.disconnect();
-        session.disconnect();
+    @Given("a SpaceCollector with valid SSH credentials")
+    public void aSpaceCollectorWithValidSSHCredentials() {
+        spaceCollector = Mockito.mock(SpaceCollector.class);
+        when(spaceCollector.getUserName()).thenReturn("sshUsername");
+        when(spaceCollector.getUrl()).thenReturn("sshHost");
+        when(spaceCollector.getPassword()).thenReturn("sshPassword");
+        when(spaceCollector.getPort()).thenReturn(22);
+        when(spaceCollector.getInputFilePath()).thenReturn("/remote/data");
+        when(spaceCollector.getOutputFilePath()).thenReturn("/local/data");
     }
 
-    private void createRemoteDirectory(ChannelSftp channelSftp, String dirPath) throws SftpException {
+    @And("a remote directory {string} containing nested files and folders including ZIP archives")
+    public void aRemoteDirectoryContainingNestedFilesAndFoldersIncludingZIPArchives(String remoteDirectory) {
+        // Setup mocked remote directory structure
+        ChannelSftp channelSftp = Mockito.mock(ChannelSftp.class);
         try {
-            channelSftp.mkdir(dirPath);
+            List<ChannelSftp.LsEntry> files = Arrays.asList(
+                mockFileEntry("file1.txt", false),
+                mockFileEntry("file2.zip", false),
+                mockFileEntry("folder1", true)
+            );
+            when(channelSftp.ls(remoteDirectory)).thenReturn(new Vector<>(files));
+            when(channelSftp.get(remoteDirectory + "/file1.txt")).thenReturn(new ByteArrayInputStream("content".getBytes()));
+            when(channelSftp.get(remoteDirectory + "/file2.zip")).thenReturn(new ByteArrayInputStream("content".getBytes()));
         } catch (SftpException e) {
-            // Ignore if directory already exists
+            e.printStackTrace();
         }
     }
 
-    private String createTestZipFile(String zipFilePath) throws Exception {
-        File zipFile = new File(zipFilePath);
-        FileUtil.createDirectoryIfNotExists(zipFile.getParent());
-        try (OutputStream os = new FileOutputStream(zipFile)) {
-            ZipUtil.createZipWithTestFiles(zipFilePath);
+    @And("some local directories do not exist")
+    public void someLocalDirectoriesDoNotExist() {
+        // Mock the FileUtil to create directories if they do not exist
+        FileUtil fileUtilMock = Mockito.mock(FileUtil.class);
+        doNothing().when(fileUtilMock).createDirectoryIfNotExists(anyString());
+    }
+
+    @When("the retrieveData method is called with {string} and {string}")
+    public void theRetrieveDataMethodIsCalledWithAnd(String dateReceived, String auditTopic) {
+        this.dateReceived = dateReceived;
+        this.auditTopic = auditTopic;
+        try {
+            result = retrieveAndProcessService.retrieveData(spaceCollector, dateReceived, auditTopic);
+        } catch (Exception e) {
+            e.printStackTrace();
+            fail("Exception occurred: " + e.getMessage());
         }
-        return zipFilePath;
     }
 
-    @When("the retrieveData method is called")
-    public void whenRetrieveDataMethodIsCalled() throws Exception {
-        SshService sshService = new SshService();
-        result = sshService.retrieveData(spaceCollector, "01012021", "auditTopic");
+    @Then("the method should recursively retrieve all files and directories from the remote directory {string}")
+    public void theMethodShouldRecursivelyRetrieveAllFilesAndDirectoriesFromTheRemoteDirectory(String remoteDirectory) {
+        // Verify that the files and directories were retrieved
+        ChannelSftp channelSftp = Mockito.mock(ChannelSftp.class);
+        try {
+            verify(channelSftp).ls(remoteDirectory);
+        } catch (SftpException e) {
+            e.printStackTrace();
+        }
     }
 
-    @Then("all files and directories are retrieved")
-    public void thenAllFilesAndDirectoriesAreRetrieved() {
-        // Assert that the files and directories are retrieved in the local output path
-        Path localOutputPath = Paths.get(spaceCollector.getOutputFilePath());
-        Assert.assertTrue(Files.exists(localOutputPath));
-        Assert.assertTrue(Files.exists(localOutputPath.resolve("test.zip")));
-
-        // Additional checks for specific files and directories can be added here
+    @And("create any missing local directories")
+    public void createAnyMissingLocalDirectories() {
+        // Verify that missing local directories were created
+        FileUtil fileUtilMock = Mockito.mock(FileUtil.class);
+        verify(fileUtilMock, atLeastOnce()).createDirectoryIfNotExists(anyString());
     }
 
-    @Then("the zip files are extracted and their contents are processed")
-    public void thenZipFilesAreExtractedAndTheirContentsAreProcessed() {
-        // Assert that zip files are extracted and their contents are processed
-        Path extractedPath = Paths.get(spaceCollector.getOutputFilePath(), "test");
-        Assert.assertTrue(Files.exists(extractedPath.resolve("test.txt")));
+    @And("download files to the corresponding local directories")
+    public void downloadFilesToTheCorrespondingLocalDirectories() {
+        // Verify that files were downloaded
+        FileUtil fileUtilMock = Mockito.mock(FileUtil.class);
+        OutputStreamCreator outputStreamCreatorMock = Mockito.mock(OutputStreamCreator.class);
+        verify(fileUtilMock, atLeastOnce()).downloadFile(any(), any(), anyString(), anyString(), anyString());
     }
 
-    @Then("all files are pushed to S3")
-    public void thenAllFilesArePushedToS3() {
-        // Assert that files are pushed to S3
-        // This would normally require a check with the S3 service
-        // Mocking the check for testing purposes
-        Assert.assertTrue(true);
+    @And("extract any ZIP files and process the extracted files")
+    public void extractAnyZIPFilesAndProcessTheExtractedFiles() {
+        // Verify that ZIP files were extracted
+        ZipUtil zipUtilMock = Mockito.mock(ZipUtil.class);
+        verify(zipUtilMock, atLeastOnce()).extract(anyString(), anyString());
     }
 
-    @Then("audit messages are sent for successful and failed collections")
-    public void thenAuditMessagesAreSentForSuccessfulAndFailedCollections() {
-        // Assert that audit messages are sent
-        // This would normally require a check with the Kafka service
-        // Mocking the check for testing purposes
-        Assert.assertTrue(true);
+    @And("push all files to S3 with appropriate keys")
+    public void pushAllFilesToS3WithAppropriateKeys() {
+        // Verify that files were pushed to S3
+        S3Service s3ServiceMock = Mockito.mock(S3Service.class);
+        verify(s3ServiceMock, atLeastOnce()).pushToS3(anyString(), anyString());
+    }
+
+    @And("send a successful collection audit message to the Kafka audit topic for each successfully processed file")
+    public void sendASuccessfulCollectionAuditMessageToTheKafkaAuditTopicForEachSuccessfullyProcessedFile() {
+        // Verify that success audit messages were sent to Kafka
+        KafkaProducerService kafkaProducerServiceMock = Mockito.mock(KafkaProducerService.class);
+        verify(kafkaProducerServiceMock, atLeastOnce()).writeMessage(anyString(), anyString(), eq(auditTopic));
+    }
+
+    @And("log and handle any errors for missing or inaccessible files")
+    public void logAndHandleAnyErrorsForMissingOrInaccessibleFiles() {
+        // Verify that errors were logged and handled
+        Logger loggerMock = Mockito.mock(Logger.class);
+        verify(loggerMock, atLeastOnce()).error(anyString(), any(Exception.class));
+    }
+
+    @And("send a collection failure audit message to the Kafka audit topic for each missing or inaccessible file")
+    public void sendACollectionFailureAuditMessageToTheKafkaAuditTopicForEachMissingOrInaccessibleFile() {
+        // Verify that failure audit messages were sent to Kafka
+        KafkaProducerService kafkaProducerServiceMock = Mockito.mock(KafkaProducerService.class);
+        verify(kafkaProducerServiceMock, atLeastOnce()).writeMessage(anyString(), anyString(), eq(auditTopic));
+    }
+
+    private ChannelSftp.LsEntry mockFileEntry(String name, boolean isDir) {
+        ChannelSftp.LsEntry entry = Mockito.mock(ChannelSftp.LsEntry.class);
+        SftpATTRS attrs = Mockito.mock(SftpATTRS.class);
+        when(attrs.isDir()).thenReturn(isDir);
+        when(entry.getAttrs()).thenReturn(attrs);
+        when(entry.getFilename()).thenReturn(name);
+        return entry;
     }
 }
