@@ -1,150 +1,156 @@
-import io.cucumber.java.en.*;
-import org.junit.Before;
-import org.mockito.*;
-import org.slf4j.Logger;
-import com.jcraft.jsch.*;
+Sure, here are the testing scenarios (both positive and negative) for copying files, including handling nested folders and pushing them to S3.
 
-import java.io.ByteArrayInputStream;
-import java.util.*;
+### Positive Scenarios
 
-import static org.junit.Assert.fail;
-import static org.mockito.Mockito.*;
+1. **Basic File Copy**
+   - **Scenario**: Successfully copy a single file from the remote directory.
+   - **Given** a SpaceCollector with valid SSH credentials
+   - **And** a remote directory `/remote/data` containing a single file `file1.txt`
+   - **And** the local directory `/local/data` exists
+   - **When** the `retrieveData` method is called with `dateReceived` and `auditTopic`
+   - **Then** the method should copy `file1.txt`
+   - **And** download it to the local directory
+   - **And** push it to S3
+   - **And** send a successful collection audit message to the Kafka audit topic
 
-public class RetrieveAndProcessFilesSteps {
+2. **Nested Folders and Files Copy**
+   - **Scenario**: Successfully copy files within nested folders.
+   - **Given** a SpaceCollector with valid SSH credentials
+   - **And** a remote directory `/remote/data` containing nested folders and files
+   - **When** the `retrieveData` method is called with `dateReceived` and `auditTopic`
+   - **Then** the method should recursively copy all files and directories
+   - **And** create any missing local directories
+   - **And** download files to the corresponding local directories
+   - **And** push all files to S3 with appropriate keys
+   - **And** send successful collection audit messages to the Kafka audit topic for each successfully processed file
 
-    @Mock private SpaceCollector spaceCollector;
-    @Mock private SSHService sshService;
-    @Mock private FileUtil fileUtilMock;
-    @Mock private OutputStreamCreator outputStreamCreatorMock;
-    @Mock private S3Service s3ServiceMock;
-    @Mock private KafkaProducerService kafkaProducerServiceMock;
-    @Mock private DateUtil dateUtilMock;
-    @Mock private Logger loggerMock;
-    @Mock private ChannelSftp channelSftpMock;
-    @Mock private ZipUtil zipUtilMock;
-    @Mock private CollectorUtil collectorUtilMock;
-    @Mock private ProfileCheckConfig profileCheckConfigMock;
+3. **ZIP File Handling During Copy**
+   - **Scenario**: Successfully handle and process ZIP files within nested folders during copy.
+   - **Given** a SpaceCollector with valid SSH credentials
+   - **And** a remote directory `/remote/data` containing a ZIP file `archive.zip` with nested files
+   - **When** the `retrieveData` method is called with `dateReceived` and `auditTopic`
+   - **Then** the method should copy the ZIP file
+   - **And** extract its contents to the local directory
+   - **And** process the extracted files
+   - **And** push all files to S3 with appropriate keys
+   - **And** send successful collection audit messages to the Kafka audit topic for each successfully processed file
 
-    private RetrieveAndProcessService retrieveAndProcessService;
-    private String dateReceived;
-    private String auditTopic;
-    private boolean result;
+### Negative Scenarios
 
-    @Before
-    public void setUp() {
-        MockitoAnnotations.openMocks(this);
+1. **Missing Remote Directory During Copy**
+   - **Scenario**: Handle the case where the remote directory does not exist during copy.
+   - **Given** a SpaceCollector with valid SSH credentials
+   - **And** a remote directory `/remote/nonexistent` that does not exist
+   - **When** the `retrieveData` method is called with `dateReceived` and `auditTopic`
+   - **Then** the method should log an error
+   - **And** send a collection failure audit message to the Kafka audit topic
 
-        // Mock the RetrieveAndProcessService and inject dependencies
-        retrieveAndProcessService = spy(new RetrieveAndProcessService());
+2. **Inaccessible File During Copy**
+   - **Scenario**: Handle the case where a file in the remote directory is inaccessible during copy.
+   - **Given** a SpaceCollector with valid SSH credentials
+   - **And** a remote directory `/remote/data` containing an inaccessible file `file1.txt`
+   - **When** the `retrieveData` method is called with `dateReceived` and `auditTopic`
+   - **Then** the method should log an error for the inaccessible file
+   - **And** send a collection failure audit message to the Kafka audit topic for the inaccessible file
+   - **And** continue processing remaining files
 
-        // Inject mocks into retrieveAndProcessService
-        doReturn(sshService).when(retrieveAndProcessService).getSSHService();
-        doReturn(fileUtilMock).when(retrieveAndProcessService).getFileUtil();
-        doReturn(outputStreamCreatorMock).when(retrieveAndProcessService).getOutputStreamCreator();
-        doReturn(s3ServiceMock).when(retrieveAndProcessService).getS3Service();
-        doReturn(kafkaProducerServiceMock).when(retrieveAndProcessService).getKafkaProducerService();
-        doReturn(dateUtilMock).when(retrieveAndProcessService).getDateUtil();
-        doReturn(loggerMock).when(retrieveAndProcessService).getLogger();
-        doReturn(zipUtilMock).when(retrieveAndProcessService).getZipUtil();
-        doReturn(collectorUtilMock).when(retrieveAndProcessService).getCollectorUtil();
-        doReturn(profileCheckConfigMock).when(retrieveAndProcessService).getProfileCheckConfig();
-    }
+3. **Failure to Create Local Directory During Copy**
+   - **Scenario**: Handle the case where a local directory cannot be created during copy.
+   - **Given** a SpaceCollector with valid SSH credentials
+   - **And** a remote directory `/remote/data` containing a nested folder `folder1`
+   - **And** the local directory `/local/data/folder1` cannot be created
+   - **When** the `retrieveData` method is called with `dateReceived` and `auditTopic`
+   - **Then** the method should log an error for the directory creation failure
+   - **And** send a collection failure audit message to the Kafka audit topic for the failed directory creation
+   - **And** continue processing remaining files and directories
 
-    @Given("a SpaceCollector with valid SSH credentials")
-    public void aSpaceCollectorWithValidSSHCredentials() {
-        when(spaceCollector.getUserName()).thenReturn("sshUsername");
-        when(spaceCollector.getUrl()).thenReturn("sshHost");
-        when(spaceCollector.getPassword()).thenReturn("sshPassword");
-        when(spaceCollector.getPort()).thenReturn(22);
-        when(spaceCollector.getInputFilePath()).thenReturn("/remote/data");
-        when(spaceCollector.getOutputFilePath()).thenReturn("/local/data");
-    }
+4. **ZIP File Extraction Failure During Copy**
+   - **Scenario**: Handle the case where extraction of a ZIP file fails during copy.
+   - **Given** a SpaceCollector with valid SSH credentials
+   - **And** a remote directory `/remote/data` containing a ZIP file `corrupt.zip`
+   - **When** the `retrieveData` method is called with `dateReceived` and `auditTopic`
+   - **Then** the method should copy the ZIP file
+   - **And** log an error if the ZIP file extraction fails
+   - **And** send a collection failure audit message to the Kafka audit topic for the failed extraction
+   - **And** continue processing remaining files and directories
 
-    @And("a remote directory {string} containing nested files and folders including ZIP archives")
-    public void aRemoteDirectoryContainingNestedFilesAndFoldersIncludingZIPArchives(String remoteDirectory) {
-        try {
-            List<ChannelSftp.LsEntry> files = Arrays.asList(
-                mockFileEntry("file1.txt", false),
-                mockFileEntry("file2.zip", false),
-                mockFileEntry("folder1", true)
-            );
-            when(channelSftpMock.ls(remoteDirectory)).thenReturn(new Vector<>(files));
-            when(channelSftpMock.get(remoteDirectory + "/file1.txt")).thenReturn(new ByteArrayInputStream("content".getBytes()));
-            when(channelSftpMock.get(remoteDirectory + "/file2.zip")).thenReturn(new ByteArrayInputStream("content".getBytes()));
+### Implementing the Scenarios
 
-            doReturn(channelSftpMock).when(sshService).getChannelSftp(any(Session.class), eq(remoteDirectory));
-        } catch (SftpException e) {
-            e.printStackTrace();
-        }
-    }
+To implement these scenarios, you can use the `Gherkin` syntax in your feature files. Here are some examples of how the Gherkin syntax might look:
 
-    @And("some local directories do not exist")
-    public void someLocalDirectoriesDoNotExist() {
-        doNothing().when(fileUtilMock).createDirectoryIfNotExists(anyString());
-    }
+**Example Feature File for Positive Scenarios**
 
-    @When("the retrieveData method is called with {string} and {string}")
-    public void theRetrieveDataMethodIsCalledWithAnd(String dateReceived, String auditTopic) {
-        this.dateReceived = dateReceived;
-        this.auditTopic = auditTopic;
-        try {
-            result = retrieveAndProcessService.retrieveData(spaceCollector, dateReceived, auditTopic);
-        } catch (Exception e) {
-            e.printStackTrace();
-            fail("Exception occurred: " + e.getMessage());
-        }
-    }
+```gherkin
+Feature: Copy nested folders and files to S3
 
-    @Then("the method should recursively retrieve all files and directories from the remote directory {string}")
-    public void theMethodShouldRecursivelyRetrieveAllFilesAndDirectoriesFromTheRemoteDirectory(String remoteDirectory) {
-        try {
-            verify(channelSftpMock).ls(remoteDirectory);
-        } catch (SftpException e) {
-            e.printStackTrace();
-        }
-    }
+  Scenario: Successfully copy a single file from the remote directory
+    Given a SpaceCollector with valid SSH credentials
+    And a remote directory "/remote/data" containing a single file "file1.txt"
+    And the local directory "/local/data" exists
+    When the retrieveData method is called with "2024-06-01" and "auditTopic"
+    Then the method should copy "file1.txt"
+    And download it to the local directory
+    And push it to S3
+    And send a successful collection audit message to the Kafka audit topic
 
-    @And("create any missing local directories")
-    public void createAnyMissingLocalDirectories() {
-        verify(fileUtilMock, atLeastOnce()).createDirectoryIfNotExists(anyString());
-    }
+  Scenario: Successfully copy files within nested folders
+    Given a SpaceCollector with valid SSH credentials
+    And a remote directory "/remote/data" containing nested folders and files
+    When the retrieveData method is called with "2024-06-01" and "auditTopic"
+    Then the method should recursively copy all files and directories
+    And create any missing local directories
+    And download files to the corresponding local directories
+    And push all files to S3 with appropriate keys
+    And send successful collection audit messages to the Kafka audit topic for each successfully processed file
 
-    @And("download files to the corresponding local directories")
-    public void downloadFilesToTheCorrespondingLocalDirectories() {
-        verify(fileUtilMock, atLeastOnce()).downloadFile(any(), any(), anyString(), anyString(), anyString());
-    }
+  Scenario: Successfully handle and process ZIP files within nested folders during copy
+    Given a SpaceCollector with valid SSH credentials
+    And a remote directory "/remote/data" containing a ZIP file "archive.zip" with nested files
+    When the retrieveData method is called with "2024-06-01" and "auditTopic"
+    Then the method should copy the ZIP file
+    And extract its contents to the local directory
+    And process the extracted files
+    And push all files to S3 with appropriate keys
+    And send successful collection audit messages to the Kafka audit topic for each successfully processed file
+```
 
-    @And("extract any ZIP files and process the extracted files")
-    public void extractAnyZIPFilesAndProcessTheExtractedFiles() {
-        verify(zipUtilMock, atLeastOnce()).extract(anyString(), anyString());
-    }
+**Example Feature File for Negative Scenarios**
 
-    @And("push all files to S3 with appropriate keys")
-    public void pushAllFilesToS3WithAppropriateKeys() {
-        verify(s3ServiceMock, atLeastOnce()).pushToS3(anyString(), anyString());
-    }
+```gherkin
+Feature: Handle errors during copying nested folders and files
 
-    @And("send a successful collection audit message to the Kafka audit topic for each successfully processed file")
-    public void sendASuccessfulCollectionAuditMessageToTheKafkaAuditTopicForEachSuccessfullyProcessedFile() {
-        verify(kafkaProducerServiceMock, atLeastOnce()).writeMessage(anyString(), anyString(), eq(auditTopic));
-    }
+  Scenario: Handle the case where the remote directory does not exist during copy
+    Given a SpaceCollector with valid SSH credentials
+    And a remote directory "/remote/nonexistent" that does not exist
+    When the retrieveData method is called with "2024-06-01" and "auditTopic"
+    Then the method should log an error
+    And send a collection failure audit message to the Kafka audit topic
 
-    @And("log and handle any errors for missing or inaccessible files")
-    public void logAndHandleAnyErrorsForMissingOrInaccessibleFiles() {
-        verify(loggerMock, atLeastOnce()).error(anyString(), any(Exception.class));
-    }
+  Scenario: Handle the case where a file in the remote directory is inaccessible during copy
+    Given a SpaceCollector with valid SSH credentials
+    And a remote directory "/remote/data" containing an inaccessible file "file1.txt"
+    When the retrieveData method is called with "2024-06-01" and "auditTopic"
+    Then the method should log an error for the inaccessible file
+    And send a collection failure audit message to the Kafka audit topic for the inaccessible file
+    And continue processing remaining files
 
-    @And("send a collection failure audit message to the Kafka audit topic for each missing or inaccessible file")
-    public void sendACollectionFailureAuditMessageToTheKafkaAuditTopicForEachMissingOrInaccessibleFile() {
-        verify(kafkaProducerServiceMock, atLeastOnce()).writeMessage(anyString(), anyString(), eq(auditTopic));
-    }
+  Scenario: Handle the case where a local directory cannot be created during copy
+    Given a SpaceCollector with valid SSH credentials
+    And a remote directory "/remote/data" containing a nested folder "folder1"
+    And the local directory "/local/data/folder1" cannot be created
+    When the retrieveData method is called with "2024-06-01" and "auditTopic"
+    Then the method should log an error for the directory creation failure
+    And send a collection failure audit message to the Kafka audit topic for the failed directory creation
+    And continue processing remaining files and directories
 
-    private ChannelSftp.LsEntry mockFileEntry(String name, boolean isDir) {
-        ChannelSftp.LsEntry entry = Mockito.mock(ChannelSftp.LsEntry.class);
-        SftpATTRS attrs = Mockito.mock(SftpATTRS.class);
-        when(attrs.isDir()).thenReturn(isDir);
-        when(entry.getAttrs()).thenReturn(attrs);
-        when(entry.getFilename()).thenReturn(name);
-        return entry;
-    }
-}
+  Scenario: Handle the case where extraction of a ZIP file fails during copy
+    Given a SpaceCollector with valid SSH credentials
+    And a remote directory "/remote/data" containing a ZIP file "corrupt.zip"
+    When the retrieveData method is called with "2024-06-01" and "auditTopic"
+    Then the method should copy the ZIP file
+    And log an error if the ZIP file extraction fails
+    And send a collection failure audit message to the Kafka audit topic for the failed extraction
+    And continue processing remaining files and directories
+```
+
+These scenarios will help ensure that the system is robust and can handle various edge cases during the process of copying files, especially when dealing with nested folders and ZIP files.
