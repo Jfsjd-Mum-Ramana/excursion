@@ -25,10 +25,6 @@ public class CustomSSHCollector {
             channelSftp = getChannelSftp(session, remoteDirectory);
             // Recursively retrieve and process files and directories
             retrieveAndProcessDirectory(sp, dateReceived, auditTopic, remoteDirectory, localDirectory, channelSftp);
-
-            // Clean up old files
-            cleanUpOldFiles(localDirectory, channelSftp, remoteDirectory);
-
         } finally {
             if (channelSftp != null) {
                 channelSftp.disconnect();
@@ -45,6 +41,8 @@ public class CustomSSHCollector {
         Vector<ChannelSftp.LsEntry> files = channelSftp.ls(remoteDirectory);
         LOGGER.info("Number of files/Directories found in " + remoteDirectory + ":" + files.size());
         Map<String, String> auditStatusMap = getAuditStatusMap(files, remoteDirectory);
+        long currentTime = System.currentTimeMillis();
+        long cutoffTime = currentTime - TimeUnit.MILLISECONDS.convert(1, TimeUnit.DAYS); // 24 hours ago
 
         for (ChannelSftp.LsEntry file : files) {
             if (!file.getAttrs().isDir()) {
@@ -58,7 +56,7 @@ public class CustomSSHCollector {
                         LOGGER.info("in filePath : " + filePath + " out filePath : " + outputFile);
                         FileUtil.downloadFile(outputStreamCreator.create(outputFile), channelSftp.get(filePath),
                                 filePath, outputFile, sp.getOutputFilePath());
-                        processDownloadedFile(sp, dateReceived, auditTopic, outputFile, localDirectory);
+                        processDownloadedFile(sp, dateReceived, auditTopic, outputFile, localDirectory, file.getAttrs().getMTime() * 1000L);
                     } catch (Exception e) {
                         CollectionAudit audit = createAuditObject(sp,
                                 filePath, JobStatus.COLLECTION_FAILED.toString(), e.getMessage());
@@ -80,7 +78,7 @@ public class CustomSSHCollector {
     }
 
     private void processDownloadedFile(SpaceCollector sp, String dateReceived, String auditTopic,
-                                       String outputFile, String localDirectory) throws Exception {
+                                       String outputFile, String localDirectory, long modificationTime) throws Exception {
         List<String> filesList = new ArrayList<>();
         LOGGER.info("Processing downloaded file: " + outputFile);
         if (ZipUtil.isZipFile(outputFile)) {
@@ -93,6 +91,10 @@ public class CustomSSHCollector {
             LOGGER.info("non Zip file found: " + outputFile);
             filesList.add(outputFile);
         }
+
+        long currentTime = System.currentTimeMillis();
+        long cutoffTime = currentTime - TimeUnit.MILLISECONDS.convert(1, TimeUnit.DAYS); // 24 hours ago
+
         for (String fileName : filesList) {
             Path insideFilePath = Paths.get(fileName);
             Path folderPath = Paths.get(sp.getOutputFilePath()).relativize(insideFilePath.getParent());
@@ -123,45 +125,15 @@ public class CustomSSHCollector {
                 ZipUtil.extract(fileName, localDirectory + "/" + nestedFileNameWithoutExtn);
                 List<String> nestedFilesList = FileUtil.readFilesInDirectory(localDirectory + "/" + nestedFileNameWithoutExtn);
                 for (String nestedFile : nestedFilesList) {
-                    processDownloadedFile(sp, dateReceived, auditTopic, nestedFile, localDirectory);
+                    processDownloadedFile(sp, dateReceived, auditTopic, nestedFile, localDirectory, modificationTime);
                 }
             }
         }
-    }
 
-    private void cleanUpOldFiles(String localDirectory, ChannelSftp channelSftp, String remoteDirectory) throws SftpException {
-        long currentTime = System.currentTimeMillis();
-        long cutoffTime = currentTime - TimeUnit.MILLISECONDS.convert(1, TimeUnit.DAYS); // 24 hours ago
-
-        // Clean up local directory
-        Files.walk(Paths.get(localDirectory))
-            .filter(Files::isRegularFile)
-            .forEach(path -> {
-                try {
-                    if (Files.getLastModifiedTime(path).toMillis() < cutoffTime) {
-                        Files.delete(path);
-                        LOGGER.info("Deleted local file: " + path.toString());
-                    }
-                } catch (Exception e) {
-                    LOGGER.error("Error deleting local file: " + path.toString(), e);
-                }
-            });
-
-        // Clean up remote directory
-        Vector<ChannelSftp.LsEntry> files = channelSftp.ls(remoteDirectory);
-        for (ChannelSftp.LsEntry file : files) {
-            if (!file.getAttrs().isDir()) {
-                long fileModificationTime = file.getAttrs().getMTime() * 1000L; // Convert to milliseconds
-                if (fileModificationTime < cutoffTime) {
-                    channelSftp.rm(remoteDirectory + "/" + file.getFilename());
-                    LOGGER.info("Deleted remote file: " + remoteDirectory + "/" + file.getFilename());
-                }
-            } else {
-                if (!".".equals(file.getFilename()) && !"..".equals(file.getFilename())) {
-                    String subRemoteDirectory = remoteDirectory + "/" + file.getFilename();
-                    cleanUpOldFiles(subRemoteDirectory, channelSftp, subRemoteDirectory);
-                }
-            }
+        // Only keep files modified in the last 24 hours in the local directory
+        if (modificationTime < cutoffTime) {
+            Files.delete(Paths.get(outputFile));
+            LOGGER.info("Deleted old local file: " + outputFile);
         }
     }
 
