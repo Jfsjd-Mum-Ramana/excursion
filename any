@@ -1,16 +1,8 @@
-import com.jcraft.jsch.ChannelSftp;
-import com.jcraft.jsch.JSch;
-import com.jcraft.jsch.Session;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
-import java.util.Vector;
+import com.jcraft.jsch.*;
+import java.nio.file.*;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.slf4j.*;
 
 public class CustomSSHCollector {
 
@@ -33,6 +25,10 @@ public class CustomSSHCollector {
             channelSftp = getChannelSftp(session, remoteDirectory);
             // Recursively retrieve and process files and directories
             retrieveAndProcessDirectory(sp, dateReceived, auditTopic, remoteDirectory, localDirectory, channelSftp);
+
+            // Clean up old files
+            cleanUpOldFiles(localDirectory, channelSftp, remoteDirectory);
+
         } finally {
             if (channelSftp != null) {
                 channelSftp.disconnect();
@@ -49,17 +45,8 @@ public class CustomSSHCollector {
         Vector<ChannelSftp.LsEntry> files = channelSftp.ls(remoteDirectory);
         LOGGER.info("Number of files/Directories found in " + remoteDirectory + ":" + files.size());
         Map<String, String> auditStatusMap = getAuditStatusMap(files, remoteDirectory);
-        long currentTime = System.currentTimeMillis();
-        long cutoffTime = currentTime - TimeUnit.MILLISECONDS.convert(1, TimeUnit.DAYS); // 24 hours ago
 
         for (ChannelSftp.LsEntry file : files) {
-            long fileModificationTime = file.getAttrs().getMTime() * 1000L; // Convert to milliseconds
-
-            if (fileModificationTime < cutoffTime) {
-                LOGGER.info("Skipping file older than 24 hours: " + file.getFilename());
-                continue;
-            }
-
             if (!file.getAttrs().isDir()) {
                 LOGGER.info("found file in LS: " + file.getFilename());
                 String filePath = remoteDirectory + "/" + file.getFilename(); // Use absolute file path
@@ -137,6 +124,42 @@ public class CustomSSHCollector {
                 List<String> nestedFilesList = FileUtil.readFilesInDirectory(localDirectory + "/" + nestedFileNameWithoutExtn);
                 for (String nestedFile : nestedFilesList) {
                     processDownloadedFile(sp, dateReceived, auditTopic, nestedFile, localDirectory);
+                }
+            }
+        }
+    }
+
+    private void cleanUpOldFiles(String localDirectory, ChannelSftp channelSftp, String remoteDirectory) throws SftpException {
+        long currentTime = System.currentTimeMillis();
+        long cutoffTime = currentTime - TimeUnit.MILLISECONDS.convert(1, TimeUnit.DAYS); // 24 hours ago
+
+        // Clean up local directory
+        Files.walk(Paths.get(localDirectory))
+            .filter(Files::isRegularFile)
+            .forEach(path -> {
+                try {
+                    if (Files.getLastModifiedTime(path).toMillis() < cutoffTime) {
+                        Files.delete(path);
+                        LOGGER.info("Deleted local file: " + path.toString());
+                    }
+                } catch (Exception e) {
+                    LOGGER.error("Error deleting local file: " + path.toString(), e);
+                }
+            });
+
+        // Clean up remote directory
+        Vector<ChannelSftp.LsEntry> files = channelSftp.ls(remoteDirectory);
+        for (ChannelSftp.LsEntry file : files) {
+            if (!file.getAttrs().isDir()) {
+                long fileModificationTime = file.getAttrs().getMTime() * 1000L; // Convert to milliseconds
+                if (fileModificationTime < cutoffTime) {
+                    channelSftp.rm(remoteDirectory + "/" + file.getFilename());
+                    LOGGER.info("Deleted remote file: " + remoteDirectory + "/" + file.getFilename());
+                }
+            } else {
+                if (!".".equals(file.getFilename()) && !"..".equals(file.getFilename())) {
+                    String subRemoteDirectory = remoteDirectory + "/" + file.getFilename();
+                    cleanUpOldFiles(subRemoteDirectory, channelSftp, subRemoteDirectory);
                 }
             }
         }
