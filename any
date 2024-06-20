@@ -45,7 +45,7 @@ public class CustomSSHCollector {
         long cutoffTime = currentTime - TimeUnit.MILLISECONDS.convert(1, TimeUnit.DAYS); // 24 hours ago
 
         for (ChannelSftp.LsEntry file : files) {
-            if (!file.getAttrs().isDir()) {
+            if (!file.getAttrs().isDir() && file.getAttrs().getMTime() * 1000L >= cutoffTime) {
                 LOGGER.info("found file in LS: " + file.getFilename());
                 String filePath = remoteDirectory + "/" + file.getFilename(); // Use absolute file path
                 LOGGER.info("filePath for lookup in COLLECTION_AUDIT: " + filePath);
@@ -65,7 +65,7 @@ public class CustomSSHCollector {
                         LOGGER.error("Error on retrieveData {}", e);
                     }
                 }
-            } else {
+            } else if (file.getAttrs().isDir()) {
                 if (!".".equals(file.getFilename()) && !"..".equals(file.getFilename())) {
                     LOGGER.info("DIR found : " + file.getFilename());
                     String subRemoteDirectory = remoteDirectory + "/" + file.getFilename();
@@ -91,9 +91,6 @@ public class CustomSSHCollector {
             LOGGER.info("non Zip file found: " + outputFile);
             filesList.add(outputFile);
         }
-
-        long currentTime = System.currentTimeMillis();
-        long cutoffTime = currentTime - TimeUnit.MILLISECONDS.convert(1, TimeUnit.DAYS); // 24 hours ago
 
         for (String fileName : filesList) {
             Path insideFilePath = Paths.get(fileName);
@@ -128,12 +125,6 @@ public class CustomSSHCollector {
                     processDownloadedFile(sp, dateReceived, auditTopic, nestedFile, localDirectory, modificationTime);
                 }
             }
-        }
-
-        // Only keep files modified in the last 24 hours in the local directory
-        if (modificationTime < cutoffTime) {
-            Files.delete(Paths.get(outputFile));
-            LOGGER.info("Deleted old local file: " + outputFile);
         }
     }
 
