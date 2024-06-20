@@ -1,4 +1,22 @@
-public boolean retrieveData(SpaceCollector sp, String dateReceived, String auditTopic) throws Exception {
+import com.jcraft.jsch.ChannelSftp;
+import com.jcraft.jsch.JSch;
+import com.jcraft.jsch.Session;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
+import java.util.Vector;
+import java.util.concurrent.TimeUnit;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class CustomSSHCollector {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(CustomSSHCollector.class);
+
+    public boolean retrieveData(SpaceCollector sp, String dateReceived, String auditTopic) throws Exception {
         LOGGER.info("Entered SSH service");
         String sshUsername = sp.getUserName();
         String sshHost = sp.getUrl();
@@ -25,16 +43,27 @@ public boolean retrieveData(SpaceCollector sp, String dateReceived, String audit
         }
         return true;
     }
+
     private void retrieveAndProcessDirectory(SpaceCollector sp, String dateReceived, String auditTopic,
                                              String remoteDirectory, String localDirectory, ChannelSftp channelSftp) throws Exception {
         Vector<ChannelSftp.LsEntry> files = channelSftp.ls(remoteDirectory);
-        LOGGER.info("Number of files/Directories found in "+remoteDirectory+ ":"+files.size());
+        LOGGER.info("Number of files/Directories found in " + remoteDirectory + ":" + files.size());
         Map<String, String> auditStatusMap = getAuditStatusMap(files, remoteDirectory);
+        long currentTime = System.currentTimeMillis();
+        long cutoffTime = currentTime - TimeUnit.MILLISECONDS.convert(1, TimeUnit.DAYS); // 24 hours ago
+
         for (ChannelSftp.LsEntry file : files) {
+            long fileModificationTime = file.getAttrs().getMTime() * 1000L; // Convert to milliseconds
+
+            if (fileModificationTime < cutoffTime) {
+                LOGGER.info("Skipping file older than 24 hours: " + file.getFilename());
+                continue;
+            }
+
             if (!file.getAttrs().isDir()) {
-                LOGGER.info("found file in LS: "+ file.getFilename());
+                LOGGER.info("found file in LS: " + file.getFilename());
                 String filePath = remoteDirectory + "/" + file.getFilename(); // Use absolute file path
-                LOGGER.info("filePath for lookup in COLLECTION_AUDIT: "+ filePath);
+                LOGGER.info("filePath for lookup in COLLECTION_AUDIT: " + filePath);
                 String status = auditStatusMap.get(filePath);
                 if (status == null || "COLLECTION_FAILED".equals(status)) {
                     try {
@@ -62,18 +91,19 @@ public boolean retrieveData(SpaceCollector sp, String dateReceived, String audit
             }
         }
     }
+
     private void processDownloadedFile(SpaceCollector sp, String dateReceived, String auditTopic,
                                        String outputFile, String localDirectory) throws Exception {
         List<String> filesList = new ArrayList<>();
-        LOGGER.info("Processing downloaded file: "+ outputFile);
+        LOGGER.info("Processing downloaded file: " + outputFile);
         if (ZipUtil.isZipFile(outputFile)) {
-            LOGGER.info("Zip file found: "+ outputFile);
+            LOGGER.info("Zip file found: " + outputFile);
             String fileNameWithoutExtn = FileUtil.getFileNameWithoutExtn(outputFile);
             FileUtil.createDirectoryIfNotExists(localDirectory + "/" + fileNameWithoutExtn);
             ZipUtil.extract(outputFile, localDirectory + "/" + fileNameWithoutExtn);
             filesList.addAll(FileUtil.readFilesInDirectory(localDirectory + "/" + fileNameWithoutExtn));
         } else {
-            LOGGER.info("non Zip file found: "+ outputFile);
+            LOGGER.info("non Zip file found: " + outputFile);
             filesList.add(outputFile);
         }
         for (String fileName : filesList) {
@@ -110,35 +140,7 @@ public boolean retrieveData(SpaceCollector sp, String dateReceived, String audit
                 }
             }
         }
+    }
 
-
-
-Collection: Enable Search for Files Placed in the Last 24 Hours in custom-ssh-collector
-
-AC1: Given our collector is connected to a host
-
-When it tries to find files inside it
-
-Then it should be able to traverse through the nested directory structure
-
-And find the individual files.
-
-
-
-AC2: Given the collector has found an individual file in the nested directory structure
-
-When it tries to upload the file
-
-Then it should successfully upload the file to S3.
-
-
-
-
-
-AC3: Given the collector has found a zipped file in the nested directory structure
-
-When it tries to unzip the file
-
-Then it should successfully unzip the file and reveal its contents.
-
-And Then it should successfully upload the unzipped files to S3.
+    // Assuming methods like getJsch, getSession, getChannelSftp, getAuditStatusMap, createAuditObject, etc., are already implemented
+}
