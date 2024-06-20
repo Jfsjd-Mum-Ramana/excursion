@@ -119,33 +119,4 @@ public class CustomSSHCollector {
             if (ZipUtil.isZipFile(fileName)) {
                 String nestedFileNameWithoutExtn = FileUtil.getFileNameWithoutExtn(fileName);
                 FileUtil.createDirectoryIfNotExists(localDirectory + "/" + nestedFileNameWithoutExtn);
-                ZipUtil.extract(fileName, localDirectory + "/" + nestedFileNameWithoutExtn);
-                List<String> nestedFilesList = FileUtil.readFilesInDirectory(localDirectory + "/" + nestedFileNameWithoutExtn);
-                for (String nestedFile : nestedFilesList) {
-                    processDownloadedFile(sp, dateReceived, auditTopic, nestedFile, localDirectory);
-                }
-            }
-        }
-    }
-
-    private void listRecentFilesOnly(String localDirectory) throws Exception {
-        long currentTime = System.currentTimeMillis();
-        long cutoffTime = currentTime - TimeUnit.MILLISECONDS.convert(1, TimeUnit.DAYS); // 24 hours ago
-
-        Path localDirPath = Paths.get(localDirectory);
-        Files.walk(localDirPath)
-            .filter(Files::isRegularFile)
-            .forEach(path -> {
-                try {
-                    FileTime fileTime = Files.getLastModifiedTime(path);
-                    if (fileTime.toMillis() >= cutoffTime) {
-                        LOGGER.info("Recent file: " + path);
-                    }
-                } catch (IOException e) {
-                    LOGGER.error("Error accessing file: " + path, e);
-                }
-            });
-    }
-
-    // Assuming methods like getJsch, getSession, getChannelSftp, getAuditStatusMap, createAuditObject, etc., are already implemented
-}
+                Zip
