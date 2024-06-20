@@ -1,156 +1,153 @@
-Sure, here are the testing scenarios (both positive and negative) for copying files, including handling nested folders and pushing them to S3.
+public boolean retrieveData(SpaceCollector sp, String dateReceived, String auditTopic) throws Exception {
+    LOGGER.info("Entered SSH service");
+    String sshUsername = sp.getUserName();
+    String sshHost = sp.getUrl();
+    String sshPassword = sp.getPassword();
+    int port = sp.getPort().intValue();
+    JSch jsch = getJsch(sshHost, sshPassword);
+    Session session = getSession(sshUsername, sshHost, sshPassword, port, jsch);
+    session.connect();
+    ChannelSftp channelSftp = null;
+    try {
+        String remoteDirectory = FileUtil.getDirectory(sp.getInputFilePath());
+        String localDirectory = FileUtil.getDirectory(sp.getOutputFilePath());
+        LOGGER.info("remoteDirectory : " + remoteDirectory + " localDirectory : " + localDirectory);
+        channelSftp = getChannelSftp(session, remoteDirectory);
+        // Recursively retrieve and process files and directories
+        retrieveAndProcessDirectory(sp, dateReceived, auditTopic, remoteDirectory, localDirectory, channelSftp);
+    } finally {
+        if (channelSftp != null) {
+            channelSftp.disconnect();
+        }
+        if (session != null) {
+            session.disconnect();
+        }
+    }
+    return true;
+}
 
-### Positive Scenarios
+private void retrieveAndProcessDirectory(SpaceCollector sp, String dateReceived, String auditTopic,
+                                         String remoteDirectory, String localDirectory, ChannelSftp channelSftp) throws Exception {
+    Vector<ChannelSftp.LsEntry> files = channelSftp.ls(remoteDirectory);
+    LOGGER.info("Number of files/Directories found in " + remoteDirectory + ":" + files.size());
+    Map<String, String> auditStatusMap = getAuditStatusMap(files, remoteDirectory);
 
-1. **Basic File Copy**
-   - **Scenario**: Successfully copy a single file from the remote directory.
-   - **Given** a SpaceCollector with valid SSH credentials
-   - **And** a remote directory `/remote/data` containing a single file `file1.txt`
-   - **And** the local directory `/local/data` exists
-   - **When** the `retrieveData` method is called with `dateReceived` and `auditTopic`
-   - **Then** the method should copy `file1.txt`
-   - **And** download it to the local directory
-   - **And** push it to S3
-   - **And** send a successful collection audit message to the Kafka audit topic
+    // Calculate the time threshold for the last 24 hours
+    long currentTimeMillis = System.currentTimeMillis();
+    long timeThreshold = currentTimeMillis - 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
-2. **Nested Folders and Files Copy**
-   - **Scenario**: Successfully copy files within nested folders.
-   - **Given** a SpaceCollector with valid SSH credentials
-   - **And** a remote directory `/remote/data` containing nested folders and files
-   - **When** the `retrieveData` method is called with `dateReceived` and `auditTopic`
-   - **Then** the method should recursively copy all files and directories
-   - **And** create any missing local directories
-   - **And** download files to the corresponding local directories
-   - **And** push all files to S3 with appropriate keys
-   - **And** send successful collection audit messages to the Kafka audit topic for each successfully processed file
+    for (ChannelSftp.LsEntry file : files) {
+        if (!".".equals(file.getFilename()) && !"..".equals(file.getFilename())) {
+            String filePath = remoteDirectory + "/" + file.getFilename();
+            long fileModificationTime = file.getAttrs().getMTime() * 1000L; // Convert to milliseconds
 
-3. **ZIP File Handling During Copy**
-   - **Scenario**: Successfully handle and process ZIP files within nested folders during copy.
-   - **Given** a SpaceCollector with valid SSH credentials
-   - **And** a remote directory `/remote/data` containing a ZIP file `archive.zip` with nested files
-   - **When** the `retrieveData` method is called with `dateReceived` and `auditTopic`
-   - **Then** the method should copy the ZIP file
-   - **And** extract its contents to the local directory
-   - **And** process the extracted files
-   - **And** push all files to S3 with appropriate keys
-   - **And** send successful collection audit messages to the Kafka audit topic for each successfully processed file
+            // Check if the file or directory was modified in the last 24 hours
+            if (fileModificationTime > timeThreshold) {
+                if (!file.getAttrs().isDir()) {
+                    LOGGER.info("found file in LS: " + file.getFilename());
+                    LOGGER.info("filePath for lookup in COLLECTION_AUDIT: " + filePath);
+                    String status = auditStatusMap.get(filePath);
+                    if (status == null || "COLLECTION_FAILED".equals(status)) {
+                        try {
+                            String outputFile = localDirectory + "/" + file.getFilename();
+                            LOGGER.info("in filePath : " + filePath + " out filePath : " + outputFile);
+                            FileUtil.downloadFile(outputStreamCreator.create(outputFile), channelSftp.get(filePath),
+                                    filePath, outputFile, sp.getOutputFilePath());
+                            processDownloadedFile(sp, dateReceived, auditTopic, outputFile, localDirectory);
+                        } catch (Exception e) {
+                            CollectionAudit audit = createAuditObject(sp,
+                                    filePath, JobStatus.COLLECTION_FAILED.toString(), e.getMessage());
+                            kafkaProducerService.writeMessage(collectorUtil.buildAuditQueueJSON(audit), "",
+                                    auditTopic);
+                            LOGGER.error("Error on retrieveData {}", e);
+                        }
+                    }
+                } else {
+                    LOGGER.info("DIR found : " + file.getFilename());
+                    String subRemoteDirectory = remoteDirectory + "/" + file.getFilename();
+                    String subLocalDirectory = localDirectory + "/" + file.getFilename();
+                    FileUtil.createDirectoryIfNotExists(subLocalDirectory);
+                    retrieveAndProcessDirectory(sp, dateReceived, auditTopic, subRemoteDirectory, subLocalDirectory, channelSftp);
+                }
+            }
+        }
+    }
+}
 
-### Negative Scenarios
+private void processDownloadedFile(SpaceCollector sp, String dateReceived, String auditTopic,
+                                   String outputFile, String localDirectory) throws Exception {
+    List<String> filesList = new ArrayList<>();
+    LOGGER.info("Processing downloaded file: " + outputFile);
+    if (ZipUtil.isZipFile(outputFile)) {
+        LOGGER.info("Zip file found: " + outputFile);
+        String fileNameWithoutExtn = FileUtil.getFileNameWithoutExtn(outputFile);
+        FileUtil.createDirectoryIfNotExists(localDirectory + "/" + fileNameWithoutExtn);
+        ZipUtil.extract(outputFile, localDirectory + "/" + fileNameWithoutExtn);
+        filesList.addAll(FileUtil.readFilesInDirectory(localDirectory + "/" + fileNameWithoutExtn));
+    } else {
+        LOGGER.info("non Zip file found: " + outputFile);
+        filesList.add(outputFile);
+    }
+    for (String fileName : filesList) {
+        Path insideFilePath = Paths.get(fileName);
+        Path folderPath = Paths.get(sp.getOutputFilePath()).relativize(insideFilePath.getParent());
+        String unixBasedPath = folderPath.toString().replace("\\", "/");
+        String key = String.format("%s/%s/%s/%s/%s",
+                ProfileCheckConfig.activeProfile,
+                sp.getFileType(),
+                sp.getUrl(),
+                dateUtil.getDateInMMddyyyy(),
+                !StringUtils.isBlank(unixBasedPath)
+                        ? (unixBasedPath.toString() + "/" + insideFilePath.getFileName())
+                        : insideFilePath.getFileName());
+        System.out.println("**************************");
+        System.out.println("Filename: " + fileName);
+        System.out.println("Key: " + key);
+        System.out.println("folderPath: " + folderPath);
+        System.out.println("Inside File Path: " + insideFilePath);
+        System.out.println("**************************");
+        s3Service.pushToS3(fileName, key);
+        CollectionAudit audit = createAuditObject(sp,
+                key, JobStatus.COLLECTION_SUCCESSFUL.toString(), "");
+        kafkaProducerService.writeMessage(collectorUtil.buildAuditQueueJSON(audit),
+                "", auditTopic);
+        // Check if the file is an archive and process it further
+        if (ZipUtil.isZipFile(fileName)) {
+            String nestedFileNameWithoutExtn = FileUtil.getFileNameWithoutExtn(fileName);
+            FileUtil.createDirectoryIfNotExists(localDirectory + "/" + nestedFileNameWithoutExtn);
+            ZipUtil.extract(fileName, localDirectory + "/" + nestedFileNameWithoutExtn);
+            List<String> nestedFilesList = FileUtil.readFilesInDirectory(localDirectory + "/" + nestedFileNameWithoutExtn);
+            for (String nestedFile : nestedFilesList) {
+                processDownloadedFile(sp, dateReceived, auditTopic, nestedFile, localDirectory);
+            }
+        }
+    }
+}
 
-1. **Missing Remote Directory During Copy**
-   - **Scenario**: Handle the case where the remote directory does not exist during copy.
-   - **Given** a SpaceCollector with valid SSH credentials
-   - **And** a remote directory `/remote/nonexistent` that does not exist
-   - **When** the `retrieveData` method is called with `dateReceived` and `auditTopic`
-   - **Then** the method should log an error
-   - **And** send a collection failure audit message to the Kafka audit topic
+private CollectionAudit createAuditObject(SpaceCollector sp,
+                                          String auditInputFilePath,
+                                          String auditJobStatus,
+                                          String auditExceptions) {
+    CollectionAudit audit = getCollectionAudit(sp);
+    audit.setInputFilePath(auditInputFilePath);
+    audit.setJobStatus(auditJobStatus);
+    audit.setExceptions(auditExceptions);
+    return audit;
+}
 
-2. **Inaccessible File During Copy**
-   - **Scenario**: Handle the case where a file in the remote directory is inaccessible during copy.
-   - **Given** a SpaceCollector with valid SSH credentials
-   - **And** a remote directory `/remote/data` containing an inaccessible file `file1.txt`
-   - **When** the `retrieveData` method is called with `dateReceived` and `auditTopic`
-   - **Then** the method should log an error for the inaccessible file
-   - **And** send a collection failure audit message to the Kafka audit topic for the inaccessible file
-   - **And** continue processing remaining files
-
-3. **Failure to Create Local Directory During Copy**
-   - **Scenario**: Handle the case where a local directory cannot be created during copy.
-   - **Given** a SpaceCollector with valid SSH credentials
-   - **And** a remote directory `/remote/data` containing a nested folder `folder1`
-   - **And** the local directory `/local/data/folder1` cannot be created
-   - **When** the `retrieveData` method is called with `dateReceived` and `auditTopic`
-   - **Then** the method should log an error for the directory creation failure
-   - **And** send a collection failure audit message to the Kafka audit topic for the failed directory creation
-   - **And** continue processing remaining files and directories
-
-4. **ZIP File Extraction Failure During Copy**
-   - **Scenario**: Handle the case where extraction of a ZIP file fails during copy.
-   - **Given** a SpaceCollector with valid SSH credentials
-   - **And** a remote directory `/remote/data` containing a ZIP file `corrupt.zip`
-   - **When** the `retrieveData` method is called with `dateReceived` and `auditTopic`
-   - **Then** the method should copy the ZIP file
-   - **And** log an error if the ZIP file extraction fails
-   - **And** send a collection failure audit message to the Kafka audit topic for the failed extraction
-   - **And** continue processing remaining files and directories
-
-### Implementing the Scenarios
-
-To implement these scenarios, you can use the `Gherkin` syntax in your feature files. Here are some examples of how the Gherkin syntax might look:
-
-**Example Feature File for Positive Scenarios**
-
-```gherkin
-Feature: Copy nested folders and files to S3
-
-  Scenario: Successfully copy a single file from the remote directory
-    Given a SpaceCollector with valid SSH credentials
-    And a remote directory "/remote/data" containing a single file "file1.txt"
-    And the local directory "/local/data" exists
-    When the retrieveData method is called with "2024-06-01" and "auditTopic"
-    Then the method should copy "file1.txt"
-    And download it to the local directory
-    And push it to S3
-    And send a successful collection audit message to the Kafka audit topic
-
-  Scenario: Successfully copy files within nested folders
-    Given a SpaceCollector with valid SSH credentials
-    And a remote directory "/remote/data" containing nested folders and files
-    When the retrieveData method is called with "2024-06-01" and "auditTopic"
-    Then the method should recursively copy all files and directories
-    And create any missing local directories
-    And download files to the corresponding local directories
-    And push all files to S3 with appropriate keys
-    And send successful collection audit messages to the Kafka audit topic for each successfully processed file
-
-  Scenario: Successfully handle and process ZIP files within nested folders during copy
-    Given a SpaceCollector with valid SSH credentials
-    And a remote directory "/remote/data" containing a ZIP file "archive.zip" with nested files
-    When the retrieveData method is called with "2024-06-01" and "auditTopic"
-    Then the method should copy the ZIP file
-    And extract its contents to the local directory
-    And process the extracted files
-    And push all files to S3 with appropriate keys
-    And send successful collection audit messages to the Kafka audit topic for each successfully processed file
-```
-
-**Example Feature File for Negative Scenarios**
-
-```gherkin
-Feature: Handle errors during copying nested folders and files
-
-  Scenario: Handle the case where the remote directory does not exist during copy
-    Given a SpaceCollector with valid SSH credentials
-    And a remote directory "/remote/nonexistent" that does not exist
-    When the retrieveData method is called with "2024-06-01" and "auditTopic"
-    Then the method should log an error
-    And send a collection failure audit message to the Kafka audit topic
-
-  Scenario: Handle the case where a file in the remote directory is inaccessible during copy
-    Given a SpaceCollector with valid SSH credentials
-    And a remote directory "/remote/data" containing an inaccessible file "file1.txt"
-    When the retrieveData method is called with "2024-06-01" and "auditTopic"
-    Then the method should log an error for the inaccessible file
-    And send a collection failure audit message to the Kafka audit topic for the inaccessible file
-    And continue processing remaining files
-
-  Scenario: Handle the case where a local directory cannot be created during copy
-    Given a SpaceCollector with valid SSH credentials
-    And a remote directory "/remote/data" containing a nested folder "folder1"
-    And the local directory "/local/data/folder1" cannot be created
-    When the retrieveData method is called with "2024-06-01" and "auditTopic"
-    Then the method should log an error for the directory creation failure
-    And send a collection failure audit message to the Kafka audit topic for the failed directory creation
-    And continue processing remaining files and directories
-
-  Scenario: Handle the case where extraction of a ZIP file fails during copy
-    Given a SpaceCollector with valid SSH credentials
-    And a remote directory "/remote/data" containing a ZIP file "corrupt.zip"
-    When the retrieveData method is called with "2024-06-01" and "auditTopic"
-    Then the method should copy the ZIP file
-    And log an error if the ZIP file extraction fails
-    And send a collection failure audit message to the Kafka audit topic for the failed extraction
-    And continue processing remaining files and directories
-```
-
-These scenarios will help ensure that the system is robust and can handle various edge cases during the process of copying files, especially when dealing with nested folders and ZIP files.
+public void retrieveAttributesOfRemoteFile(ChannelSftp channelSftp,
+                                           ChannelSftp.LsEntry file,
+                                           String remoteDirectory,
+                                           String inputFilePath)
+        throws Exception {
+    String filePath = file.getFilename(); // Use relative file path to fetch the actual file because we have already moved inside the remote directory
+    try {
+        channelSftp.stat(filePath);
+        LOGGER.info("in filePath : " + filePath + " exists");
+    } catch (SftpException e) {
+        if (e.id == ChannelSftp.SSH_FX_NO_SUCH_FILE) {
+            LOGGER.error("Remote file does not exist: " + inputFilePath);
+        }
+        throw e;
+    }
+}
