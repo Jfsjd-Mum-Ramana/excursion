@@ -1,12 +1,30 @@
+custom-ssh-collector:
+  recent-files-duration:
+    value: 24
+    unit: HOURS
+
 import com.jcraft.jsch.*;
+import org.slf4j.*;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+
 import java.nio.file.*;
+import java.nio.file.attribute.FileTime;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
-import org.slf4j.*;
+import java.util.stream.Collectors;
 
+@Service
 public class CustomSSHCollector {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CustomSSHCollector.class);
+
+    @Value("${custom-ssh-collector.recent-files-duration.value}")
+    private int recentFilesDurationValue;
+
+    @Value("${custom-ssh-collector.recent-files-duration.unit}")
+    private String recentFilesDurationUnit;
 
     public boolean retrieveData(SpaceCollector sp, String dateReceived, String auditTopic) throws Exception {
         LOGGER.info("Entered SSH service");
@@ -33,7 +51,7 @@ public class CustomSSHCollector {
                 session.disconnect();
             }
         }
-        // Filter and list only the files modified in the last 24 hours
+        // Filter and list only the files modified in the last specified duration
         listRecentFilesOnly(localDirectory);
         return true;
     }
@@ -41,6 +59,13 @@ public class CustomSSHCollector {
     private void retrieveAndProcessDirectory(SpaceCollector sp, String dateReceived, String auditTopic,
                                              String remoteDirectory, String localDirectory, ChannelSftp channelSftp) throws Exception {
         Vector<ChannelSftp.LsEntry> files = channelSftp.ls(remoteDirectory);
+        
+        long cutoffTime = System.currentTimeMillis() - TimeUnit.valueOf(recentFilesDurationUnit.toUpperCase()).toMillis(recentFilesDurationValue);
+        
+        List<ChannelSftp.LsEntry> recentFiles = files.stream()
+                .filter(file -> file.getAttrs().getMTime() * 1000L >= cutoffTime)
+                .collect(Collectors.toList());
+
         LOGGER.info("Number of files/Directories found in " + remoteDirectory + ":" + files.size());
         Map<String, String> auditStatusMap = getAuditStatusMap(files, remoteDirectory);
 
@@ -119,4 +144,34 @@ public class CustomSSHCollector {
             if (ZipUtil.isZipFile(fileName)) {
                 String nestedFileNameWithoutExtn = FileUtil.getFileNameWithoutExtn(fileName);
                 FileUtil.createDirectoryIfNotExists(localDirectory + "/" + nestedFileNameWithoutExtn);
-                Zip
+                ZipUtil.extract(fileName, localDirectory + "/" + nestedFileNameWithoutExtn);
+                List<String> nestedFilesList = FileUtil.readFilesInDirectory(localDirectory + "/" + nestedFileNameWithoutExtn);
+                for (String nestedFile : nestedFilesList) {
+                    processDownloadedFile(sp, dateReceived, auditTopic, nestedFile, localDirectory);
+                }
+            }
+        }
+    }
+
+    private void listRecentFilesOnly(String localDirectory) throws Exception {
+        long currentTime = System.currentTimeMillis();
+        TimeUnit unit = TimeUnit.valueOf(recentFilesDurationUnit.toUpperCase());
+        long cutoffTime = currentTime - unit.toMillis(recentFilesDurationValue);
+
+        Path localDirPath = Paths.get(localDirectory);
+        Files.walk(localDirPath)
+            .filter(Files::isRegularFile)
+            .forEach(path -> {
+                try {
+                    FileTime fileTime = Files.getLastModifiedTime(path);
+                    if (fileTime.toMillis() >= cutoffTime) {
+                        LOGGER.info("Recent file: " + path);
+                    }
+                } catch (IOException e) {
+                    LOGGER.error("Error accessing file: " + path, e);
+                }
+            });
+    }
+
+    // Assuming methods like getJsch, getSession, getChannelSftp, getAuditStatusMap, createAuditObject, etc., are already implemented
+}
