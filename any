@@ -1,27 +1,4 @@
-import com.jcraft.jsch.*;
-import org.slf4j.*;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
-
-import java.io.IOException;
-import java.nio.file.*;
-import java.nio.file.attribute.FileTime;
-import java.util.*;
-import java.util.concurrent.TimeUnit;
-
-@Service
-public class CustomSSHCollector {
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(CustomSSHCollector.class);
-
-    @Value("${custom-ssh-collector.recent-files-duration.value}")
-    private int recentFilesDurationValue;
-
-    @Value("${custom-ssh-collector.recent-files-duration.unit}")
-    private String recentFilesDurationUnit;
-
-    public boolean retrieveData(SpaceCollector sp, String dateReceived, String auditTopic) throws Exception {
+  public boolean retrieveData(SpaceCollector sp, String dateReceived, String auditTopic) throws Exception {
         LOGGER.info("Entered SSH service");
         String sshUsername = sp.getUserName();
         String sshHost = sp.getUrl();
@@ -48,81 +25,67 @@ public class CustomSSHCollector {
         }
         return true;
     }
-
     private void retrieveAndProcessDirectory(SpaceCollector sp, String dateReceived, String auditTopic,
                                              String remoteDirectory, String localDirectory, ChannelSftp channelSftp) throws Exception {
-        long cutoffTime = System.currentTimeMillis() - TimeUnit.valueOf(recentFilesDurationUnit.toUpperCase()).toMillis(recentFilesDurationValue);
+        Vector<ChannelSftp.LsEntry> files = channelSftp.ls(remoteDirectory);
+        LOGGER.info("Number of files/Directories found in "+remoteDirectory+ ":"+files.size());
+        Map<String, String> auditStatusMap = getAuditStatusMap(files, remoteDirectory);
 
-        // Process remote directory
-        Vector<ChannelSftp.LsEntry> remoteFiles = channelSftp.ls(remoteDirectory);
-        LOGGER.info("Number of files/Directories found in " + remoteDirectory + ":" + remoteFiles.size());
-        Map<String, String> auditStatusMap = getAuditStatusMap(remoteFiles, remoteDirectory);
+        // Calculate the time threshold for the last 24 hours
+        long currentTimeMillis = System.currentTimeMillis();
+        long timeThreshold = currentTimeMillis - filePickThreashold * 60 * 60 * 1000; // 24 hours in milliseconds
 
-        for (ChannelSftp.LsEntry file : remoteFiles) {
-            if (!file.getAttrs().isDir()) {
-                if (file.getAttrs().getMTime() * 1000L >= cutoffTime) {
-                    LOGGER.info("Recent remote file: " + file.getFilename());
-                }
-                String filePath = remoteDirectory + "/" + file.getFilename(); // Use absolute file path
-                LOGGER.info("filePath for lookup in COLLECTION_AUDIT: " + filePath);
-                String status = auditStatusMap.get(filePath);
-                if (status == null || "COLLECTION_FAILED".equals(status)) {
-                    try {
-                        String outputFile = localDirectory + "/" + file.getFilename();
-                        LOGGER.info("Remote filePath: " + filePath + " Local output filePath: " + outputFile);
-                        FileUtil.downloadFile(outputStreamCreator.create(outputFile), channelSftp.get(filePath),
-                                filePath, outputFile, sp.getOutputFilePath());
-                        processDownloadedFile(sp, dateReceived, auditTopic, outputFile, localDirectory);
-                    } catch (Exception e) {
-                        CollectionAudit audit = createAuditObject(sp,
-                                filePath, JobStatus.COLLECTION_FAILED.toString(), e.getMessage());
-                        kafkaProducerService.writeMessage(collectorUtil.buildAuditQueueJSON(audit), "",
-                                auditTopic);
-                        LOGGER.error("Error on retrieveData {}", e);
+        for (ChannelSftp.LsEntry file : files) {
+            long fileModificationTime = file.getAttrs().getMTime() * 1000L; // Convert to milliseconds
+
+            // Process only if the file was modified in the last 24 hours
+            if (fileModificationTime > timeThreshold) {
+                if (!file.getAttrs().isDir()) {
+                    LOGGER.info("found file in LS: "+ file.getFilename());
+                    String filePath = remoteDirectory + "/" + file.getFilename(); // Use absolute file path
+                    LOGGER.info("filePath for lookup in COLLECTION_AUDIT: "+ filePath);
+                    String status = auditStatusMap.get(filePath);
+                    if (status == null || "COLLECTION_FAILED".equals(status)) {
+                        try {
+                            String outputFile = localDirectory + "/" + file.getFilename();
+                            LOGGER.info("in filePath : " + filePath + " out filePath : " + outputFile);
+                            FileUtil.downloadFile(outputStreamCreator.create(outputFile), channelSftp.get(filePath),
+                                    filePath, outputFile, sp.getOutputFilePath());
+                            processDownloadedFile(sp, dateReceived, auditTopic, outputFile, localDirectory);
+                        } catch (Exception e) {
+                            CollectionAudit audit = createAuditObject(sp,
+                                    filePath, JobStatus.COLLECTION_FAILED.toString(), e.getMessage());
+                            kafkaProducerService.writeMessage(collectorUtil.buildAuditQueueJSON(audit), "",
+                                    auditTopic);
+                            LOGGER.error("Error on retrieveData {}", e);
+                        }
                     }
-                }
-            } else {
-                if (!".".equals(file.getFilename()) && !"..".equals(file.getFilename())) {
-                    LOGGER.info("Found remote directory: " + file.getFilename());
-                    String subRemoteDirectory = remoteDirectory + "/" + file.getFilename();
-                    String subLocalDirectory = localDirectory + "/" + file.getFilename();
-                    FileUtil.createDirectoryIfNotExists(subLocalDirectory);
-                    retrieveAndProcessDirectory(sp, dateReceived, auditTopic, subRemoteDirectory, subLocalDirectory, channelSftp);
+                } else {
+                    if (!".".equals(file.getFilename()) && !"..".equals(file.getFilename())) {
+                        LOGGER.info("DIR found : " + file.getFilename());
+                        String subRemoteDirectory = remoteDirectory + "/" + file.getFilename();
+                        String subLocalDirectory = localDirectory + "/" + file.getFilename();
+                        FileUtil.createDirectoryIfNotExists(subLocalDirectory);
+                        retrieveAndProcessDirectory(sp, dateReceived, auditTopic, subRemoteDirectory, subLocalDirectory, channelSftp);
+                    }
                 }
             }
         }
-
-        // Process local directory
-        Path localDirPath = Paths.get(localDirectory);
-        Files.walk(localDirPath)
-            .filter(Files::isRegularFile)
-            .forEach(path -> {
-                try {
-                    FileTime fileTime = Files.getLastModifiedTime(path);
-                    if (fileTime.toMillis() >= cutoffTime) {
-                        LOGGER.info("Recent local file: " + path);
-                    }
-                } catch (IOException e) {
-                    LOGGER.error("Error accessing local file: " + path, e);
-                }
-            });
     }
-
     private void processDownloadedFile(SpaceCollector sp, String dateReceived, String auditTopic,
                                        String outputFile, String localDirectory) throws Exception {
         List<String> filesList = new ArrayList<>();
-        LOGGER.info("Processing downloaded file: " + outputFile);
+        LOGGER.info("Processing downloaded file: "+ outputFile);
         if (ZipUtil.isZipFile(outputFile)) {
-            LOGGER.info("Zip file found: " + outputFile);
+            LOGGER.info("Zip file found: "+ outputFile);
             String fileNameWithoutExtn = FileUtil.getFileNameWithoutExtn(outputFile);
             FileUtil.createDirectoryIfNotExists(localDirectory + "/" + fileNameWithoutExtn);
             ZipUtil.extract(outputFile, localDirectory + "/" + fileNameWithoutExtn);
             filesList.addAll(FileUtil.readFilesInDirectory(localDirectory + "/" + fileNameWithoutExtn));
         } else {
-            LOGGER.info("Non-zip file found: " + outputFile);
+            LOGGER.info("non Zip file found: "+ outputFile);
             filesList.add(outputFile);
         }
-
         for (String fileName : filesList) {
             Path insideFilePath = Paths.get(fileName);
             Path folderPath = Paths.get(sp.getOutputFilePath()).relativize(insideFilePath.getParent());
@@ -158,6 +121,3 @@ public class CustomSSHCollector {
             }
         }
     }
-
-    // Assuming methods like getJsch, getSession, getChannelSftp, getAuditStatusMap, createAuditObject, etc., are already implemented
-}
