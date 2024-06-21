@@ -1,16 +1,46 @@
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.producer.Producer;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.serialization.StringDeserializer;
+import org.apache.kafka.common.serialization.StringSerializer;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
+import org.springframework.kafka.core.DefaultKafkaProducerFactory;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.listener.KafkaMessageListenerContainer;
+import org.springframework.kafka.listener.config.ContainerProperties;
+import org.springframework.kafka.test.EmbeddedKafkaBroker;
+import org.springframework.kafka.test.context.EmbeddedKafka;
+import org.springframework.kafka.test.utils.ContainerTestUtils;
+import org.springframework.kafka.test.utils.KafkaTestUtils;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+@SpringBootTest
+@EmbeddedKafka(partitions = 1, topics = {SimpleKafkaTest.TOPIC})
 public class SimpleKafkaTest {
 
-    private static final String TOPIC = "test-topic123";
+    static final String TOPIC = "test-topic123";
 
     @Autowired
     private EmbeddedKafkaBroker embeddedKafkaBroker;
 
-    BlockingQueue<ConsumerRecord<String, String>> records;
-
-    KafkaMessageListenerContainer<String, String> container;
+    private static BlockingQueue<ConsumerRecord<String, String>> records;
+    private static KafkaMessageListenerContainer<String, String> container;
 
     @BeforeAll
-    void setUp() {
+    static void setUp(@Autowired EmbeddedKafkaBroker embeddedKafkaBroker) {
         Map<String, Object> configs = new HashMap<>(KafkaTestUtils.consumerProps("consumer", "false", embeddedKafkaBroker));
         DefaultKafkaConsumerFactory<String, String> consumerFactory = new DefaultKafkaConsumerFactory<>(configs, new StringDeserializer(), new StringDeserializer());
         ContainerProperties containerProperties = new ContainerProperties(TOPIC);
@@ -19,12 +49,13 @@ public class SimpleKafkaTest {
         container.setupMessageListener((MessageListener<String, String>) records::add);
         container.start();
         ContainerTestUtils.waitForAssignment(container, embeddedKafkaBroker.getPartitionsPerTopic());
-//        ContainerTestUtils.waitForAssignment(container, 1);
     }
 
     @AfterAll
-    void tearDown() {
-        container.stop();
+    static void tearDown() {
+        if (container != null) {
+            container.stop();
+        }
     }
 
     @Test
@@ -38,12 +69,10 @@ public class SimpleKafkaTest {
         producer.flush();
 
         // Assert
-        ConsumerRecord<String, String> singleRecord = records.poll(100, TimeUnit.MILLISECONDS);
+        ConsumerRecord<String, String> singleRecord = records.poll(10, TimeUnit.SECONDS);
         assertThat(singleRecord).isNotNull();
         assertThat(singleRecord.key()).isEqualTo("test-key");
         assertThat(singleRecord.value()).isEqualTo("{\"event\":\"Test Event\"}");
     }
 
 }
-
-This test case is ignoring after making the changes it's faling. please make sure to pass this test case
