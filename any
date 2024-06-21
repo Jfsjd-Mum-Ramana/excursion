@@ -1,165 +1,410 @@
-@Test
-public void testRetrieveAttributesWhenFileTypeIsZipThenSuccess() throws Exception {
-    // Setup SpaceCollector
-    SpaceCollector spaceCollector = new SpaceCollector();
-    spaceCollector.setUrl("localhost");
-    spaceCollector.setPort(22);
-    spaceCollector.setUserName("username");
-    spaceCollector.setPassword("password");
-    spaceCollector.setInputFilePath("/path/to/input");
-    spaceCollector.setOutputFilePath("/path/to/output");
+package org.vdsi.space.collections.customsshcollector.junits.services;
 
-    // Mock the findLatestByFilePaths() method to return two records
-    List<CollectionAudit> audits = new ArrayList<>();
-    for (String fileName : new String[]{"/path/to/input/Sample1.tar.gz"}) {
-        CollectionAudit audit = mock(CollectionAudit.class);
-        when(audit.getInputFilePath()).thenReturn(fileName);
-        when(audit.getJobStatus()).thenReturn(fileName.equals("/path/to/input/Sample1.tar.gz") ? "COLLECTION_FAILED" : "COLLECTION_SUCCESS");
-        audits.add(audit);
+import com.jcraft.jsch.*;
+import org.junit.Before;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
+import org.mockito.*;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
+import org.springframework.test.context.junit.jupiter.SpringExtension;
+import org.vdsi.space.collections.customsshcollector.repository.LuceneCollectionAuditRepository;
+import org.vdsi.space.collections.customsshcollector.services.*;
+import org.vdsi.space.collections.customsshcollector.util.CollectorUtil;
+import org.vdsi.space.collections.customsshcollector.util.DateUtil;
+import org.vdsi.space.collections.customsshcollector.util.FileUtil;
+import org.vdsi.space.collections.customsshcollector.util.ZipUtil;
+import org.vdsi.space.collections.lucene.model.CollectionAudit;
+import org.vdsi.space.collections.lucene.model.SpaceCollector;
+
+import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Vector;
+import java.util.zip.ZipOutputStream;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.*;
+
+//@SpringBootTest
+@ExtendWith(SpringExtension.class)
+@ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
+public class SSHServiceTest {
+
+    @Mock
+    private InputStream inputStream;
+
+    @Mock
+    private OutputStream outputStream;
+
+    @InjectMocks
+    private SSHService sshServiceMock;
+
+    @Mock
+    private Session session;
+
+    @Mock
+    private CollectorUtil collectorUtil;
+    @Spy
+    private LuceneCollectionAuditRepository collectionAuditRepository;
+
+    @Spy
+    private JSchFactory jschFactory;
+
+    @Mock
+    private OutputStreamCreator outputStreamCreator;
+
+    @Mock
+    JSch jsch;
+
+    @InjectMocks
+    private SSHService sshService;
+
+    @Mock
+    private DateUtil dateUtil;
+
+    @TempDir
+    Path tempDir;
+
+    @Mock
+    private KafkaProducerService kafkaProducerService;
+
+    @Mock
+    private ChannelSftp channelSftp;
+
+    @Mock
+    private S3Service s3Service;
+    @Before
+    public void setUp() {
+        MockitoAnnotations.openMocks(this); // Initialize mocks
     }
-    doReturn(audits).when(collectionAuditRepository).findLatestByFilePaths(anyList());
 
-    // Mock the ls() method to return files within the last 24 hours
-    long currentTimeMillis = System.currentTimeMillis();
-    long timeWithin24Hours = currentTimeMillis / 1000 - 3600; // Mock time within the last hour
 
-    Vector<ChannelSftp.LsEntry> files = new Vector<>();
-    for (String fileName : new String[]{"Sample1.tar.gz"}) {
-        ChannelSftp.LsEntry file = mock(ChannelSftp.LsEntry.class);
-        SftpATTRS attrs = mock(SftpATTRS.class);
-        when(file.getFilename()).thenReturn(fileName);
-        when(file.getAttrs()).thenReturn(attrs);
-        when(attrs.isDir()).thenReturn(false);
-        when(attrs.getMTime()).thenReturn((int) timeWithin24Hours); // Set modification time within the last hour
-        files.add(file);
+    @BeforeEach
+    public void setup() throws Exception {
+//        JSch jsch = mock(JSch.class);
+        when(dateUtil.getDateInMMddyyyy()).thenReturn("01/01/2021");
+        doReturn(jsch).when(jschFactory).createJSch();
+        when(jschFactory.createJSch()).thenReturn(jsch);
+        when(jsch.getSession(anyString(), anyString(), anyInt())).thenReturn(session);
+        when(session.openChannel("sftp")).thenReturn(channelSftp);
+        when(channelSftp.ls(Mockito.anyString())).thenReturn(new Vector<>());
     }
-    when(channelSftp.ls(anyString())).thenReturn(files);
-
-    // Mock the outputStreamCreator.create method
-    OutputStream mockOutputStream = mock(OutputStream.class);
-    when(outputStreamCreator.create(anyString())).thenReturn(mockOutputStream);
-
-    // Mock the channelSftp.get method
-    InputStream mockInputStream = mock(InputStream.class);
-    when(channelSftp.get(anyString())).thenReturn(mockInputStream);
-
-    // Mock the behavior of the InputStream and OutputStream
-    when(mockInputStream.read(ArgumentMatchers.any(byte[].class))).thenReturn(-1); // Simulate end of stream
-    doNothing().when(mockOutputStream).close();
-    doNothing().when(mockInputStream).close();
-
-    // Invoke the method under test
-    boolean result = sshService.retrieveData(spaceCollector, collectorUtil.getDateAsString(new Date()), "3459-DEV-COLLECTION-AUDIT-QUEUE");
-
-    // Verify that get() method is called as expected
-    verify(channelSftp, times(1)).get(anyString());
-}
 
 
+    @Test
+    void testTransferFile() throws Exception {
+        // Mock the necessary dependencies
+        InputStream inputStream = new ByteArrayInputStream("Test data".getBytes());
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        String outputFile = "output.txt";
 
+        // Create mock dependencies for SSHService constructor
+        LuceneCollectionAuditRepository luceneCollectionAuditRepository = Mockito.mock(LuceneCollectionAuditRepository.class);
+        JSchFactory jschFactory = Mockito.mock(JSchFactory.class);
+        OutputStreamCreator outputStreamCreator = Mockito.mock(OutputStreamCreator.class);
 
-@Test
-public void testRetrieveData_FileRetrievalFailureForSpecificFile() throws Exception {
-    long currentTimeMillis = System.currentTimeMillis();
-    long timeWithin24Hours = currentTimeMillis / 1000 - 3600; // Mock time within the last hour
+        // Call the method under test
+        SSHService sshService = new SSHService(luceneCollectionAuditRepository, jschFactory, outputStreamCreator);
+        //sshService.transferFile(inputStream, outputStream, outputFile);
 
-    InputStream mockInputStream = mock(InputStream.class);
-    when(channelSftp.get(anyString())).thenReturn(mockInputStream);
-    when(channelSftp.get("/path/to/input/Sample2.csv")).thenThrow(new SftpException(0, "file retrieval failed"));
+        // Verify the output stream content
+        assertEquals("output.txt", outputFile);
 
-    OutputStream mockOutputStream = mock(OutputStream.class);
-    when(outputStreamCreator.create(anyString())).thenReturn(mockOutputStream);
-
-    when(mockInputStream.read(ArgumentMatchers.any(byte[].class))).thenReturn(-1); // Simulate end of stream
-    doNothing().when(mockOutputStream).close();
-    doNothing().when(mockInputStream).close();
-
-    Vector<ChannelSftp.LsEntry> files = new Vector<>();
-    for (String fileName : new String[]{"Sample1.csv", "Sample2.csv", "Sample3.csv"}) {
-        ChannelSftp.LsEntry file = mock(ChannelSftp.LsEntry.class);
-        SftpATTRS attrs = mock(SftpATTRS.class);
-        when(file.getFilename()).thenReturn(fileName);
-        when(file.getAttrs()).thenReturn(attrs);
-        when(attrs.isDir()).thenReturn(false);
-        when(attrs.getMTime()).thenReturn((int) timeWithin24Hours); // Set modification time within the last hour
-        files.add(file);
+        // Additional assertions or verifications can be added based on the specific behavior you want to test
     }
-    when(channelSftp.ls(anyString())).thenReturn(files);
 
-    List<CollectionAudit> audits = new ArrayList<>();
-    for (String fileName : new String[]{"/path/to/input/Sample1.csv", "/path/to/input/Sample3.csv"}) {
-        CollectionAudit audit = mock(CollectionAudit.class);
-        when(audit.getInputFilePath()).thenReturn(fileName);
-        when(audit.getJobStatus()).thenReturn(fileName.equals("/path/to/input/Sample1.csv") ? "COLLECTION_FAILED" : "COLLECTION_SUCCESS");
-        audits.add(audit);
+    @Test
+    public void testRetrieveData_FileRetrievalFailureForSpecificFile() throws Exception {
+        long currentTimeMillis = System.currentTimeMillis();
+        long timeWithin24Hours = currentTimeMillis / 1000 - 3600; // Mock time within the last hour
+
+        InputStream mockInputStream = mock(InputStream.class);
+        when(channelSftp.get(anyString())).thenReturn(mockInputStream);
+        when(channelSftp.get("/path/to/input/Sample2.csv")).thenThrow(new SftpException(0, "file retrieval failed"));
+
+        OutputStream mockOutputStream = mock(OutputStream.class);
+        when(outputStreamCreator.create(anyString())).thenReturn(mockOutputStream);
+
+        when(mockInputStream.read(ArgumentMatchers.any(byte[].class))).thenReturn(-1); // Simulate end of stream
+        doNothing().when(mockOutputStream).close();
+        doNothing().when(mockInputStream).close();
+
+        Vector<ChannelSftp.LsEntry> files = new Vector<>();
+        for (String fileName : new String[]{"Sample1.csv", "Sample2.csv", "Sample3.csv"}) {
+            ChannelSftp.LsEntry file = mock(ChannelSftp.LsEntry.class);
+            SftpATTRS attrs = mock(SftpATTRS.class);
+            when(file.getFilename()).thenReturn(fileName);
+            when(file.getAttrs()).thenReturn(attrs);
+            when(attrs.isDir()).thenReturn(false);
+            when(attrs.getMTime()).thenReturn((int) timeWithin24Hours); // Set modification time within the last hour
+            files.add(file);
+        }
+        when(channelSftp.ls(anyString())).thenReturn(files);
+
+        List<CollectionAudit> audits = new ArrayList<>();
+        for (String fileName : new String[]{"/path/to/input/Sample1.csv", "/path/to/input/Sample3.csv"}) {
+            CollectionAudit audit = mock(CollectionAudit.class);
+            when(audit.getInputFilePath()).thenReturn(fileName);
+            when(audit.getJobStatus()).thenReturn(fileName.equals("/path/to/input/Sample1.csv") ? "COLLECTION_FAILED" : "COLLECTION_SUCCESS");
+            audits.add(audit);
+        }
+        doReturn(audits).when(collectionAuditRepository).findLatestByFilePaths(anyList());
+
+        SpaceCollector spaceCollector = new SpaceCollector();
+        spaceCollector.setUrl("localhost");
+        spaceCollector.setPort(22);
+        spaceCollector.setUserName("username");
+        spaceCollector.setPassword("password");
+        spaceCollector.setInputFilePath("/path/to/input");
+        spaceCollector.setOutputFilePath("/path/to/output");
+
+        boolean result = sshService.retrieveData(spaceCollector, collectorUtil.getDateAsString(new Date()), "3459-DEV-COLLECTION-AUDIT-QUEUE");
+
+        verify(channelSftp, times(3)).get(anyString());
     }
-    doReturn(audits).when(collectionAuditRepository).findLatestByFilePaths(anyList());
 
-    SpaceCollector spaceCollector = new SpaceCollector();
-    spaceCollector.setUrl("localhost");
-    spaceCollector.setPort(22);
-    spaceCollector.setUserName("username");
-    spaceCollector.setPassword("password");
-    spaceCollector.setInputFilePath("/path/to/input");
-    spaceCollector.setOutputFilePath("/path/to/output");
+    @Test
+    public void testRetrieveData_Success() throws Exception {
+        // Mock the timestamp for the last 24 hours
+        long currentTimeMillis = System.currentTimeMillis();
+        long timeWithin24Hours = currentTimeMillis / 1000 - 3600; // Mock time within the last hour
 
-    boolean result = sshService.retrieveData(spaceCollector, collectorUtil.getDateAsString(new Date()), "3459-DEV-COLLECTION-AUDIT-QUEUE");
+        when(kafkaProducerService.writeMessage(Mockito.any(), anyString(), anyString())).thenReturn(true);
 
-    verify(channelSftp, times(3)).get(anyString());
-}
+        InputStream mockInputStream = mock(InputStream.class);
+        when(channelSftp.get(anyString())).thenReturn(mockInputStream);
 
+        OutputStream mockOutputStream = mock(OutputStream.class);
+        when(outputStreamCreator.create(anyString())).thenReturn(mockOutputStream);
 
+        when(mockInputStream.read(ArgumentMatchers.any(byte[].class))).thenReturn(-1); // Simulate end of stream
+        doNothing().when(mockOutputStream).close();
+        doNothing().when(mockInputStream).close();
 
-@Test
-public void testRetrieveData_Success() throws Exception {
-    // Mock the timestamp for the last 24 hours
-    long currentTimeMillis = System.currentTimeMillis();
-    long timeWithin24Hours = currentTimeMillis / 1000 - 3600; // Mock time within the last hour
+        Vector<ChannelSftp.LsEntry> files = new Vector<>();
+        for (String fileName : new String[]{"Sample1.csv", "Sample2.csv", "Sample3.csv"}) {
+            ChannelSftp.LsEntry file = mock(ChannelSftp.LsEntry.class);
+            SftpATTRS attrs = mock(SftpATTRS.class);
+            when(file.getFilename()).thenReturn(fileName);
+            when(file.getAttrs()).thenReturn(attrs);
+            when(attrs.isDir()).thenReturn(false);
+            when(attrs.getMTime()).thenReturn((int) timeWithin24Hours); // Set modification time within the last hour
+            files.add(file);
+        }
+        when(channelSftp.ls(anyString())).thenReturn(files);
 
-    when(kafkaProducerService.writeMessage(Mockito.any(), anyString(), anyString())).thenReturn(true);
+        List<CollectionAudit> audits = new ArrayList<>();
+        for (String fileName : new String[]{"/path/to/input/Sample1.csv", "/path/to/input/Sample3.csv"}) {
+            CollectionAudit audit = mock(CollectionAudit.class);
+            when(audit.getInputFilePath()).thenReturn(fileName);
+            when(audit.getJobStatus()).thenReturn(fileName.equals("/path/to/input/Sample1.csv") ? "COLLECTION_FAILED" : "COLLECTION_SUCCESS");
+            audits.add(audit);
+        }
+        doReturn(audits).when(collectionAuditRepository).findLatestByFilePaths(anyList());
 
-    InputStream mockInputStream = mock(InputStream.class);
-    when(channelSftp.get(anyString())).thenReturn(mockInputStream);
+        SpaceCollector spaceCollector = new SpaceCollector();
+        spaceCollector.setUrl("localhost");
+        spaceCollector.setPort(22);
+        spaceCollector.setUserName("username");
+        spaceCollector.setPassword("password");
+        spaceCollector.setInputFilePath("/path/to/input");
+        spaceCollector.setOutputFilePath("/path/to/output");
 
-    OutputStream mockOutputStream = mock(OutputStream.class);
-    when(outputStreamCreator.create(anyString())).thenReturn(mockOutputStream);
+        when(collectorUtil.getDateAsString(Mockito.any())).thenReturn("2021-01-01");
 
-    when(mockInputStream.read(ArgumentMatchers.any(byte[].class))).thenReturn(-1); // Simulate end of stream
-    doNothing().when(mockOutputStream).close();
-    doNothing().when(mockInputStream).close();
+        boolean result = sshService.retrieveData(spaceCollector, collectorUtil.getDateAsString(new Date()), "3459-DEV-COLLECTION-AUDIT-QUEUE");
 
-    Vector<ChannelSftp.LsEntry> files = new Vector<>();
-    for (String fileName : new String[]{"Sample1.csv", "Sample2.csv", "Sample3.csv"}) {
-        ChannelSftp.LsEntry file = mock(ChannelSftp.LsEntry.class);
-        SftpATTRS attrs = mock(SftpATTRS.class);
-        when(file.getFilename()).thenReturn(fileName);
-        when(file.getAttrs()).thenReturn(attrs);
-        when(attrs.isDir()).thenReturn(false);
-        when(attrs.getMTime()).thenReturn((int) timeWithin24Hours); // Set modification time within the last hour
-        files.add(file);
+        verify(channelSftp, times(3)).get(anyString());
     }
-    when(channelSftp.ls(anyString())).thenReturn(files);
 
-    List<CollectionAudit> audits = new ArrayList<>();
-    for (String fileName : new String[]{"/path/to/input/Sample1.csv", "/path/to/input/Sample3.csv"}) {
-        CollectionAudit audit = mock(CollectionAudit.class);
-        when(audit.getInputFilePath()).thenReturn(fileName);
-        when(audit.getJobStatus()).thenReturn(fileName.equals("/path/to/input/Sample1.csv") ? "COLLECTION_FAILED" : "COLLECTION_SUCCESS");
-        audits.add(audit);
+    @Test
+    public void testRetrieveData_ConnectionFailure() throws JSchException, SftpException, IOException {
+        // Mock JSch.getSession to throw a JSchException
+        when(channelSftp.ls(anyString())).thenThrow(new SftpException(0, "connection failed"));
+
+        SpaceCollector spaceCollector = new SpaceCollector();
+        spaceCollector.setUrl("localhost");
+        spaceCollector.setPort(22);
+        spaceCollector.setUserName("username");
+        spaceCollector.setPassword("password");
+        spaceCollector.setInputFilePath("/path/to/input");
+        spaceCollector.setOutputFilePath("/path/to/output");
+
+        assertThrows(SftpException.class, () -> {
+            sshService.retrieveData(spaceCollector, collectorUtil.getDateAsString(new Date()), "3459-DEV-COLLECTION-AUDIT-QUEUE");
+        });
     }
-    doReturn(audits).when(collectionAuditRepository).findLatestByFilePaths(anyList());
 
-    SpaceCollector spaceCollector = new SpaceCollector();
-    spaceCollector.setUrl("localhost");
-    spaceCollector.setPort(22);
-    spaceCollector.setUserName("username");
-    spaceCollector.setPassword("password");
-    spaceCollector.setInputFilePath("/path/to/input");
-    spaceCollector.setOutputFilePath("/path/to/output");
+    @Test
+    void testFileTransferSuccess() throws Exception {
+        // Mock the behavior of input stream and output stream
+        when(inputStream.read(any(byte[].class))).thenReturn(1024).thenReturn(-1);
 
-    when(collectorUtil.getDateAsString(Mockito.any())).thenReturn("2021-01-01");
+        // Mock the behavior of outputStream.write
+        doNothing().when(outputStream).write(any(byte[].class), anyInt(), anyInt());
 
-    boolean result = sshService.retrieveData(spaceCollector, collectorUtil.getDateAsString(new Date()), "3459-DEV-COLLECTION-AUDIT-QUEUE");
+        // Call the method under test
+        FileUtil.transferFile(inputStream, outputStream, "outputFile");
 
-    verify(channelSftp, times(3)).get(anyString());
+        // Verify that the necessary methods are called
+        verify(inputStream, times(2)).read(any(byte[].class));
+        verify(outputStream).write(any(byte[].class), anyInt(), anyInt());
+        verify(outputStream).close();
+        verify(inputStream).close();
+    }
+
+    @Test
+    public void testReadFilesInDirectory_WithFiles() throws IOException, NoSuchFieldException {
+        // Create files in the temporary directory
+        Files.createFile(tempDir.resolve("file1.txt"));
+        Files.createFile(tempDir.resolve("file2.txt"));
+
+        List<String> files = FileUtil.readFilesInDirectory(tempDir.toString());
+
+        // Assert that the method returns the correct file paths
+        assertEquals(2, files.size());
+        assertTrue(files.contains(tempDir.resolve("file1.txt").toString()));
+        assertTrue(files.contains(tempDir.resolve("file2.txt").toString()));
+    }
+
+    @Test
+    public void testReadFilesInDirectory_WithNoFiles() throws NoSuchFieldException {
+        List<String> files = FileUtil.readFilesInDirectory(tempDir.toString());
+
+        // Assert that the method returns an empty list
+        assertTrue(files.isEmpty());
+    }
+
+    @Test
+    public void testReadFilesInDirectory_WithNonExistentDirectory() {
+        // Assert that the method throws an exception
+        assertThrows(NoSuchFieldException.class, () -> FileUtil.readFilesInDirectory("non_existent_directory"));
+    }
+
+    @Test
+    public void testGetJsch_WithEmptyPassword() throws Exception {
+        // Arrange
+        SpaceCollector sp = new SpaceCollector();
+        sp.setUrl("localhost");
+        sp.setPassword("");
+
+        // Act
+        JSch jsch = sshService.getJsch("localhost", "");
+
+        // Assert
+        assertNotNull(jsch);
+    }
+
+    @Test
+    public void testIsZipFile_WithZipFile() throws IOException {
+        // Create a zip file in the temporary directory
+        Path zipFilePath = tempDir.resolve("file.zip");
+        try (ZipOutputStream zos = new ZipOutputStream(Files.newOutputStream(zipFilePath))) {
+        }
+
+        boolean result = ZipUtil.isZipFile(zipFilePath.toString());
+
+        // Assert that the method returns true
+        assertTrue(result);
+    }
+
+    @Test
+    public void testIsZipFile_WithNonZipFile() throws IOException {
+        // Create a non-zip file in the temporary directory
+        Path nonZipFilePath = tempDir.resolve("file.txt");
+        Files.createFile(nonZipFilePath);
+
+        boolean result = ZipUtil.isZipFile(nonZipFilePath.toString());
+
+        // Assert that the method returns false
+        assertFalse(result);
+    }
+
+    @Test
+    public void testIsZipFile_WithNonExistentFile() {
+        // Assert that the method returns false
+        assertFalse(ZipUtil.isZipFile("non_existent_file"));
+    }
+
+    @Test
+    public void testRetrieveAttributesOfRemoteFile_FileExists() throws Exception {
+        // Arrange
+        ChannelSftp channelSftp = Mockito.mock(ChannelSftp.class);
+        ChannelSftp.LsEntry file = Mockito.mock(ChannelSftp.LsEntry.class);
+        when(file.getFilename()).thenReturn("file.txt");
+
+        // Act and Assert
+        assertDoesNotThrow(() -> sshService.retrieveAttributesOfRemoteFile(channelSftp, file, "/remote/directory", "/input/path"));
+    }
+
+
+    @Test
+    public void testRetrieveAttributesWhenFileTypeIsZipThenSuccess() throws Exception {
+        // Setup SpaceCollector
+        SpaceCollector spaceCollector = new SpaceCollector();
+        spaceCollector.setUrl("localhost");
+        spaceCollector.setPort(22);
+        spaceCollector.setUserName("username");
+        spaceCollector.setPassword("password");
+        spaceCollector.setInputFilePath("/path/to/input");
+        spaceCollector.setOutputFilePath("/path/to/output");
+
+        // Mock the findLatestByFilePaths() method to return two records
+        List<CollectionAudit> audits = new ArrayList<>();
+        for (String fileName : new String[]{"/path/to/input/Sample1.tar.gz"}) {
+            CollectionAudit audit = mock(CollectionAudit.class);
+            when(audit.getInputFilePath()).thenReturn(fileName);
+            when(audit.getJobStatus()).thenReturn(fileName.equals("/path/to/input/Sample1.tar.gz") ? "COLLECTION_FAILED" : "COLLECTION_SUCCESS");
+            audits.add(audit);
+        }
+        doReturn(audits).when(collectionAuditRepository).findLatestByFilePaths(anyList());
+
+        // Mock the ls() method to return files within the last 24 hours
+        long currentTimeMillis = System.currentTimeMillis();
+        long timeWithin24Hours = currentTimeMillis / 1000 - 3600; // Mock time within the last hour
+
+        Vector<ChannelSftp.LsEntry> files = new Vector<>();
+        for (String fileName : new String[]{"Sample1.tar.gz"}) {
+            ChannelSftp.LsEntry file = mock(ChannelSftp.LsEntry.class);
+            SftpATTRS attrs = mock(SftpATTRS.class);
+            when(file.getFilename()).thenReturn(fileName);
+            when(file.getAttrs()).thenReturn(attrs);
+            when(attrs.isDir()).thenReturn(false);
+            when(attrs.getMTime()).thenReturn((int) timeWithin24Hours); // Set modification time within the last hour
+            files.add(file);
+        }
+        when(channelSftp.ls(anyString())).thenReturn(files);
+
+        // Mock the outputStreamCreator.create method
+        OutputStream mockOutputStream = mock(OutputStream.class);
+        when(outputStreamCreator.create(anyString())).thenReturn(mockOutputStream);
+
+        // Mock the channelSftp.get method
+        InputStream mockInputStream = mock(InputStream.class);
+        when(channelSftp.get(anyString())).thenReturn(mockInputStream);
+
+        // Mock the behavior of the InputStream and OutputStream
+        when(mockInputStream.read(ArgumentMatchers.any(byte[].class))).thenReturn(-1); // Simulate end of stream
+        doNothing().when(mockOutputStream).close();
+        doNothing().when(mockInputStream).close();
+
+        // Invoke the method under test
+        boolean result = sshService.retrieveData(spaceCollector, collectorUtil.getDateAsString(new Date()), "3459-DEV-COLLECTION-AUDIT-QUEUE");
+
+        // Verify that get() method is called as expected
+        verify(channelSftp, times(1)).get(anyString());
+    }
+
+
+
 }
