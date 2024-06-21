@@ -1,19 +1,14 @@
-custom-ssh-collector:
-  recent-files-duration:
-    value: 24
-    unit: HOURS
-
 import com.jcraft.jsch.*;
 import org.slf4j.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.io.IOException;
 import java.nio.file.*;
 import java.nio.file.attribute.FileTime;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 @Service
 public class CustomSSHCollector {
@@ -51,34 +46,30 @@ public class CustomSSHCollector {
                 session.disconnect();
             }
         }
-        // Filter and list only the files modified in the last specified duration
-        listRecentFilesOnly(localDirectory);
         return true;
     }
 
     private void retrieveAndProcessDirectory(SpaceCollector sp, String dateReceived, String auditTopic,
                                              String remoteDirectory, String localDirectory, ChannelSftp channelSftp) throws Exception {
-        Vector<ChannelSftp.LsEntry> files = channelSftp.ls(remoteDirectory);
-        
         long cutoffTime = System.currentTimeMillis() - TimeUnit.valueOf(recentFilesDurationUnit.toUpperCase()).toMillis(recentFilesDurationValue);
-        
-        List<ChannelSftp.LsEntry> recentFiles = files.stream()
-                .filter(file -> file.getAttrs().getMTime() * 1000L >= cutoffTime)
-                .collect(Collectors.toList());
 
-        LOGGER.info("Number of files/Directories found in " + remoteDirectory + ":" + files.size());
-        Map<String, String> auditStatusMap = getAuditStatusMap(files, remoteDirectory);
+        // Process remote directory
+        Vector<ChannelSftp.LsEntry> remoteFiles = channelSftp.ls(remoteDirectory);
+        LOGGER.info("Number of files/Directories found in " + remoteDirectory + ":" + remoteFiles.size());
+        Map<String, String> auditStatusMap = getAuditStatusMap(remoteFiles, remoteDirectory);
 
-        for (ChannelSftp.LsEntry file : files) {
+        for (ChannelSftp.LsEntry file : remoteFiles) {
             if (!file.getAttrs().isDir()) {
-                LOGGER.info("found file in LS: " + file.getFilename());
+                if (file.getAttrs().getMTime() * 1000L >= cutoffTime) {
+                    LOGGER.info("Recent remote file: " + file.getFilename());
+                }
                 String filePath = remoteDirectory + "/" + file.getFilename(); // Use absolute file path
                 LOGGER.info("filePath for lookup in COLLECTION_AUDIT: " + filePath);
                 String status = auditStatusMap.get(filePath);
                 if (status == null || "COLLECTION_FAILED".equals(status)) {
                     try {
                         String outputFile = localDirectory + "/" + file.getFilename();
-                        LOGGER.info("in filePath : " + filePath + " out filePath : " + outputFile);
+                        LOGGER.info("Remote filePath: " + filePath + " Local output filePath: " + outputFile);
                         FileUtil.downloadFile(outputStreamCreator.create(outputFile), channelSftp.get(filePath),
                                 filePath, outputFile, sp.getOutputFilePath());
                         processDownloadedFile(sp, dateReceived, auditTopic, outputFile, localDirectory);
@@ -92,7 +83,7 @@ public class CustomSSHCollector {
                 }
             } else {
                 if (!".".equals(file.getFilename()) && !"..".equals(file.getFilename())) {
-                    LOGGER.info("DIR found : " + file.getFilename());
+                    LOGGER.info("Found remote directory: " + file.getFilename());
                     String subRemoteDirectory = remoteDirectory + "/" + file.getFilename();
                     String subLocalDirectory = localDirectory + "/" + file.getFilename();
                     FileUtil.createDirectoryIfNotExists(subLocalDirectory);
@@ -100,6 +91,21 @@ public class CustomSSHCollector {
                 }
             }
         }
+
+        // Process local directory
+        Path localDirPath = Paths.get(localDirectory);
+        Files.walk(localDirPath)
+            .filter(Files::isRegularFile)
+            .forEach(path -> {
+                try {
+                    FileTime fileTime = Files.getLastModifiedTime(path);
+                    if (fileTime.toMillis() >= cutoffTime) {
+                        LOGGER.info("Recent local file: " + path);
+                    }
+                } catch (IOException e) {
+                    LOGGER.error("Error accessing local file: " + path, e);
+                }
+            });
     }
 
     private void processDownloadedFile(SpaceCollector sp, String dateReceived, String auditTopic,
@@ -113,7 +119,7 @@ public class CustomSSHCollector {
             ZipUtil.extract(outputFile, localDirectory + "/" + fileNameWithoutExtn);
             filesList.addAll(FileUtil.readFilesInDirectory(localDirectory + "/" + fileNameWithoutExtn));
         } else {
-            LOGGER.info("non Zip file found: " + outputFile);
+            LOGGER.info("Non-zip file found: " + outputFile);
             filesList.add(outputFile);
         }
 
@@ -151,26 +157,6 @@ public class CustomSSHCollector {
                 }
             }
         }
-    }
-
-    private void listRecentFilesOnly(String localDirectory) throws Exception {
-        long currentTime = System.currentTimeMillis();
-        TimeUnit unit = TimeUnit.valueOf(recentFilesDurationUnit.toUpperCase());
-        long cutoffTime = currentTime - unit.toMillis(recentFilesDurationValue);
-
-        Path localDirPath = Paths.get(localDirectory);
-        Files.walk(localDirPath)
-            .filter(Files::isRegularFile)
-            .forEach(path -> {
-                try {
-                    FileTime fileTime = Files.getLastModifiedTime(path);
-                    if (fileTime.toMillis() >= cutoffTime) {
-                        LOGGER.info("Recent file: " + path);
-                    }
-                } catch (IOException e) {
-                    LOGGER.error("Error accessing file: " + path, e);
-                }
-            });
     }
 
     // Assuming methods like getJsch, getSession, getChannelSftp, getAuditStatusMap, createAuditObject, etc., are already implemented
