@@ -1,61 +1,49 @@
-public boolean retrieveData(SpaceCollector sp, String dateReceived, String auditTopic) throws Exception {
-    LOGGER.info("Entered SSH service");
-    String sshUsername = sp.getUserName();
-    String sshHost = sp.getUrl();
-    String sshPassword = sp.getPassword();
-    int port = sp.getPort().intValue();
-    JSch jsch = getJsch(sshHost, sshPassword);
-    Session session = getSession(sshUsername, sshHost, sshPassword, port, jsch);
-    session.connect();
-    ChannelSftp channelSftp = null;
-    try {
-        String remoteDirectory = FileUtil.getDirectory(sp.getInputFilePath());
-        String localDirectory = FileUtil.getDirectory(sp.getOutputFilePath());
-        LOGGER.info("remoteDirectory : " + remoteDirectory + " localDirectory : " + localDirectory);
-        channelSftp = getChannelSftp(session, remoteDirectory);
-        // Recursively retrieve and process files and directories
-        retrieveAndProcessDirectory(sp, dateReceived, auditTopic, remoteDirectory, localDirectory, channelSftp);
-    } finally {
-        if (channelSftp != null) {
-            channelSftp.disconnect();
-        }
-        if (session != null) {
-            session.disconnect();
-        }
+public class SimpleKafkaTest {
+
+    private static final String TOPIC = "test-topic123";
+
+    @Autowired
+    private EmbeddedKafkaBroker embeddedKafkaBroker;
+
+    BlockingQueue<ConsumerRecord<String, String>> records;
+
+    KafkaMessageListenerContainer<String, String> container;
+
+    @BeforeAll
+    void setUp() {
+        Map<String, Object> configs = new HashMap<>(KafkaTestUtils.consumerProps("consumer", "false", embeddedKafkaBroker));
+        DefaultKafkaConsumerFactory<String, String> consumerFactory = new DefaultKafkaConsumerFactory<>(configs, new StringDeserializer(), new StringDeserializer());
+        ContainerProperties containerProperties = new ContainerProperties(TOPIC);
+        container = new KafkaMessageListenerContainer<>(consumerFactory, containerProperties);
+        records = new LinkedBlockingQueue<>();
+        container.setupMessageListener((MessageListener<String, String>) records::add);
+        container.start();
+        ContainerTestUtils.waitForAssignment(container, embeddedKafkaBroker.getPartitionsPerTopic());
+//        ContainerTestUtils.waitForAssignment(container, 1);
     }
-    return true;
+
+    @AfterAll
+    void tearDown() {
+        container.stop();
+    }
+
+    @Test
+    public void kafkaSetup_withTopic_ensureSendMessageIsReceived() throws Exception {
+        // Arrange
+        Map<String, Object> configs = new HashMap<>(KafkaTestUtils.producerProps(embeddedKafkaBroker));
+        Producer<String, String> producer = new DefaultKafkaProducerFactory<>(configs, new StringSerializer(), new StringSerializer()).createProducer();
+
+        // Act
+        producer.send(new ProducerRecord<>(TOPIC, "test-key", "{\"event\":\"Test Event\"}"));
+        producer.flush();
+
+        // Assert
+        ConsumerRecord<String, String> singleRecord = records.poll(100, TimeUnit.MILLISECONDS);
+        assertThat(singleRecord).isNotNull();
+        assertThat(singleRecord.key()).isEqualTo("test-key");
+        assertThat(singleRecord.value()).isEqualTo("{\"event\":\"Test Event\"}");
+    }
+
 }
 
-private void retrieveAndProcessDirectory(SpaceCollector sp, String dateReceived, String auditTopic,
-                                         String remoteDirectory, String localDirectory, ChannelSftp channelSftp) throws Exception {
-    // Get the current time and calculate the time threshold for the last 24 hours
-    long currentTimeMillis = System.currentTimeMillis();
-    long timeThreshold = currentTimeMillis - 24 * 60 * 60 * 1000; // 24 hours in milliseconds
-
-    // List files in the remote directory
-    Vector<ChannelSftp.LsEntry> files = channelSftp.ls(remoteDirectory);
-    LOGGER.info("Number of files/Directories found in " + remoteDirectory + ":" + files.size());
-
-    // Iterate over the files and process only those modified within the last 24 hours
-    for (ChannelSftp.LsEntry file : files) {
-        long fileModificationTime = file.getAttrs().getMTime() * 1000L; // Convert to milliseconds
-
-        // Process only if the file was modified in the last 24 hours
-        if (fileModificationTime > timeThreshold) {
-            if (!file.getAttrs().isDir()) {
-                LOGGER.info("found file in LS: " + file.getFilename());
-                String filePath = remoteDirectory + "/" + file.getFilename(); // Use absolute file path
-                LOGGER.info("filePath for lookup in COLLECTION_AUDIT: " + filePath);
-                processRemoteFile(sp, dateReceived, auditTopic, filePath, channelSftp);
-            } else {
-                if (!".".equals(file.getFilename()) && !"..".equals(file.getFilename())) {
-                    LOGGER.info("DIR found : " + file.getFilename());
-                    String subRemoteDirectory = remoteDirectory + "/" + file.getFilename();
-                    String subLocalDirectory = localDirectory + "/" + file.getFilename();
-                    FileUtil.createDirectoryIfNotExists(subLocalDirectory);
-                    retrieveAndProcessDirectory(sp, dateReceived, auditTopic, subRemoteDirectory, subLocalDirectory, channelSftp);
-                }
-            }
-        }
-    }
-}
+This test case is ignoring after making the changes it's faling. please make sure to pass this test case
