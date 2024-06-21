@@ -40,35 +40,33 @@ private void retrieveAndProcessDirectory(SpaceCollector sp, String dateReceived,
         long fileModificationTime = file.getAttrs().getMTime() * 1000L; // Convert to milliseconds
 
         // Process only if the file was modified in the last 24 hours
-        if (fileModificationTime > timeThreshold) {
-            if (!file.getAttrs().isDir()) {
-                LOGGER.info("found file in LS: " + file.getFilename());
-                String filePath = remoteDirectory + "/" + file.getFilename(); // Use absolute file path
-                LOGGER.info("filePath for lookup in COLLECTION_AUDIT: " + filePath);
-                String status = auditStatusMap.get(filePath);
-                if (status == null || "COLLECTION_FAILED".equals(status)) {
-                    try {
-                        String outputFile = localDirectory + "/" + file.getFilename();
-                        LOGGER.info("in filePath : " + filePath + " out filePath : " + outputFile);
-                        FileUtil.downloadFile(outputStreamCreator.create(outputFile), channelSftp.get(filePath),
-                                filePath, outputFile, sp.getOutputFilePath());
-                        processDownloadedFile(sp, dateReceived, auditTopic, outputFile, localDirectory);
-                    } catch (Exception e) {
-                        CollectionAudit audit = createAuditObject(sp,
-                                filePath, JobStatus.COLLECTION_FAILED.toString(), e.getMessage());
-                        kafkaProducerService.writeMessage(collectorUtil.buildAuditQueueJSON(audit), "",
-                                auditTopic);
-                        LOGGER.error("Error on retrieveData {}", e);
-                    }
+        if (!file.getAttrs().isDir() && fileModificationTime > timeThreshold) {
+            LOGGER.info("found file in LS: " + file.getFilename());
+            String filePath = remoteDirectory + "/" + file.getFilename(); // Use absolute file path
+            LOGGER.info("filePath for lookup in COLLECTION_AUDIT: " + filePath);
+            String status = auditStatusMap.get(filePath);
+            if (status == null || "COLLECTION_FAILED".equals(status)) {
+                try {
+                    String outputFile = localDirectory + "/" + file.getFilename();
+                    LOGGER.info("in filePath : " + filePath + " out filePath : " + outputFile);
+                    FileUtil.downloadFile(outputStreamCreator.create(outputFile), channelSftp.get(filePath),
+                            filePath, outputFile, sp.getOutputFilePath());
+                    processDownloadedFile(sp, dateReceived, auditTopic, outputFile, localDirectory);
+                } catch (Exception e) {
+                    CollectionAudit audit = createAuditObject(sp,
+                            filePath, JobStatus.COLLECTION_FAILED.toString(), e.getMessage());
+                    kafkaProducerService.writeMessage(collectorUtil.buildAuditQueueJSON(audit), "",
+                            auditTopic);
+                    LOGGER.error("Error on retrieveData {}", e);
                 }
-            } else {
-                if (!".".equals(file.getFilename()) && !"..".equals(file.getFilename())) {
-                    LOGGER.info("DIR found : " + file.getFilename());
-                    String subRemoteDirectory = remoteDirectory + "/" + file.getFilename();
-                    String subLocalDirectory = localDirectory + "/" + file.getFilename();
-                    FileUtil.createDirectoryIfNotExists(subLocalDirectory);
-                    retrieveAndProcessDirectory(sp, dateReceived, auditTopic, subRemoteDirectory, subLocalDirectory, channelSftp);
-                }
+            }
+        } else if (file.getAttrs().isDir()) {
+            if (!".".equals(file.getFilename()) && !"..".equals(file.getFilename())) {
+                LOGGER.info("DIR found : " + file.getFilename());
+                String subRemoteDirectory = remoteDirectory + "/" + file.getFilename();
+                String subLocalDirectory = localDirectory + "/" + file.getFilename();
+                FileUtil.createDirectoryIfNotExists(subLocalDirectory);
+                retrieveAndProcessDirectory(sp, dateReceived, auditTopic, subRemoteDirectory, subLocalDirectory, channelSftp);
             }
         }
     }
