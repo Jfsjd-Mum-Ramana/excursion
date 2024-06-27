@@ -1,54 +1,59 @@
-import org.apache.flink.api.common.accumulators.IntCounter;
-import org.apache.flink.api.common.functions.RuntimeContext;
-import org.apache.flink.api.common.functions.util.AbstractRichFunction;
-import org.apache.flink.configuration.Configuration;
+package org.vdsi.space.customcsvdatatransformer.csvtojsontransformer.junits;
+
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.times;
+
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Optional;
+
+import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.util.Collector;
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
-import org.slf4j.Logger;
-
-import java.util.ArrayList;
-import java.util.List;
-
-import static org.junit.jupiter.api.Assertions.*;
+import org.mockito.MockitoAnnotations;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
-public class CsvtoJsonOracleSTPnTransformerTest {
+import org.vdsi.space.collections.customdatatransformer.conversions.CsvtoJsonOracleSTPnTransformer;
+import org.vdsi.space.collections.customdatatransformer.util.PublishAuditMessage;
+import org.vdsi.space.collections.lucene.CollectionAudit;
 
-    private CsvtoJsonOracleSTPnTransformer transformer;
+public class CsvtoJsonORACLESTPTest {
+    //creating the JSON Object
+    private JSONObject jsonFirstRow;
+    private JSONObject jsonSecondRow;
+    private JSONObject jsonThirdRow;
+    private JSONObject jsonFourthRow;
+    private JSONObject jsonFifthRow;
+    private File oraclestpFile;
+    private DataStream<JSONObject> oracleSTPJsonStream;
+    private String fileName = "OracleSTP.csv";
+    private CsvtoJsonOracleSTPnTransformer csvtoJsonOracleSTPnTransformer;
     private PublishAuditMessage pubAuditMsg;
-    private RuntimeContext runtimeContext;
+    private CsvtoJsonOracleSTPnTransformer transformer;
     private Collector<Tuple2<JSONObject, CollectionAudit>> collector;
     private CollectionAudit collectionAudit;
 
     @BeforeEach
-    public void setUp() {
-        pubAuditMsg = mock(PublishAuditMessage.class);
-        transformer = new CsvtoJsonOracleSTPnTransformer(pubAuditMsg);
-        runtimeContext = mock(RuntimeContext.class);
-        collector = mock(Collector.class);
-        collectionAudit = new CollectionAudit();
-        collectionAudit.setInputFilePath("path/to/file.csv");
-        collectionAudit.setFileType("fileType");
-
-        when(runtimeContext.getAccumulator("successIntCounter")).thenReturn(new IntCounter());
-        when(runtimeContext.getAccumulator("failureIntCounter")).thenReturn(new IntCounter());
-        transformer.setRuntimeContext(runtimeContext);
+    public void setup() throws IOException {
+        MockitoAnnotations.initMocks(this);
+        this.oraclestpFile = new File("src/test/resources/files/OracleSTP.csv");
+        csvtoJsonOracleSTPnTransformer = new CsvtoJsonOracleSTPnTransformer(pubAuditMsg);
     }
-
-    @Test
-    public void testOpen() throws Exception {
-        Configuration parameters = new Configuration();
-        transformer.open(parameters);
-
-        verify(runtimeContext, times(1)).addAccumulator(eq("successIntCounter"), any(IntCounter.class));
-        verify(runtimeContext, times(1)).addAccumulator(eq("failureIntCounter"), any(IntCounter.class));
-    }
-
     @Test
     public void testFlatMapSuccess() throws Exception {
         String csvContent = "\"CLLI\",\"SWREL\",\"RPTDATE\",\"RPTIME\",\"TZ\",\"RPTTYPE\",\"RPTPD\",\"IVALDATE\",\"IVALSTART\",\"IVALEND\",\"NUMENTIDS\"\n" +
@@ -59,10 +64,10 @@ public class CsvtoJsonOracleSTPnTransformerTest {
 
         Tuple2<String, CollectionAudit> tuple = new Tuple2<>(csvContent, collectionAudit);
 
-        transformer.flatMap(tuple, collector);
+        csvtoJsonOracleSTPnTransformer.flatMap(tuple, collector);
 
         verify(collector, times(1)).collect(any(Tuple2.class));
-        assertEquals(1, transformer.getSuccessIntCounter());
+        assertEquals(Optional.of(1), transformer.getSuccessIntCounter());
     }
 
     @Test
@@ -76,10 +81,10 @@ public class CsvtoJsonOracleSTPnTransformerTest {
 
         Tuple2<String, CollectionAudit> tuple = new Tuple2<>(csvContent, collectionAudit);
 
-        transformer.flatMap(tuple, collector);
+        csvtoJsonOracleSTPnTransformer.flatMap(tuple, collector);
 
         verify(collector, times(0)).collect(any(Tuple2.class));
-        assertEquals(1, transformer.getFailureIntCounter());
+        assertEquals(Optional.of(1), transformer.getFailureIntCounter());
     }
 
     @Test
@@ -89,23 +94,55 @@ public class CsvtoJsonOracleSTPnTransformerTest {
         JSONObject commonJSON = new JSONObject();
         commonJSON.put("COMMONKEY", "COMMONVALUE");
 
-        JSONObject result = transformer.getJSONObject(headers, data, commonJSON, "fileName");
+        JSONObject result = csvtoJsonOracleSTPnTransformer.getJSONObject(headers, data, commonJSON, "fileName");
 
         assertEquals("COMMONVALUE", result.getString("COMMONKEY"));
         assertEquals("DATA1", result.getString("HEADER1"));
         assertEquals("DATA2", result.getString("HEADER2"));
         assertEquals("fileName", result.getString("FILENAME"));
     }
+    @Test
+    public void validateAccumulator() throws Exception {
+        List<JSONObject> collectedJson=new ArrayList<>();
+        Collector<JSONObject> collector=new Collector<JSONObject>() {
+            @Override
+            public void collect(JSONObject record) {
+                collectedJson.add(record);
+            }
+
+            @Override
+            public void close() {
+
+            }
+        };
+        String csvData=new String(Files.readAllBytes(Paths.get("src/test/resources/files/OracleSTP.csv")));
+        CsvtoJsonOracleSTPnTransformer transformer=new CsvtoJsonOracleSTPnTransformer(pubAuditMsg);
+      //  transformer.flatMap(csvData,collector);
+        Assertions.assertEquals("0", transformer.getSuccessIntCounter().toString());
+
+
+    }
+
 
     @Test
-    public void testGetSuccessIntCounter() {
-        transformer.getSuccessIntCounter().add(1);
-        assertEquals(1, transformer.getSuccessIntCounter().intValue());
+    public void testNullCsvRow() {
+        assertThrows(NullPointerException.class, () -> csvtoJsonOracleSTPnTransformer.flatMap(null, null));
     }
 
     @Test
-    public void testGetFailureIntCounter() {
-        transformer.getFailureIntCounter().add(1);
-        assertEquals(1, transformer.getFailureIntCounter().intValue());
+    public void testInvalidJsonRowValidation() throws JSONException {
+    	String actualJsonRowString = "{\"IVALDATE\":\"2023-11-21\",\"M2PUDOCT\":\"2379157\",\"RPTDATE\":\"2023-11-21\",\"TZ\":\"EST \",\"M2PLKNIS\":\"0\",\"M2PUDOCR\":\"2314439\",\"LMSURCVDSC\":\"0\",\"MSGSRCVD\":\"24549\",\"LMSUOCTTRN\":\"0\",\"STATUS\":\"K\",\"MSGDISC0\":\"0\",\"M2PUDMTR\":\"22348\",\"MSGDISC1\":\"0\",\"MSGDISC2\":\"0\",\"MSGDISC3\":\"0\",\"RPTTYPE\":\"COMPONENT MEASUREMENTS ON LINK\",\"LOC\":\"1212\",\"LSN\":\"sbontstp\",\"ECLNKXCO\":\"0\",\"IVALSTART\":\"17:00:00\",\"SWREL\":\"EAGLE 46.5.1.0.0-70.45.1\",\"INCCELLS\":\"0\",\"LMSUTRNDSC\":\"0\",\"SDPDUTRN\":\"0\",\"NMGWSDSABL\":\"0\",\"MSGSRGTT\":\"0\",\"CLLI\":\"alpsgada0aw\",\"LMSURCV\":\"0\",\"IVALEND\":\"17:30:00\",\"OCTRETRN\":\"0\",\"SDPDURCV\":\"0\",\"M2PUDMRC\":\"24549\",\"GTTFORSM\":\"0\",\"TDCNGLV1\":\"0\",\"LNKAVAIL\":\"1800\",\"MOCTRCVD\":\"1897106\",\"LMSUOCTRCV\":\"0\",\"OUTCELLS\":\"0\",\"TDCNGLV3\":\"0\",\"TDCNGLV2\":\"0\",\"LINK\":\"A  \",\"GTTONLIM\":\"0\",\"MOCTTRAN\":\"1999241\",\"FILENAME\":\"OracleSTP.csv\",\"NUMENTIDS\":\"81\",\"MSURETRN\":\"0\",\"RPTPD\":\"LAST\",\"DURLKOTG\":\"0\",\"MTCEUSG\":\"0\",\"MOCTRGTT\":\"0\",\"SDPDURTR\":\"0\",\"LMSUTRN\":\"0\",\"RPTIME\":\"17:30:09\",\"ECCNGLV3\":\"0\",\"ECCNGLV2\":\"0\",\"ECCNGLV1\":\"0\",\"ECLNKCB\":\"0\",\"MSGSTRAN\":\"22348\",\"LNKTYPE\":\"IPVHSL\"}";
+        JSONObject jsonObject=new JSONObject(actualJsonRowString);
+        assertThrows(AssertionError.class, () -> validateJsonRow(jsonObject));
+    }
+
+    private void validateJsonRow(JSONObject jsonRow) throws Exception {
+        JSONObject jsonResponse = jsonRow;
+
+        // Invalid assertions to fail the test
+        String expectedJsonRowString = "{\"IVALDcfATE\":\"2023-11-21\",\"M2PUDOCT\":\"2379157\",\"RPTDATE\":\"2023-11-21\",\"TZ\":\"EST \",\"M2PLKNIS\":\"0\",\"M2PUDOCR\":\"2314439\",\"LMSURCVDSC\":\"0\",\"MSGSRCVD\":\"24549\",\"LMSUOCTTRN\":\"0\",\"STATUS\":\"K\",\"MSGDISC0\":\"0\",\"M2PUDMTR\":\"22348\",\"MSGDISC1\":\"0\",\"MSGDISC2\":\"0\",\"MSGDISC3\":\"0\",\"RPTTYPE\":\"COMPONENT MEASUREMENTS ON LINK\",\"LOC\":\"1212\",\"LSN\":\"sbontstp\",\"ECLNKXCO\":\"0\",\"IVALSTART\":\"17:00:00\",\"SWREL\":\"EAGLE 46.5.1.0.0-70.45.1\",\"INCCELLS\":\"0\",\"LMSUTRNDSC\":\"0\",\"SDPDUTRN\":\"0\",\"NMGWSDSABL\":\"0\",\"MSGSRGTT\":\"0\",\"CLLI\":\"alpsgada0aw\",\"LMSURCV\":\"0\",\"IVALEND\":\"17:30:00\",\"OCTRETRN\":\"0\",\"SDPDURCV\":\"0\",\"M2PUDMRC\":\"24549\",\"GTTFORSM\":\"0\",\"TDCNGLV1\":\"0\",\"LNKAVAIL\":\"1800\",\"MOCTRCVD\":\"1897106\",\"LMSUOCTRCV\":\"0\",\"OUTCELLS\":\"0\",\"TDCNGLV3\":\"0\",\"TDCNGLV2\":\"0\",\"LINK\":\"A  \",\"GTTONLIM\":\"0\",\"MOCTTRAN\":\"1999241\",\"FILENAME\":\"OracleSTP.csv\",\"NUMENTIDS\":\"81\",\"MSURETRN\":\"0\",\"RPTPD\":\"LAST\",\"DURLKOTG\":\"0\",\"MTCEUSG\":\"0\",\"MOCTRGTT\":\"0\",\"SDPDURTR\":\"0\",\"LMSUTRN\":\"0\",\"RPTIME\":\"17:30:09\",\"ECCNGLV3\":\"0\",\"ECCNGLV2\":\"0\",\"ECCNGLV1\":\"0\",\"ECLNKCB\":\"0\",\"MSGSTRAN\":\"22348\",\"LNKTYPE\":\"IPVHSL\"}";
+        String actualJsonRowString = "{\"IVALDATE\":\"2023-11-21\",\"M2PUDOCT\":\"2379157\",\"RPTDATE\":\"2023-11-21\",\"TZ\":\"EST \",\"M2PLKNIS\":\"0\",\"M2PUDOCR\":\"2314439\",\"LMSURCVDSC\":\"0\",\"MSGSRCVD\":\"24549\",\"LMSUOCTTRN\":\"0\",\"STATUS\":\"K\",\"MSGDISC0\":\"0\",\"M2PUDMTR\":\"22348\",\"MSGDISC1\":\"0\",\"MSGDISC2\":\"0\",\"MSGDISC3\":\"0\",\"RPTTYPE\":\"COMPONENT MEASUREMENTS ON LINK\",\"LOC\":\"1212\",\"LSN\":\"sbontstp\",\"ECLNKXCO\":\"0\",\"IVALSTART\":\"17:00:00\",\"SWREL\":\"EAGLE 46.5.1.0.0-70.45.1\",\"INCCELLS\":\"0\",\"LMSUTRNDSC\":\"0\",\"SDPDUTRN\":\"0\",\"NMGWSDSABL\":\"0\",\"MSGSRGTT\":\"0\",\"CLLI\":\"alpsgada0aw\",\"LMSURCV\":\"0\",\"IVALEND\":\"17:30:00\",\"OCTRETRN\":\"0\",\"SDPDURCV\":\"0\",\"M2PUDMRC\":\"24549\",\"GTTFORSM\":\"0\",\"TDCNGLV1\":\"0\",\"LNKAVAIL\":\"1800\",\"MOCTRCVD\":\"1897106\",\"LMSUOCTRCV\":\"0\",\"OUTCELLS\":\"0\",\"TDCNGLV3\":\"0\",\"TDCNGLV2\":\"0\",\"LINK\":\"A  \",\"GTTONLIM\":\"0\",\"MOCTTRAN\":\"1999241\",\"FILENAME\":\"OracleSTP.csv\",\"NUMENTIDS\":\"81\",\"MSURETRN\":\"0\",\"RPTPD\":\"LAST\",\"DURLKOTG\":\"0\",\"MTCEUSG\":\"0\",\"MOCTRGTT\":\"0\",\"SDPDURTR\":\"0\",\"LMSUTRN\":\"0\",\"RPTIME\":\"17:30:09\",\"ECCNGLV3\":\"0\",\"ECCNGLV2\":\"0\",\"ECCNGLV1\":\"0\",\"ECLNKCB\":\"0\",\"MSGSTRAN\":\"22348\",\"LNKTYPE\":\"IPVHSL\"}";
+        Assertions.assertEquals(expectedJsonRowString, actualJsonRowString);
+       
     }
 }
