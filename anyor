@@ -1,0 +1,132 @@
+public class CsvtoJsonOracleSTPnTransformer extends RichFlatMapFunction<Tuple2<String, CollectionAudit>, Tuple2<JSONObject, CollectionAudit>> {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(CsvtoJsonOracleSTPnTransformer.class);
+
+    String[] commonHeaders;
+    String[] headers;
+    JSONObject commonObj;
+    int index = 0;
+
+    private final PublishAuditMessage pubAuditMsg;
+    public CsvtoJsonOracleSTPnTransformer(PublishAuditMessage pubAuditMsg) {
+		this.pubAuditMsg = pubAuditMsg;
+    }
+
+    private IntCounter successIntCounter = new IntCounter();
+    private IntCounter failureIntCounter = new IntCounter();
+
+    @Override
+    public void open(Configuration parameters) throws Exception {
+        getRuntimeContext().addAccumulator("successIntCounter", this.successIntCounter);
+        getRuntimeContext().addAccumulator("failureIntCounter", this.failureIntCounter);
+    }
+
+    @Override
+    public void flatMap(Tuple2<String, CollectionAudit> tupleValue, Collector<Tuple2<JSONObject, CollectionAudit>> out) throws Exception {
+
+
+        CollectionAudit message = tupleValue.f1;
+        String csvContent = tupleValue.f0;
+        String filePath = message.getInputFilePath();
+        String fileType = message.getFileType();
+        String[] pathArr = filePath.split("/");
+        String fileName = pathArr[pathArr.length - 1];
+       // fileName = Constants.FILE_TYPE.getOrDefault(fileType, "");
+
+        try {
+            if (message != null && csvContent != null) {
+
+                String[] lines = csvContent.split(System.lineSeparator());
+
+
+                for (String line : lines) {
+                    String[] arr;
+                    if (index < 2) {
+                        arr = line.split(",");
+                        if (commonHeaders == null) {
+                            commonHeaders = arr;
+                            index++;
+                            continue;
+                        } else if (index == 1) {
+                            commonObj = getJSONObject(commonHeaders, arr, null, fileName);
+                        }
+                    }
+
+                    if (commonHeaders != null && index > 2) {
+                        arr = line.split(",");
+                        if (headers == null) {
+                            headers = arr;
+                            index++;
+                            continue;
+                        }
+
+                        if (headers.length == arr.length) {
+                            JSONObject obj = getJSONObject(headers, arr, commonObj, fileName);
+                            this.successIntCounter.add(1);
+                            out.collect(Tuple2.of(obj, message));
+                        } else {
+                            this.failureIntCounter.add(1);
+                        }
+                    }
+
+                    if (index == 2) {
+                        if (!line.trim().isEmpty()) {
+                            throw new CsvToJsonConverterException("Invalid OracleSTP format");
+                        }
+                    }
+
+                    index++;
+                }
+                LOGGER.info("Completed CSV to JSON transformation");
+
+            }
+        } catch (Exception e) {
+            LOGGER.info("Error while trying to transform from CSV to JSON {}", e);
+            pubAuditMsg.publishFlinkConversionStatus(message, null, JobStatus.FLINK_JOB_FAILED);
+        }
+    }
+
+    JSONObject getJSONObject(String[] headerArr, String[] dataArr, JSONObject commonJSON, String fileName) throws JSONException {
+        JSONObject obj;
+
+        if (commonJSON == null) {
+            obj = new JSONObject();
+        } else {
+            obj = new JSONObject(commonJSON.toString());
+        }
+
+        for (int i = 0; i < dataArr.length; i++) {
+            String jsonKey = headerArr[i].trim().replace("\"", "");
+            String jsonValue = dataArr[i].trim().replace("\"", "");
+            // Add FILENAME to JSONOBJECT
+            obj.put("FILENAME", fileName);
+            obj.put(jsonKey, jsonValue);
+        }
+
+        return obj;
+    }
+
+    public Integer getSuccessIntCounter() {
+        return this.successIntCounter.getLocalValue();
+    }
+
+    public Integer getFailureIntCounter() {
+        return this.successIntCounter.getLocalValue();
+    }
+}
+
+
+
+
+
+"CLLI","SWREL","RPTDATE","RPTIME","TZ","RPTTYPE","RPTPD","IVALDATE","IVALSTART","IVALEND","NUMENTIDS"
+"alpsgada0aw","EAGLE 46.5.1.0.0-70.45.1","2023-11-21","17:30:09","EST ","COMPONENT MEASUREMENTS ON LINK","LAST","2023-11-21","17:00:00","17:30:00",81
+
+"STATUS","LSN","LOC","LINK","LNKTYPE","MSGSTRAN","MSGSRCVD","MSURETRN","OCTRETRN","MOCTTRAN","MOCTRCVD","MTCEUSG","DURLKOTG","MSGSRGTT","MOCTRGTT","TDCNGLV1","TDCNGLV2","TDCNGLV3","ECCNGLV1","ECCNGLV2","ECCNGLV3","MSGDISC0","MSGDISC1","MSGDISC2","MSGDISC3","LNKAVAIL","NMGWSDSABL","OUTCELLS","INCCELLS","SDPDUTRN","SDPDURCV","SDPDURTR","LMSUTRN","LMSURCV","LMSUOCTTRN","LMSUOCTRCV","LMSUTRNDSC","LMSURCVDSC","M2PUDMTR","M2PUDOCT","M2PUDMRC","M2PUDOCR","M2PLKNIS","ECLNKCB","ECLNKXCO","GTTONLIM","GTTFORSM"
+"K","scalpdul","1201","A  ","IPVHSL",4644,4936,0,0,56150,59943,0,0,3,423,0,0,0,0,0,0,0,0,0,0,1800,0,0,0,0,0,0,0,0,0,0,0,0,4644,135098,4936,143855,0,0,0,0,0
+"K","scalpdul","1205","A  ","IPVHSL",4646,4549,0,0,56118,55108,0,0,2,220,0,0,0,0,0,0,0,0,0,0,1800,0,0,0,0,0,0,0,0,0,0,0,0,4646,135100,4548,132412,0,0,0,0,0
+"K","sbchnstp","1206","A  ","IPVHSL",346,196,0,0,5571,2674,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1800,0,0,0,0,0,0,0,0,0,0,0,0,346,11453,196,6006,0,0,0,0,0
+"K","scalpdul","1207","A  ","IPVHSL",4373,4956,0,0,52828,63043,0,0,18,3449,0,0,0,0,0,0,0,0,0,0,1800,0,0,0,0,0,0,0,0,0,0,0,0,4373,127169,4956,147295,0,0,0,0,0
+"K","sbontstp","1212","A  ","IPVHSL",22348,24549,0,0,1999241,1897106,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1800,0,0,0,0,0,0,0,0,0,0,0,0,22348,2379157,24549,2314439,0,0,0,0,0
+
+Give me JUnit5 test cases for the abobe class in below I have given sample oracleStp format use and give me the test cases and it will cover 100% of lines
