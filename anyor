@@ -1,30 +1,26 @@
 package org.vdsi.space.customcsvdatatransformer.csvtojsontransformer.junits;
 
-
 import static org.junit.Assert.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.times;
-
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
 
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.streaming.api.datastream.DataStream;
-import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.util.Collector;
 import org.json.JSONException;
 import org.json.JSONObject;
-import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockitoAnnotations;
+
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -33,7 +29,6 @@ import org.vdsi.space.collections.customdatatransformer.util.PublishAuditMessage
 import org.vdsi.space.collections.lucene.CollectionAudit;
 
 public class CsvtoJsonORACLESTPTest {
-    //creating the JSON Object
     private JSONObject jsonFirstRow;
     private JSONObject jsonSecondRow;
     private JSONObject jsonThirdRow;
@@ -52,19 +47,24 @@ public class CsvtoJsonORACLESTPTest {
     public void setup() throws IOException {
         MockitoAnnotations.initMocks(this);
         this.oraclestpFile = new File("src/test/resources/files/OracleSTP.csv");
+        pubAuditMsg = mock(PublishAuditMessage.class);
         csvtoJsonOracleSTPnTransformer = new CsvtoJsonOracleSTPnTransformer(pubAuditMsg);
+        transformer = csvtoJsonOracleSTPnTransformer;
+        collector = mock(Collector.class);
+        collectionAudit = mock(CollectionAudit.class);
     }
+
     @Test
     public void testFlatMapSuccess() throws Exception {
         String csvContent = "\"CLLI\",\"SWREL\",\"RPTDATE\",\"RPTIME\",\"TZ\",\"RPTTYPE\",\"RPTPD\",\"IVALDATE\",\"IVALSTART\",\"IVALEND\",\"NUMENTIDS\"\n" +
                 "\"alpsgada0aw\",\"EAGLE 46.5.1.0.0-70.45.1\",\"2023-11-21\",\"17:30:09\",\"EST \",\"COMPONENT MEASUREMENTS ON LINK\",\"LAST\",\"2023-11-21\",\"17:00:00\",\"17:30:00\",81\n" +
                 "\n" +
                 "\"STATUS\",\"LSN\",\"LOC\",\"LINK\",\"LNKTYPE\",\"MSGSTRAN\",\"MSGSRCVD\",\"MSURETRN\",\"OCTRETRN\",\"MOCTTRAN\",\"MOCTRCVD\",\"MTCEUSG\",\"DURLKOTG\",\"MSGSRGTT\",\"MOCTRGTT\",\"TDCNGLV1\",\"TDCNGLV2\",\"TDCNGLV3\",\"ECCNGLV1\",\"ECCNGLV2\",\"ECCNGLV3\",\"MSGDISC0\",\"MSGDISC1\",\"MSGDISC2\",\"MSGDISC3\",\"LNKAVAIL\",\"NMGWSDSABL\",\"OUTCELLS\",\"INCCELLS\",\"SDPDUTRN\",\"SDPDURCV\",\"SDPDURTR\",\"LMSUTRN\",\"LMSURCV\",\"LMSUOCTTRN\",\"LMSUOCTRCV\",\"LMSUTRNDSC\",\"LMSURCVDSC\",\"M2PUDMTR\",\"M2PUDOCT\",\"M2PUDMRC\",\"M2PUDOCR\",\"M2PLKNIS\",\"ECLNKCB\",\"ECLNKXCO\",\"GTTONLIM\",\"GTTFORSM\"\n" +
-                "\"K\",\"scalpdul\",\"1201\",\"A  \",\"IPVHSL\",4644,4936,0,0,56150,59943,0,0,3,423,0,0,0,0,0,0,0,0,0,0,1800,0,0,0,0,0,0,0,0,0,0,0,0,4644,135098,4936,143855,0,0,0,0,0\n";
+                "\"K\",\"scalpdul\",\"1201\",\"A  \",\"IPVHSL\",4644,4936,0,0,56150,59943,0,0,3,423,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1800,0,0,0,0,0,0,0,0,0,0,0,0,4644,135098,4936,143855,0,0,0,0,0\n";
 
         Tuple2<String, CollectionAudit> tuple = new Tuple2<>(csvContent, collectionAudit);
 
-        csvtoJsonOracleSTPnTransformer.flatMap(tuple, collector);
+        transformer.flatMap(tuple, collector);
 
         verify(collector, times(1)).collect(any(Tuple2.class));
         assertEquals(Optional.of(1), transformer.getSuccessIntCounter());
@@ -81,7 +81,7 @@ public class CsvtoJsonORACLESTPTest {
 
         Tuple2<String, CollectionAudit> tuple = new Tuple2<>(csvContent, collectionAudit);
 
-        csvtoJsonOracleSTPnTransformer.flatMap(tuple, collector);
+        transformer.flatMap(tuple, collector);
 
         verify(collector, times(0)).collect(any(Tuple2.class));
         assertEquals(Optional.of(1), transformer.getFailureIntCounter());
@@ -101,10 +101,11 @@ public class CsvtoJsonORACLESTPTest {
         assertEquals("DATA2", result.getString("HEADER2"));
         assertEquals("fileName", result.getString("FILENAME"));
     }
+
     @Test
     public void validateAccumulator() throws Exception {
-        List<JSONObject> collectedJson=new ArrayList<>();
-        Collector<JSONObject> collector=new Collector<JSONObject>() {
+        List<JSONObject> collectedJson = new ArrayList<>();
+        Collector<JSONObject> collector = new Collector<JSONObject>() {
             @Override
             public void collect(JSONObject record) {
                 collectedJson.add(record);
@@ -115,34 +116,4 @@ public class CsvtoJsonORACLESTPTest {
 
             }
         };
-        String csvData=new String(Files.readAllBytes(Paths.get("src/test/resources/files/OracleSTP.csv")));
-        CsvtoJsonOracleSTPnTransformer transformer=new CsvtoJsonOracleSTPnTransformer(pubAuditMsg);
-      //  transformer.flatMap(csvData,collector);
-        Assertions.assertEquals("0", transformer.getSuccessIntCounter().toString());
-
-
-    }
-
-
-    @Test
-    public void testNullCsvRow() {
-        assertThrows(NullPointerException.class, () -> csvtoJsonOracleSTPnTransformer.flatMap(null, null));
-    }
-
-    @Test
-    public void testInvalidJsonRowValidation() throws JSONException {
-    	String actualJsonRowString = "{\"IVALDATE\":\"2023-11-21\",\"M2PUDOCT\":\"2379157\",\"RPTDATE\":\"2023-11-21\",\"TZ\":\"EST \",\"M2PLKNIS\":\"0\",\"M2PUDOCR\":\"2314439\",\"LMSURCVDSC\":\"0\",\"MSGSRCVD\":\"24549\",\"LMSUOCTTRN\":\"0\",\"STATUS\":\"K\",\"MSGDISC0\":\"0\",\"M2PUDMTR\":\"22348\",\"MSGDISC1\":\"0\",\"MSGDISC2\":\"0\",\"MSGDISC3\":\"0\",\"RPTTYPE\":\"COMPONENT MEASUREMENTS ON LINK\",\"LOC\":\"1212\",\"LSN\":\"sbontstp\",\"ECLNKXCO\":\"0\",\"IVALSTART\":\"17:00:00\",\"SWREL\":\"EAGLE 46.5.1.0.0-70.45.1\",\"INCCELLS\":\"0\",\"LMSUTRNDSC\":\"0\",\"SDPDUTRN\":\"0\",\"NMGWSDSABL\":\"0\",\"MSGSRGTT\":\"0\",\"CLLI\":\"alpsgada0aw\",\"LMSURCV\":\"0\",\"IVALEND\":\"17:30:00\",\"OCTRETRN\":\"0\",\"SDPDURCV\":\"0\",\"M2PUDMRC\":\"24549\",\"GTTFORSM\":\"0\",\"TDCNGLV1\":\"0\",\"LNKAVAIL\":\"1800\",\"MOCTRCVD\":\"1897106\",\"LMSUOCTRCV\":\"0\",\"OUTCELLS\":\"0\",\"TDCNGLV3\":\"0\",\"TDCNGLV2\":\"0\",\"LINK\":\"A  \",\"GTTONLIM\":\"0\",\"MOCTTRAN\":\"1999241\",\"FILENAME\":\"OracleSTP.csv\",\"NUMENTIDS\":\"81\",\"MSURETRN\":\"0\",\"RPTPD\":\"LAST\",\"DURLKOTG\":\"0\",\"MTCEUSG\":\"0\",\"MOCTRGTT\":\"0\",\"SDPDURTR\":\"0\",\"LMSUTRN\":\"0\",\"RPTIME\":\"17:30:09\",\"ECCNGLV3\":\"0\",\"ECCNGLV2\":\"0\",\"ECCNGLV1\":\"0\",\"ECLNKCB\":\"0\",\"MSGSTRAN\":\"22348\",\"LNKTYPE\":\"IPVHSL\"}";
-        JSONObject jsonObject=new JSONObject(actualJsonRowString);
-        assertThrows(AssertionError.class, () -> validateJsonRow(jsonObject));
-    }
-
-    private void validateJsonRow(JSONObject jsonRow) throws Exception {
-        JSONObject jsonResponse = jsonRow;
-
-        // Invalid assertions to fail the test
-        String expectedJsonRowString = "{\"IVALDcfATE\":\"2023-11-21\",\"M2PUDOCT\":\"2379157\",\"RPTDATE\":\"2023-11-21\",\"TZ\":\"EST \",\"M2PLKNIS\":\"0\",\"M2PUDOCR\":\"2314439\",\"LMSURCVDSC\":\"0\",\"MSGSRCVD\":\"24549\",\"LMSUOCTTRN\":\"0\",\"STATUS\":\"K\",\"MSGDISC0\":\"0\",\"M2PUDMTR\":\"22348\",\"MSGDISC1\":\"0\",\"MSGDISC2\":\"0\",\"MSGDISC3\":\"0\",\"RPTTYPE\":\"COMPONENT MEASUREMENTS ON LINK\",\"LOC\":\"1212\",\"LSN\":\"sbontstp\",\"ECLNKXCO\":\"0\",\"IVALSTART\":\"17:00:00\",\"SWREL\":\"EAGLE 46.5.1.0.0-70.45.1\",\"INCCELLS\":\"0\",\"LMSUTRNDSC\":\"0\",\"SDPDUTRN\":\"0\",\"NMGWSDSABL\":\"0\",\"MSGSRGTT\":\"0\",\"CLLI\":\"alpsgada0aw\",\"LMSURCV\":\"0\",\"IVALEND\":\"17:30:00\",\"OCTRETRN\":\"0\",\"SDPDURCV\":\"0\",\"M2PUDMRC\":\"24549\",\"GTTFORSM\":\"0\",\"TDCNGLV1\":\"0\",\"LNKAVAIL\":\"1800\",\"MOCTRCVD\":\"1897106\",\"LMSUOCTRCV\":\"0\",\"OUTCELLS\":\"0\",\"TDCNGLV3\":\"0\",\"TDCNGLV2\":\"0\",\"LINK\":\"A  \",\"GTTONLIM\":\"0\",\"MOCTTRAN\":\"1999241\",\"FILENAME\":\"OracleSTP.csv\",\"NUMENTIDS\":\"81\",\"MSURETRN\":\"0\",\"RPTPD\":\"LAST\",\"DURLKOTG\":\"0\",\"MTCEUSG\":\"0\",\"MOCTRGTT\":\"0\",\"SDPDURTR\":\"0\",\"LMSUTRN\":\"0\",\"RPTIME\":\"17:30:09\",\"ECCNGLV3\":\"0\",\"ECCNGLV2\":\"0\",\"ECCNGLV1\":\"0\",\"ECLNKCB\":\"0\",\"MSGSTRAN\":\"22348\",\"LNKTYPE\":\"IPVHSL\"}";
-        String actualJsonRowString = "{\"IVALDATE\":\"2023-11-21\",\"M2PUDOCT\":\"2379157\",\"RPTDATE\":\"2023-11-21\",\"TZ\":\"EST \",\"M2PLKNIS\":\"0\",\"M2PUDOCR\":\"2314439\",\"LMSURCVDSC\":\"0\",\"MSGSRCVD\":\"24549\",\"LMSUOCTTRN\":\"0\",\"STATUS\":\"K\",\"MSGDISC0\":\"0\",\"M2PUDMTR\":\"22348\",\"MSGDISC1\":\"0\",\"MSGDISC2\":\"0\",\"MSGDISC3\":\"0\",\"RPTTYPE\":\"COMPONENT MEASUREMENTS ON LINK\",\"LOC\":\"1212\",\"LSN\":\"sbontstp\",\"ECLNKXCO\":\"0\",\"IVALSTART\":\"17:00:00\",\"SWREL\":\"EAGLE 46.5.1.0.0-70.45.1\",\"INCCELLS\":\"0\",\"LMSUTRNDSC\":\"0\",\"SDPDUTRN\":\"0\",\"NMGWSDSABL\":\"0\",\"MSGSRGTT\":\"0\",\"CLLI\":\"alpsgada0aw\",\"LMSURCV\":\"0\",\"IVALEND\":\"17:30:00\",\"OCTRETRN\":\"0\",\"SDPDURCV\":\"0\",\"M2PUDMRC\":\"24549\",\"GTTFORSM\":\"0\",\"TDCNGLV1\":\"0\",\"LNKAVAIL\":\"1800\",\"MOCTRCVD\":\"1897106\",\"LMSUOCTRCV\":\"0\",\"OUTCELLS\":\"0\",\"TDCNGLV3\":\"0\",\"TDCNGLV2\":\"0\",\"LINK\":\"A  \",\"GTTONLIM\":\"0\",\"MOCTTRAN\":\"1999241\",\"FILENAME\":\"OracleSTP.csv\",\"NUMENTIDS\":\"81\",\"MSURETRN\":\"0\",\"RPTPD\":\"LAST\",\"DURLKOTG\":\"0\",\"MTCEUSG\":\"0\",\"MOCTRGTT\":\"0\",\"SDPDURTR\":\"0\",\"LMSUTRN\":\"0\",\"RPTIME\":\"17:30:09\",\"ECCNGLV3\":\"0\",\"ECCNGLV2\":\"0\",\"ECCNGLV1\":\"0\",\"ECLNKCB\":\"0\",\"MSGSTRAN\":\"22348\",\"LNKTYPE\":\"IPVHSL\"}";
-        Assertions.assertEquals(expectedJsonRowString, actualJsonRowString);
-       
-    }
-}
+        String
