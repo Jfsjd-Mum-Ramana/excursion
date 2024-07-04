@@ -1,119 +1,130 @@
-package org.vdsi.space.customcsvdatatransformer.csvtojsontransformer.junits;
+package org.vdsi.space.collections.customdatatransformer;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.Mockito.times;
+import java.util.concurrent.TimeUnit;
 
-import java.io.File;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
-
+import org.apache.flink.api.common.JobID;
+import org.apache.flink.api.common.eventtime.WatermarkStrategy;
+import org.apache.flink.api.common.restartstrategy.RestartStrategies;
+import org.apache.flink.api.common.time.Time;
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.configuration.CheckpointingOptions;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.connector.kafka.source.KafkaSource;
+import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
+import org.apache.flink.core.execution.JobClient;
+import org.apache.flink.runtime.state.hashmap.HashMapStateBackend;
+import org.apache.flink.runtime.state.storage.FileSystemCheckpointStorage;
+import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.datastream.DataStream;
-import org.apache.flink.util.Collector;
-import org.json.JSONException;
-import org.json.JSONObject;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.MockitoAnnotations;
-
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
-
-import org.vdsi.space.collections.customdatatransformer.conversions.CsvtoJsonOracleSTPnTransformer;
+import org.apache.flink.streaming.api.environment.CheckpointConfig;
+import org.apache.flink.streaming.api.environment.CheckpointConfig.ExternalizedCheckpointCleanup;
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.vdsi.space.collections.customdatatransformer.enums.JobStatus;
+import org.vdsi.space.collections.customdatatransformer.util.AppProperties;
 import org.vdsi.space.collections.customdatatransformer.util.PublishAuditMessage;
 import org.vdsi.space.collections.lucene.CollectionAudit;
 
-public class CsvtoJsonORACLESTPTest {
-    private JSONObject jsonFirstRow;
-    private JSONObject jsonSecondRow;
-    private JSONObject jsonThirdRow;
-    private JSONObject jsonFourthRow;
-    private JSONObject jsonFifthRow;
-    private File oraclestpFile;
-    private DataStream<JSONObject> oracleSTPJsonStream;
-    private String fileName = "OracleSTP.csv";
-    private CsvtoJsonOracleSTPnTransformer csvtoJsonOracleSTPnTransformer;
-    private PublishAuditMessage pubAuditMsg;
-    private CsvtoJsonOracleSTPnTransformer transformer;
-    private Collector<Tuple2<JSONObject, CollectionAudit>> collector;
-    private CollectionAudit collectionAudit;
+public class CsvTransformerJob {
 
-    @BeforeEach
-    public void setup() throws IOException {
-        MockitoAnnotations.initMocks(this);
-        this.oraclestpFile = new File("src/test/resources/files/OracleSTP.csv");
-        pubAuditMsg = mock(PublishAuditMessage.class);
-        csvtoJsonOracleSTPnTransformer = new CsvtoJsonOracleSTPnTransformer(pubAuditMsg);
-        transformer = csvtoJsonOracleSTPnTransformer;
-        collector = mock(Collector.class);
-        collectionAudit = mock(CollectionAudit.class);
-    }
+	private static final Logger LOGGER = LoggerFactory.getLogger(CsvTransformerJob.class);
+	public static AppProperties appProp = AppProperties.getInstance();
+	String flinkJobName = "CSV to JSON Transformer Job";
 
-    @Test
-    public void testFlatMapSuccess() throws Exception {
-        String csvContent = "\"CLLI\",\"SWREL\",\"RPTDATE\",\"RPTIME\",\"TZ\",\"RPTTYPE\",\"RPTPD\",\"IVALDATE\",\"IVALSTART\",\"IVALEND\",\"NUMENTIDS\"\n" +
-                "\"alpsgada0aw\",\"EAGLE 46.5.1.0.0-70.45.1\",\"2023-11-21\",\"17:30:09\",\"EST \",\"COMPONENT MEASUREMENTS ON LINK\",\"LAST\",\"2023-11-21\",\"17:00:00\",\"17:30:00\",81\n" +
-                "\n" +
-                "\"STATUS\",\"LSN\",\"LOC\",\"LINK\",\"LNKTYPE\",\"MSGSTRAN\",\"MSGSRCVD\",\"MSURETRN\",\"OCTRETRN\",\"MOCTTRAN\",\"MOCTRCVD\",\"MTCEUSG\",\"DURLKOTG\",\"MSGSRGTT\",\"MOCTRGTT\",\"TDCNGLV1\",\"TDCNGLV2\",\"TDCNGLV3\",\"ECCNGLV1\",\"ECCNGLV2\",\"ECCNGLV3\",\"MSGDISC0\",\"MSGDISC1\",\"MSGDISC2\",\"MSGDISC3\",\"LNKAVAIL\",\"NMGWSDSABL\",\"OUTCELLS\",\"INCCELLS\",\"SDPDUTRN\",\"SDPDURCV\",\"SDPDURTR\",\"LMSUTRN\",\"LMSURCV\",\"LMSUOCTTRN\",\"LMSUOCTRCV\",\"LMSUTRNDSC\",\"LMSURCVDSC\",\"M2PUDMTR\",\"M2PUDOCT\",\"M2PUDMRC\",\"M2PUDOCR\",\"M2PLKNIS\",\"ECLNKCB\",\"ECLNKXCO\",\"GTTONLIM\",\"GTTFORSM\"\n" +
-                "\"K\",\"scalpdul\",\"1201\",\"A  \",\"IPVHSL\",4644,4936,0,0,56150,59943,0,0,3,423,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1800,0,0,0,0,0,0,0,0,0,0,0,0,4644,135098,4936,143855,0,0,0,0,0\n";
+	private CsvTransformerJobUtil jobUtil;
+	private final PublishAuditMessage pubAuditMsg;
 
-        Tuple2<String, CollectionAudit> tuple = new Tuple2<>(csvContent, collectionAudit);
+	public CsvTransformerJob(PublishAuditMessage pubAuditMsg) {
+		this.jobUtil = new CsvTransformerJobUtil(pubAuditMsg);
+		this.pubAuditMsg = pubAuditMsg;
+	}
 
-        transformer.flatMap(tuple, collector);
+	public CsvTransformerJob(PublishAuditMessage pubAuditMsg,CsvTransformerJobUtil csvTransformerJobUtil) {
+		this.jobUtil = csvTransformerJobUtil;
+		this.pubAuditMsg = pubAuditMsg;
+	}
 
-        verify(collector, times(1)).collect(any(Tuple2.class));
-        assertEquals(Optional.of(1), transformer.getSuccessIntCounter());
-    }
+	public PublishAuditMessage getPubAuditMsg() {
+		return pubAuditMsg;
+	}
 
-    @Test
-    public void testFlatMapFailure() throws Exception {
-        String csvContent = "\"CLLI\",\"SWREL\",\"RPTDATE\",\"RPTIME\",\"TZ\",\"RPTTYPE\",\"RPTPD\",\"IVALDATE\",\"IVALSTART\",\"IVALEND\",\"NUMENTIDS\"\n" +
-                "\"alpsgada0aw\",\"EAGLE 46.5.1.0.0-70.45.1\",\"2023-11-21\",\"17:30:09\",\"EST \",\"COMPONENT MEASUREMENTS ON LINK\",\"LAST\",\"2023-11-21\",\"17:00:00\",\"17:30:00\",81\n" +
-                "\n" +
-                "\"STATUS\",\"LSN\",\"LOC\",\"LINK\",\"LNKTYPE\",\"MSGSTRAN\",\"MSGSRCVD\",\"MSURETRN\",\"OCTRETRN\",\"MOCTTRAN\",\"MOCTRCVD\",\"MTCEUSG\",\"DURLKOTG\",\"MSGSRGTT\",\"MOCTRGTT\",\"TDCNGLV1\",\"TDCNGLV2\",\"TDCNGLV3\",\"ECCNGLV1\",\"ECCNGLV2\",\"ECCNGLV3\",\"MSGDISC0\",\"MSGDISC1\",\"MSGDISC2\",\"MSGDISC3\",\"LNKAVAIL\",\"NMGWSDSABL\",\"OUTCELLS\",\"INCCELLS\",\"SDPDUTRN\",\"SDPDURCV\",\"SDPDURTR\",\"LMSUTRN\",\"LMSURCV\",\"LMSUOCTTRN\",\"LMSUOCTRCV\",\"LMSUTRNDSC\",\"LMSURCVDSC\",\"M2PUDMTR\",\"M2PUDOCT\",\"M2PUDMRC\",\"M2PUDOCR\",\"M2PLKNIS\",\"ECLNKCB\",\"ECLNKXCO\",\"GTTONLIM\",\"GTTFORSM\"\n" +
-                "\"K\",\"scalpdul\",\"1201\",\"A  \",\"IPVHSL\",4644,4936,0,0,56150,59943,0,0,3,423,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1800,0,0,0,0,0,0,0,0,0,0,0,0,4644,135098,4936,143855,0,0,0,0,0\n" +
-                "\"K\",\"scalpdul\",\"1201\",\"A  \",\"IPVHSL\",4644,4936,0,0,56150,59943,0,0,3,423,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1800,0,0,0,0,0,0,0,0,0,0,0,0,4644,135098,4936,143855,0,0,0,0,0";
+	public void execute() throws Exception {
 
-        Tuple2<String, CollectionAudit> tuple = new Tuple2<>(csvContent, collectionAudit);
+		StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+		CollectionAudit collectionAudit = new CollectionAudit();
 
-        transformer.flatMap(tuple, collector);
+		try {
 
-        verify(collector, times(0)).collect(any(Tuple2.class));
-        assertEquals(Optional.of(1), transformer.getFailureIntCounter());
-    }
+			env.setParallelism(Integer.valueOf(appProp.getAppProperties("flink.parallelism")));
+	
+			Configuration config = new Configuration();
+			
+			// Set up checkpointing
+						env.enableCheckpointing(Long.valueOf(appProp.getAppProperties("flink.checkpoint.interval")));
+						env.getCheckpointConfig().setCheckpointingMode(CheckpointingMode.EXACTLY_ONCE);
+						env.getCheckpointConfig().setMinPauseBetweenCheckpoints(Long.valueOf(appProp.getAppProperties("flink.checkpoint.min-pause")));
+						env.getCheckpointConfig().setCheckpointTimeout(Long.valueOf(appProp.getAppProperties("flink.checkpoint.timeout")));
+						env.getCheckpointConfig().setMaxConcurrentCheckpoints(Integer.valueOf(appProp.getAppProperties("flink.checkpoint.max-concurrent")));
+						env.getCheckpointConfig().enableExternalizedCheckpoints(CheckpointConfig.ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION);
+						// Set the state backend
+						env.setStateBackend(new HashMapStateBackend());
+						env.getCheckpointConfig().setCheckpointStorage(new FileSystemCheckpointStorage(appProp.getAppProperties("flink.checkpoint.checkpointdir")));
+						env.setRestartStrategy(RestartStrategies.fixedDelayRestart(3, Time.of(10, TimeUnit.SECONDS)));
 
-    @Test
-    public void testGetJSONObject() throws JSONException {
-        String[] headers = {"HEADER1", "HEADER2"};
-        String[] data = {"DATA1", "DATA2"};
-        JSONObject commonJSON = new JSONObject();
-        commonJSON.put("COMMONKEY", "COMMONVALUE");
 
-        JSONObject result = csvtoJsonOracleSTPnTransformer.getJSONObject(headers, data, commonJSON, "fileName");
 
-        assertEquals("COMMONVALUE", result.getString("COMMONKEY"));
-        assertEquals("DATA1", result.getString("HEADER1"));
-        assertEquals("DATA2", result.getString("HEADER2"));
-        assertEquals("fileName", result.getString("FILENAME"));
-    }
+			OffsetsInitializer offsetsInitializer = jobUtil
+					.getOffsetsInitializer(appProp.getAppProperties("spring.kafka.consumer.auto-offset-reset"));
+			collectionAudit = jobUtil.setCollectionAuditProperties(collectionAudit);
+			jobUtil.validateKafka(collectionAudit);
 
-    @Test
-    public void validateAccumulator() throws Exception {
-        List<JSONObject> collectedJson = new ArrayList<>();
-        Collector<JSONObject> collector = new Collector<JSONObject>() {
-            @Override
-            public void collect(JSONObject record) {
-                collectedJson.add(record);
-            }
+			KafkaSource<String> source = jobUtil.buildKafkaSource(collectionAudit, offsetsInitializer,
+					appProp.getAppProperties("spring.kafka.consumer.group-id"));
+			DataStream<String> stream = env.fromSource(source, WatermarkStrategy.noWatermarks(), "Kafka Source");
 
-            @Override
-            public void close() {
+			DataStream<CollectionAudit> collectionAuditStream = CsvTransformerJobUtil
+					.convertStreamToCollectionAudit(stream, collectionAudit,pubAuditMsg);
+			DataStream<Tuple2<String, CollectionAudit>> csvDataStream = CsvTransformerJobUtil
+					.getCsvDataStream(collectionAuditStream,pubAuditMsg);
+			DataStream<Tuple2<String, CollectionAudit>> jsonNodeStream = CsvTransformerJobUtil
+					.convertCsvToJson(csvDataStream,pubAuditMsg);
+			DataStream<Tuple2<String, CollectionAudit>> finalDataStream = CsvTransformerJobUtil
+					.encapsulateJson(jsonNodeStream,pubAuditMsg);
 
-            }
-        };
-        String
+
+			publishTransformedData(finalDataStream, null);
+
+			JobClient jobClient = env.executeAsync(flinkJobName);
+			JobID jobId = jobClient.getJobID();
+			LOGGER.info("JobID is********************** {}", jobId);
+
+		} catch (Exception e) {
+			LOGGER.info("Error while executing CsvTransformerJob {}", e);
+		}
+	}
+
+	public void publishTransformedData(DataStream<Tuple2<String, CollectionAudit>> encapsulatedJsonStream,
+			String jobId) {
+		try {
+			encapsulatedJsonStream = jobUtil.filterNonEmptyRecords(encapsulatedJsonStream);
+			
+			DataStream<String> jsonStringStream = jobUtil.getJsonStringStream(encapsulatedJsonStream);
+
+			if (jobUtil.shouldPublishKafka()) {
+				jobUtil.publishToKafka(jsonStringStream);
+			}
+
+			if (jobUtil.shouldPublishVMB()) {
+				jobUtil.publishToVMB(jsonStringStream);
+			}
+
+			jobUtil.processStream(encapsulatedJsonStream, JobStatus.FLINK_JOB_SUCCESSFUL,pubAuditMsg);
+
+		} catch (Exception e) {
+			LOGGER.error("Error while publishing data to Sink {} ", e);
+			jobUtil.processStream(encapsulatedJsonStream, JobStatus.FLINK_JOB_FAILED,pubAuditMsg);
+		}
+	}
+}
+
