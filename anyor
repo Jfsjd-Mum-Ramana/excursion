@@ -1,5 +1,8 @@
 package org.vdsi.space.collections.customdatatransformer;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
 import java.util.concurrent.TimeUnit;
 
 import org.apache.flink.api.common.JobID;
@@ -19,6 +22,12 @@ import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.CheckpointConfig;
 import org.apache.flink.streaming.api.environment.CheckpointConfig.ExternalizedCheckpointCleanup;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.vdsi.space.collections.customdatatransformer.enums.JobStatus;
@@ -26,105 +35,118 @@ import org.vdsi.space.collections.customdatatransformer.util.AppProperties;
 import org.vdsi.space.collections.customdatatransformer.util.PublishAuditMessage;
 import org.vdsi.space.collections.lucene.CollectionAudit;
 
-public class CsvTransformerJob {
+@ExtendWith(MockitoExtension.class)
+public class CsvTransformerJobTest {
 
-	private static final Logger LOGGER = LoggerFactory.getLogger(CsvTransformerJob.class);
-	public static AppProperties appProp = AppProperties.getInstance();
-	String flinkJobName = "CSV to JSON Transformer Job";
+    @Mock
+    private PublishAuditMessage pubAuditMsg;
 
-	private CsvTransformerJobUtil jobUtil;
-	private final PublishAuditMessage pubAuditMsg;
+    @Mock
+    private CsvTransformerJobUtil jobUtil;
 
-	public CsvTransformerJob(PublishAuditMessage pubAuditMsg) {
-		this.jobUtil = new CsvTransformerJobUtil(pubAuditMsg);
-		this.pubAuditMsg = pubAuditMsg;
-	}
+    @Mock
+    private AppProperties appProp;
 
-	public CsvTransformerJob(PublishAuditMessage pubAuditMsg,CsvTransformerJobUtil csvTransformerJobUtil) {
-		this.jobUtil = csvTransformerJobUtil;
-		this.pubAuditMsg = pubAuditMsg;
-	}
+    @InjectMocks
+    private CsvTransformerJob csvTransformerJob;
 
-	public PublishAuditMessage getPubAuditMsg() {
-		return pubAuditMsg;
-	}
+    @BeforeEach
+    public void setup() {
+        when(appProp.getAppProperties("flink.parallelism")).thenReturn("1");
+        when(appProp.getAppProperties("flink.checkpoint.interval")).thenReturn("1000");
+        when(appProp.getAppProperties("flink.checkpoint.min-pause")).thenReturn("500");
+        when(appProp.getAppProperties("flink.checkpoint.timeout")).thenReturn("60000");
+        when(appProp.getAppProperties("flink.checkpoint.max-concurrent")).thenReturn("1");
+        when(appProp.getAppProperties("flink.checkpoint.checkpointdir")).thenReturn("file:///tmp/flink-checkpoints");
+        when(appProp.getAppProperties("spring.kafka.consumer.auto-offset-reset")).thenReturn("latest");
+        when(appProp.getAppProperties("spring.kafka.consumer.group-id")).thenReturn("group-id");
+    }
 
-	public void execute() throws Exception {
+    @Test
+    public void testExecute() throws Exception {
+        // Mocking necessary objects
+        StreamExecutionEnvironment env = mock(StreamExecutionEnvironment.class);
+        JobClient jobClient = mock(JobClient.class);
+        JobID jobId = mock(JobID.class);
+        CollectionAudit collectionAudit = mock(CollectionAudit.class);
+        KafkaSource<String> source = mock(KafkaSource.class);
+        DataStream<String> stream = mock(DataStream.class);
+        DataStream<CollectionAudit> collectionAuditStream = mock(DataStream.class);
+        DataStream<Tuple2<String, CollectionAudit>> csvDataStream = mock(DataStream.class);
+        DataStream<Tuple2<String, CollectionAudit>> jsonNodeStream = mock(DataStream.class);
+        DataStream<Tuple2<String, CollectionAudit>> finalDataStream = mock(DataStream.class);
+        
+        when(jobClient.getJobID()).thenReturn(jobId);
+        when(env.executeAsync(any(String.class))).thenReturn(jobClient);
 
-		StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-		CollectionAudit collectionAudit = new CollectionAudit();
+        OffsetsInitializer offsetsInitializer = mock(OffsetsInitializer.class);
+        when(jobUtil.getOffsetsInitializer(any(String.class))).thenReturn(offsetsInitializer);
+        when(jobUtil.setCollectionAuditProperties(any(CollectionAudit.class))).thenReturn(collectionAudit);
+        doNothing().when(jobUtil).validateKafka(any(CollectionAudit.class));
+        when(jobUtil.buildKafkaSource(any(CollectionAudit.class), any(OffsetsInitializer.class), any(String.class))).thenReturn(source);
+        when(env.fromSource(any(KafkaSource.class), any(WatermarkStrategy.class), any(String.class))).thenReturn(stream);
+        when(CsvTransformerJobUtil.convertStreamToCollectionAudit(any(DataStream.class), any(CollectionAudit.class), any(PublishAuditMessage.class))).thenReturn(collectionAuditStream);
+        when(CsvTransformerJobUtil.getCsvDataStream(any(DataStream.class), any(PublishAuditMessage.class))).thenReturn(csvDataStream);
+        when(CsvTransformerJobUtil.convertCsvToJson(any(DataStream.class), any(PublishAuditMessage.class))).thenReturn(jsonNodeStream);
+        when(CsvTransformerJobUtil.encapsulateJson(any(DataStream.class), any(PublishAuditMessage.class))).thenReturn(finalDataStream);
 
-		try {
+        // Running the test
+        csvTransformerJob.execute();
 
-			env.setParallelism(Integer.valueOf(appProp.getAppProperties("flink.parallelism")));
-	
-			Configuration config = new Configuration();
-			
-			// Set up checkpointing
-						env.enableCheckpointing(Long.valueOf(appProp.getAppProperties("flink.checkpoint.interval")));
-						env.getCheckpointConfig().setCheckpointingMode(CheckpointingMode.EXACTLY_ONCE);
-						env.getCheckpointConfig().setMinPauseBetweenCheckpoints(Long.valueOf(appProp.getAppProperties("flink.checkpoint.min-pause")));
-						env.getCheckpointConfig().setCheckpointTimeout(Long.valueOf(appProp.getAppProperties("flink.checkpoint.timeout")));
-						env.getCheckpointConfig().setMaxConcurrentCheckpoints(Integer.valueOf(appProp.getAppProperties("flink.checkpoint.max-concurrent")));
-						env.getCheckpointConfig().enableExternalizedCheckpoints(CheckpointConfig.ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION);
-						// Set the state backend
-						env.setStateBackend(new HashMapStateBackend());
-						env.getCheckpointConfig().setCheckpointStorage(new FileSystemCheckpointStorage(appProp.getAppProperties("flink.checkpoint.checkpointdir")));
-						env.setRestartStrategy(RestartStrategies.fixedDelayRestart(3, Time.of(10, TimeUnit.SECONDS)));
+        // Verifying the interactions
+        verify(env).setParallelism(1);
+        verify(env).enableCheckpointing(1000L);
+        verify(env.getCheckpointConfig()).setCheckpointingMode(CheckpointingMode.EXACTLY_ONCE);
+        verify(env.getCheckpointConfig()).setMinPauseBetweenCheckpoints(500L);
+        verify(env.getCheckpointConfig()).setCheckpointTimeout(60000L);
+        verify(env.getCheckpointConfig()).setMaxConcurrentCheckpoints(1);
+        verify(env.getCheckpointConfig()).enableExternalizedCheckpoints(ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION);
+        verify(env).setStateBackend(any(HashMapStateBackend.class));
+        verify(env.getCheckpointConfig()).setCheckpointStorage(any(FileSystemCheckpointStorage.class));
+        verify(env).setRestartStrategy(any(RestartStrategies.RestartStrategyConfiguration.class));
+        verify(jobUtil).validateKafka(collectionAudit);
+        verify(jobUtil).buildKafkaSource(collectionAudit, offsetsInitializer, "group-id");
+        verify(env).fromSource(source, WatermarkStrategy.noWatermarks(), "Kafka Source");
+        verify(jobUtil).processStream(finalDataStream, JobStatus.FLINK_JOB_SUCCESSFUL, pubAuditMsg);
+    }
 
+    @Test
+    public void testPublishTransformedData() {
+        DataStream<Tuple2<String, CollectionAudit>> encapsulatedJsonStream = mock(DataStream.class);
+        DataStream<Tuple2<String, CollectionAudit>> filteredStream = mock(DataStream.class);
+        DataStream<String> jsonStringStream = mock(DataStream.class);
 
+        when(jobUtil.filterNonEmptyRecords(any(DataStream.class))).thenReturn(filteredStream);
+        when(jobUtil.getJsonStringStream(any(DataStream.class))).thenReturn(jsonStringStream);
+        when(jobUtil.shouldPublishKafka()).thenReturn(true);
+        when(jobUtil.shouldPublishVMB()).thenReturn(true);
 
-			OffsetsInitializer offsetsInitializer = jobUtil
-					.getOffsetsInitializer(appProp.getAppProperties("spring.kafka.consumer.auto-offset-reset"));
-			collectionAudit = jobUtil.setCollectionAuditProperties(collectionAudit);
-			jobUtil.validateKafka(collectionAudit);
+        csvTransformerJob.publishTransformedData(encapsulatedJsonStream, null);
 
-			KafkaSource<String> source = jobUtil.buildKafkaSource(collectionAudit, offsetsInitializer,
-					appProp.getAppProperties("spring.kafka.consumer.group-id"));
-			DataStream<String> stream = env.fromSource(source, WatermarkStrategy.noWatermarks(), "Kafka Source");
+        verify(jobUtil).filterNonEmptyRecords(encapsulatedJsonStream);
+        verify(jobUtil).getJsonStringStream(filteredStream);
+        verify(jobUtil).publishToKafka(jsonStringStream);
+        verify(jobUtil).publishToVMB(jsonStringStream);
+        verify(jobUtil).processStream(filteredStream, JobStatus.FLINK_JOB_SUCCESSFUL, pubAuditMsg);
+    }
 
-			DataStream<CollectionAudit> collectionAuditStream = CsvTransformerJobUtil
-					.convertStreamToCollectionAudit(stream, collectionAudit,pubAuditMsg);
-			DataStream<Tuple2<String, CollectionAudit>> csvDataStream = CsvTransformerJobUtil
-					.getCsvDataStream(collectionAuditStream,pubAuditMsg);
-			DataStream<Tuple2<String, CollectionAudit>> jsonNodeStream = CsvTransformerJobUtil
-					.convertCsvToJson(csvDataStream,pubAuditMsg);
-			DataStream<Tuple2<String, CollectionAudit>> finalDataStream = CsvTransformerJobUtil
-					.encapsulateJson(jsonNodeStream,pubAuditMsg);
+    @Test
+    public void testPublishTransformedDataException() {
+        DataStream<Tuple2<String, CollectionAudit>> encapsulatedJsonStream = mock(DataStream.class);
+        DataStream<Tuple2<String, CollectionAudit>> filteredStream = mock(DataStream.class);
+        DataStream<String> jsonStringStream = mock(DataStream.class);
 
+        when(jobUtil.filterNonEmptyRecords(any(DataStream.class))).thenReturn(filteredStream);
+        when(jobUtil.getJsonStringStream(any(DataStream.class))).thenReturn(jsonStringStream);
+        when(jobUtil.shouldPublishKafka()).thenReturn(true);
+        when(jobUtil.shouldPublishVMB()).thenReturn(true);
+        doThrow(new RuntimeException("Exception")).when(jobUtil).publishToKafka(any(DataStream.class));
 
-			publishTransformedData(finalDataStream, null);
+        csvTransformerJob.publishTransformedData(encapsulatedJsonStream, null);
 
-			JobClient jobClient = env.executeAsync(flinkJobName);
-			JobID jobId = jobClient.getJobID();
-			LOGGER.info("JobID is********************** {}", jobId);
-
-		} catch (Exception e) {
-			LOGGER.info("Error while executing CsvTransformerJob {}", e);
-		}
-	}
-
-	public void publishTransformedData(DataStream<Tuple2<String, CollectionAudit>> encapsulatedJsonStream,
-			String jobId) {
-		try {
-			encapsulatedJsonStream = jobUtil.filterNonEmptyRecords(encapsulatedJsonStream);
-			
-			DataStream<String> jsonStringStream = jobUtil.getJsonStringStream(encapsulatedJsonStream);
-
-			if (jobUtil.shouldPublishKafka()) {
-				jobUtil.publishToKafka(jsonStringStream);
-			}
-
-			if (jobUtil.shouldPublishVMB()) {
-				jobUtil.publishToVMB(jsonStringStream);
-			}
-
-			jobUtil.processStream(encapsulatedJsonStream, JobStatus.FLINK_JOB_SUCCESSFUL,pubAuditMsg);
-
-		} catch (Exception e) {
-			LOGGER.error("Error while publishing data to Sink {} ", e);
-			jobUtil.processStream(encapsulatedJsonStream, JobStatus.FLINK_JOB_FAILED,pubAuditMsg);
-		}
-	}
+        verify(jobUtil).filterNonEmptyRecords(encapsulatedJsonStream);
+        verify(jobUtil).getJsonStringStream(filteredStream);
+        verify(jobUtil).publishToKafka(jsonStringStream);
+        verify(jobUtil).processStream(filteredStream, JobStatus.FLINK_JOB_FAILED, pubAuditMsg);
+    }
 }
-
