@@ -15,11 +15,11 @@ const theme = createTheme({
   },
 });
 
-type Data = {
+interface Data {
   id: number;
   col1: string;
   col2: string;
-};
+}
 
 const App: React.FC = () => {
   const [filterValue, setFilterValue] = React.useState('');
