@@ -1,152 +1,62 @@
 import React from 'react';
-import styled from 'styled-components';
-import { useTable, useFilters, Column } from 'react-table';
+import { DataGrid, GridColDef } from '@mui/x-data-grid';
+import { createTheme, ThemeProvider } from '@mui/material/styles';
+import { Box, TextField } from '@mui/material';
 
-// Define a default UI for filtering
-function DefaultColumnFilter({
-  column: { filterValue, preFilteredRows, setFilter },
-}: {
-  column: {
-    filterValue: string;
-    preFilteredRows: any[];
-    setFilter: (filterValue: string | undefined) => void;
-  };
-}) {
-  const count = preFilteredRows.length;
-
-  return (
-    <input
-      value={filterValue || ''}
-      onChange={e => {
-        setFilter(e.target.value || undefined); // Set undefined to remove the filter entirely
-      }}
-      placeholder={`Search ${count} records...`}
-    />
-  );
-}
-
-// Styles for the table
-const Styles = styled.div`
-  padding: 1rem;
-  table {
-    border-spacing: 0;
-    border: 1px solid black;
-    width: 100%;
-    tr {
-      :last-child {
-        td {
-          border-bottom: 0;
-        }
-      }
-    }
-    th,
-    td {
-      margin: 0;
-      padding: 0.5rem;
-      border-bottom: 1px solid black;
-      border-right: 1px solid black;
-      :last-child {
-        border-right: 0;
-      }
-    }
-    th {
-      background: #f0f0f0;
-      border-bottom: 3px solid black;
-      color: black;
-      font-weight: bold;
-    }
-  }
-`;
+// Define the theme
+const theme = createTheme({
+  palette: {
+    primary: {
+      main: '#1976d2',
+    },
+    secondary: {
+      main: '#dc004e',
+    },
+  },
+});
 
 type Data = {
+  id: number;
   col1: string;
   col2: string;
 };
 
-const Table = ({ columns, data }: { columns: Column<Data>[]; data: Data[] }) => {
-  const defaultColumn = React.useMemo(
-    () => ({
-      Filter: DefaultColumnFilter,
-    }),
-    []
-  );
-
-  const {
-    getTableProps,
-    getTableBodyProps,
-    headerGroups,
-    rows,
-    prepareRow,
-  } = useTable(
-    {
-      columns,
-      data,
-      defaultColumn, // Be sure to pass the defaultColumn option
-    },
-    useFilters // Use the useFilters plugin hook
-  );
-
-  return (
-    <table {...getTableProps()}>
-      <thead>
-        {headerGroups.map(headerGroup => (
-          <tr {...headerGroup.getHeaderGroupProps()}>
-            {headerGroup.headers.map(column => (
-              <th {...column.getHeaderProps()}>
-                {column.render('Header')}
-                <div>{column.canFilter ? column.render('Filter') : null}</div>
-              </th>
-            ))}
-          </tr>
-        ))}
-      </thead>
-      <tbody {...getTableBodyProps()}>
-        {rows.map(row => {
-          prepareRow(row);
-          return (
-            <tr {...row.getRowProps()}>
-              {row.cells.map(cell => {
-                return <td {...cell.getCellProps()}>{cell.render('Cell')}</td>;
-              })}
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
-  );
-};
-
 const App: React.FC = () => {
-  const data = React.useMemo(
-    () => [
-      { col1: 'Hello', col2: 'World' },
-      { col1: 'react-table', col2: 'rocks' },
-      { col1: 'whatever', col2: 'you want' },
-      { col1: 'Goodbye', col2: 'World' },
-      { col1: 'React', col2: 'Table' },
-      { col1: 'Filter', col2: 'Example' },
-    ],
-    []
-  );
+  const [filterValue, setFilterValue] = React.useState('');
+  const data: Data[] = [
+    { id: 1, col1: 'Hello', col2: 'World' },
+    { id: 2, col1: 'react-table', col2: 'rocks' },
+    { id: 3, col1: 'whatever', col2: 'you want' },
+    { id: 4, col1: 'Goodbye', col2: 'World' },
+    { id: 5, col1: 'React', col2: 'Table' },
+    { id: 6, col1: 'Filter', col2: 'Example' },
+  ];
 
-  const columns = React.useMemo<Column<Data>[]>(
-    () => [
-      {
-        Header: 'Column 1',
-        accessor: 'col1',
-      },
-      {
-        Header: 'Column 2',
-        accessor: 'col2',
-      },
-    ],
-    []
+  const columns: GridColDef[] = [
+    { field: 'col1', headerName: 'Column 1', width: 150 },
+    { field: 'col2', headerName: 'Column 2', width: 150 },
+  ];
+
+  const filteredData = data.filter(
+    (row) =>
+      row.col1.toLowerCase().includes(filterValue.toLowerCase()) ||
+      row.col2.toLowerCase().includes(filterValue.toLowerCase())
   );
 
   return (
-    <Styles>
-      <Table columns={columns} data={data} />
-    </Styles>
+    <ThemeProvider theme={theme}>
+      <Box sx={{ height: 400, width: '100%', padding: 2 }}>
+        <TextField
+          label="Filter"
+          variant="outlined"
+          fullWidth
+          value={filterValue}
+          onChange={(e) => setFilterValue(e.target.value)}
+          sx={{ marginBottom: 2 }}
+        />
+        <DataGrid rows={filteredData} columns={columns} pageSize={5} />
+      </Box>
+    </ThemeProvider>
   );
 };
 
