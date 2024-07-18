@@ -1,152 +1,153 @@
-package org.vdsi.space.collections.customdatatransformer;
+import React from 'react';
+import styled from 'styled-components';
+import { useTable, useFilters, Column } from 'react-table';
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+// Define a default UI for filtering
+function DefaultColumnFilter({
+  column: { filterValue, preFilteredRows, setFilter },
+}: {
+  column: {
+    filterValue: string;
+    preFilteredRows: any[];
+    setFilter: (filterValue: string | undefined) => void;
+  };
+}) {
+  const count = preFilteredRows.length;
 
-import java.util.concurrent.TimeUnit;
-
-import org.apache.flink.api.common.JobID;
-import org.apache.flink.api.common.eventtime.WatermarkStrategy;
-import org.apache.flink.api.common.restartstrategy.RestartStrategies;
-import org.apache.flink.api.common.time.Time;
-import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.configuration.CheckpointingOptions;
-import org.apache.flink.configuration.Configuration;
-import org.apache.flink.connector.kafka.source.KafkaSource;
-import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
-import org.apache.flink.core.execution.JobClient;
-import org.apache.flink.runtime.state.hashmap.HashMapStateBackend;
-import org.apache.flink.runtime.state.storage.FileSystemCheckpointStorage;
-import org.apache.flink.streaming.api.CheckpointingMode;
-import org.apache.flink.streaming.api.datastream.DataStream;
-import org.apache.flink.streaming.api.environment.CheckpointConfig;
-import org.apache.flink.streaming.api.environment.CheckpointConfig.ExternalizedCheckpointCleanup;
-import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.vdsi.space.collections.customdatatransformer.enums.JobStatus;
-import org.vdsi.space.collections.customdatatransformer.util.AppProperties;
-import org.vdsi.space.collections.customdatatransformer.util.PublishAuditMessage;
-import org.vdsi.space.collections.lucene.CollectionAudit;
-
-@ExtendWith(MockitoExtension.class)
-public class CsvTransformerJobTest {
-
-    @Mock
-    private PublishAuditMessage pubAuditMsg;
-
-    @Mock
-    private CsvTransformerJobUtil jobUtil;
-
-    @Mock
-    private AppProperties appProp;
-
-    @InjectMocks
-    private CsvTransformerJob csvTransformerJob;
-
-    @BeforeEach
-    public void setup() {
-        when(appProp.getAppProperties("flink.parallelism")).thenReturn("1");
-        when(appProp.getAppProperties("flink.checkpoint.interval")).thenReturn("1000");
-        when(appProp.getAppProperties("flink.checkpoint.min-pause")).thenReturn("500");
-        when(appProp.getAppProperties("flink.checkpoint.timeout")).thenReturn("60000");
-        when(appProp.getAppProperties("flink.checkpoint.max-concurrent")).thenReturn("1");
-        when(appProp.getAppProperties("flink.checkpoint.checkpointdir")).thenReturn("file:///tmp/flink-checkpoints");
-        when(appProp.getAppProperties("spring.kafka.consumer.auto-offset-reset")).thenReturn("latest");
-        when(appProp.getAppProperties("spring.kafka.consumer.group-id")).thenReturn("group-id");
-    }
-
-    @Test
-    public void testExecute() throws Exception {
-        // Mocking necessary objects
-        StreamExecutionEnvironment env = mock(StreamExecutionEnvironment.class);
-        JobClient jobClient = mock(JobClient.class);
-        JobID jobId = mock(JobID.class);
-        CollectionAudit collectionAudit = mock(CollectionAudit.class);
-        KafkaSource<String> source = mock(KafkaSource.class);
-        DataStream<String> stream = mock(DataStream.class);
-        DataStream<CollectionAudit> collectionAuditStream = mock(DataStream.class);
-        DataStream<Tuple2<String, CollectionAudit>> csvDataStream = mock(DataStream.class);
-        DataStream<Tuple2<String, CollectionAudit>> jsonNodeStream = mock(DataStream.class);
-        DataStream<Tuple2<String, CollectionAudit>> finalDataStream = mock(DataStream.class);
-        
-        when(jobClient.getJobID()).thenReturn(jobId);
-        when(env.executeAsync(any(String.class))).thenReturn(jobClient);
-
-        OffsetsInitializer offsetsInitializer = mock(OffsetsInitializer.class);
-        when(jobUtil.getOffsetsInitializer(any(String.class))).thenReturn(offsetsInitializer);
-        when(jobUtil.setCollectionAuditProperties(any(CollectionAudit.class))).thenReturn(collectionAudit);
-        doNothing().when(jobUtil).validateKafka(any(CollectionAudit.class));
-        when(jobUtil.buildKafkaSource(any(CollectionAudit.class), any(OffsetsInitializer.class), any(String.class))).thenReturn(source);
-        when(env.fromSource(any(KafkaSource.class), any(WatermarkStrategy.class), any(String.class))).thenReturn(stream);
-        when(CsvTransformerJobUtil.convertStreamToCollectionAudit(any(DataStream.class), any(CollectionAudit.class), any(PublishAuditMessage.class))).thenReturn(collectionAuditStream);
-        when(CsvTransformerJobUtil.getCsvDataStream(any(DataStream.class), any(PublishAuditMessage.class))).thenReturn(csvDataStream);
-        when(CsvTransformerJobUtil.convertCsvToJson(any(DataStream.class), any(PublishAuditMessage.class))).thenReturn(jsonNodeStream);
-        when(CsvTransformerJobUtil.encapsulateJson(any(DataStream.class), any(PublishAuditMessage.class))).thenReturn(finalDataStream);
-
-        // Running the test
-        csvTransformerJob.execute();
-
-        // Verifying the interactions
-        verify(env).setParallelism(1);
-        verify(env).enableCheckpointing(1000L);
-        verify(env.getCheckpointConfig()).setCheckpointingMode(CheckpointingMode.EXACTLY_ONCE);
-        verify(env.getCheckpointConfig()).setMinPauseBetweenCheckpoints(500L);
-        verify(env.getCheckpointConfig()).setCheckpointTimeout(60000L);
-        verify(env.getCheckpointConfig()).setMaxConcurrentCheckpoints(1);
-        verify(env.getCheckpointConfig()).enableExternalizedCheckpoints(ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION);
-        verify(env).setStateBackend(any(HashMapStateBackend.class));
-        verify(env.getCheckpointConfig()).setCheckpointStorage(any(FileSystemCheckpointStorage.class));
-        verify(env).setRestartStrategy(any(RestartStrategies.RestartStrategyConfiguration.class));
-        verify(jobUtil).validateKafka(collectionAudit);
-        verify(jobUtil).buildKafkaSource(collectionAudit, offsetsInitializer, "group-id");
-        verify(env).fromSource(source, WatermarkStrategy.noWatermarks(), "Kafka Source");
-        verify(jobUtil).processStream(finalDataStream, JobStatus.FLINK_JOB_SUCCESSFUL, pubAuditMsg);
-    }
-
-    @Test
-    public void testPublishTransformedData() {
-        DataStream<Tuple2<String, CollectionAudit>> encapsulatedJsonStream = mock(DataStream.class);
-        DataStream<Tuple2<String, CollectionAudit>> filteredStream = mock(DataStream.class);
-        DataStream<String> jsonStringStream = mock(DataStream.class);
-
-        when(jobUtil.filterNonEmptyRecords(any(DataStream.class))).thenReturn(filteredStream);
-        when(jobUtil.getJsonStringStream(any(DataStream.class))).thenReturn(jsonStringStream);
-        when(jobUtil.shouldPublishKafka()).thenReturn(true);
-        when(jobUtil.shouldPublishVMB()).thenReturn(true);
-
-        csvTransformerJob.publishTransformedData(encapsulatedJsonStream, null);
-
-        verify(jobUtil).filterNonEmptyRecords(encapsulatedJsonStream);
-        verify(jobUtil).getJsonStringStream(filteredStream);
-        verify(jobUtil).publishToKafka(jsonStringStream);
-        verify(jobUtil).publishToVMB(jsonStringStream);
-        verify(jobUtil).processStream(filteredStream, JobStatus.FLINK_JOB_SUCCESSFUL, pubAuditMsg);
-    }
-
-    @Test
-    public void testPublishTransformedDataException() {
-        DataStream<Tuple2<String, CollectionAudit>> encapsulatedJsonStream = mock(DataStream.class);
-        DataStream<Tuple2<String, CollectionAudit>> filteredStream = mock(DataStream.class);
-        DataStream<String> jsonStringStream = mock(DataStream.class);
-
-        when(jobUtil.filterNonEmptyRecords(any(DataStream.class))).thenReturn(filteredStream);
-        when(jobUtil.getJsonStringStream(any(DataStream.class))).thenReturn(jsonStringStream);
-        when(jobUtil.shouldPublishKafka()).thenReturn(true);
-        when(jobUtil.shouldPublishVMB()).thenReturn(true);
-        doThrow(new RuntimeException("Exception")).when(jobUtil).publishToKafka(any(DataStream.class));
-
-        csvTransformerJob.publishTransformedData(encapsulatedJsonStream, null);
-
-        verify(jobUtil).filterNonEmptyRecords(encapsulatedJsonStream);
-        verify(jobUtil).getJsonStringStream(filteredStream);
-        verify(jobUtil).publishToKafka(jsonStringStream);
-        verify(jobUtil).processStream(filteredStream, JobStatus.FLINK_JOB_FAILED, pubAuditMsg);
-    }
+  return (
+    <input
+      value={filterValue || ''}
+      onChange={e => {
+        setFilter(e.target.value || undefined); // Set undefined to remove the filter entirely
+      }}
+      placeholder={`Search ${count} records...`}
+    />
+  );
 }
+
+// Styles for the table
+const Styles = styled.div`
+  padding: 1rem;
+  table {
+    border-spacing: 0;
+    border: 1px solid black;
+    width: 100%;
+    tr {
+      :last-child {
+        td {
+          border-bottom: 0;
+        }
+      }
+    }
+    th,
+    td {
+      margin: 0;
+      padding: 0.5rem;
+      border-bottom: 1px solid black;
+      border-right: 1px solid black;
+      :last-child {
+        border-right: 0;
+      }
+    }
+    th {
+      background: #f0f0f0;
+      border-bottom: 3px solid black;
+      color: black;
+      font-weight: bold;
+    }
+  }
+`;
+
+type Data = {
+  col1: string;
+  col2: string;
+};
+
+const Table = ({ columns, data }: { columns: Column<Data>[]; data: Data[] }) => {
+  const defaultColumn = React.useMemo(
+    () => ({
+      Filter: DefaultColumnFilter,
+    }),
+    []
+  );
+
+  const {
+    getTableProps,
+    getTableBodyProps,
+    headerGroups,
+    rows,
+    prepareRow,
+  } = useTable(
+    {
+      columns,
+      data,
+      defaultColumn, // Be sure to pass the defaultColumn option
+    },
+    useFilters // Use the useFilters plugin hook
+  );
+
+  return (
+    <table {...getTableProps()}>
+      <thead>
+        {headerGroups.map(headerGroup => (
+          <tr {...headerGroup.getHeaderGroupProps()}>
+            {headerGroup.headers.map(column => (
+              <th {...column.getHeaderProps()}>
+                {column.render('Header')}
+                <div>{column.canFilter ? column.render('Filter') : null}</div>
+              </th>
+            ))}
+          </tr>
+        ))}
+      </thead>
+      <tbody {...getTableBodyProps()}>
+        {rows.map(row => {
+          prepareRow(row);
+          return (
+            <tr {...row.getRowProps()}>
+              {row.cells.map(cell => {
+                return <td {...cell.getCellProps()}>{cell.render('Cell')}</td>;
+              })}
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+};
+
+const App: React.FC = () => {
+  const data = React.useMemo(
+    () => [
+      { col1: 'Hello', col2: 'World' },
+      { col1: 'react-table', col2: 'rocks' },
+      { col1: 'whatever', col2: 'you want' },
+      { col1: 'Goodbye', col2: 'World' },
+      { col1: 'React', col2: 'Table' },
+      { col1: 'Filter', col2: 'Example' },
+    ],
+    []
+  );
+
+  const columns = React.useMemo<Column<Data>[]>(
+    () => [
+      {
+        Header: 'Column 1',
+        accessor: 'col1',
+      },
+      {
+        Header: 'Column 2',
+        accessor: 'col2',
+      },
+    ],
+    []
+  );
+
+  return (
+    <Styles>
+      <Table columns={columns} data={data} />
+    </Styles>
+  );
+};
+
+export default App;
