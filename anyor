@@ -54,7 +54,16 @@ const App: React.FC = () => {
           onChange={(e) => setFilterValue(e.target.value)}
           sx={{ marginBottom: 2 }}
         />
-        <DataGrid rows={filteredData} columns={columns} pageSize={5} />
+        <DataGrid
+          rows={filteredData}
+          columns={columns}
+          pageSizeOptions={[5, 10, 20]}
+          initialState={{
+            pagination: {
+              paginationModel: { pageSize: 5 },
+            },
+          }}
+        />
       </Box>
     </ThemeProvider>
   );
