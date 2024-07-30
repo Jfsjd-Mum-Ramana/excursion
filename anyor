@@ -1,88 +1,53 @@
-package com.verizon.ucs.restapi.controllers;
+package com.verizon.ucs.restapi.service;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.stereotype.Service;
 
-import com.verizon.ucs.restapi.dto.AppApiResponse;
 import com.verizon.ucs.restapi.dto.ApiRequest;
 import com.verizon.ucs.restapi.model.Device;
-import com.verizon.ucs.restapi.service.UCSPService;
+import com.verizon.ucs.restapi.repository.UCSPRepository;
 
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
+@Service
+public class UCSPService {
 
-@RestController
-@RequestMapping("/portal")
-@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:8080"})
-public class UCSPController {
-    private static Logger logger = LoggerFactory.getLogger(UCSPController.class);
+	@Autowired
+	private UCSPRepository uCSPRepository;
 
-    @Autowired
-    private UCSPService uCSPService;
+	/*public List<Device> searchDevices(String searchTerm) {
+		return uCSPRepository
+				.findByDeviceNameIgnoreCaseOrLoopbackIgnoreCaseOrNetworkIgnoreCaseOrVendorIgnoreCaseOrModelIgnoreCase(
+						searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+	}*/
 
-    @Operation(summary = "This operation is to get device details for the given device or IP or network or model or vendor")
-    @ApiResponses(value = { @ApiResponse(responseCode = "200", description = "OK.") })
-    @GetMapping("/get-devices")
-    public ResponseEntity<?> getDevices(@ModelAttribute ApiRequest apiRequest) {
+	public List<Device> searchDevices(ApiRequest params) {
+		if (params.getDeviceName() != null && !params.getDeviceName().isEmpty()) {
+			return uCSPRepository.findByDeviceNameIgnoreCase(params.getDeviceName());
+		}
+		if (params.getLoopback() != null && !params.getLoopback().isEmpty()) {
+			return uCSPRepository.findByLoopbackIgnoreCase(params.getLoopback());
+		}
+		if (params.getNetwork() != null && !params.getNetwork().isEmpty()) {
+			return uCSPRepository.findByNetworkIgnoreCase(params.getNetwork());
+		}
+		if (params.getVendor() != null && !params.getVendor().isEmpty()) {
+			return uCSPRepository.findByVendorIgnoreCase(params.getVendor());
+		}
+		if (params.getModel() != null && !params.getModel().isEmpty()) {
+			return uCSPRepository.findByModelIgnoreCase(params.getModel());
+		}
 
-        AppApiResponse apiResponse = new AppApiResponse();
-        try {
-            List<Device> devices = uCSPService.searchDevices(apiRequest);
-            if (devices == null || devices.isEmpty()) {
-                apiResponse.setStatus(devices == null ? 400 : 204);
-                apiResponse.setMessage(devices == null ? "Invalid search criteria." : "No matching devices found.");
-            } else {
-                apiResponse.setMessage("Search request successful.");
-                apiResponse.setStatus(200);
-            }
-            apiResponse.setData(devices);
-            return new ResponseEntity<>(apiResponse, HttpStatus.OK);
-
-        } catch (Exception e) {
-            String err = createErrorMessage("/get-devices", e);
-            logger.error(err + " Detail Message: {}", e);
-            apiResponse.setStatus(500);
-            apiResponse.setMessage(e.getMessage());
-            apiResponse.setError(err);
-            return new ResponseEntity<>(apiResponse, HttpStatus.INTERNAL_SERVER_ERROR);
-        }
-    }
-
-    @Operation(summary = "Fetch unique values for network, vendor, and model columns")
-    @ApiResponses(value = { 
-        @ApiResponse(responseCode = "200", description = "OK."), 
-        @ApiResponse(responseCode = "500", description = "Internal Server Error.") 
-    })
-    @GetMapping("/unique-values")
-    public ResponseEntity<?> getUniqueValues() {
-        AppApiResponse apiResponse = new AppApiResponse();
-        try {
-            Map<String, List<String>> uniqueValues = uCSPService.getUniqueValues();
-            apiResponse.setStatus(200);
-            apiResponse.setMessage("Unique values fetched successfully.");
-            apiResponse.setData(uniqueValues);
-            return new ResponseEntity<>(apiResponse, HttpStatus.OK);
-        } catch (Exception e) {
-            String err = createErrorMessage("/unique-values", e);
-            logger.error(err + " Detail Message: {}", e);
-            apiResponse.setStatus(500);
-            apiResponse.setMessage("An error occurred while fetching unique values.");
-            apiResponse.setError(err);
-            return new ResponseEntity<>(apiResponse, HttpStatus.INTERNAL_SERVER_ERROR);
-        }
-    }
-
-    private String createErrorMessage(String endpoint, Exception e) {
-        return "Error: " + e.getMessage() + " In Class: " + e.getStackTrace()[0].getClassName() 
-                + " In Method: " + e.getStackTrace()[0].getMethodName() + " at line number: "
-                + e.getStackTrace()[0].getLineNumber() + " at endpoint: " + endpoint;
-    }
+		return null;
+	}
+	public Map<String, List<String>> getUniqueValues() {
+		Map<String, List<String>> uniqueValues = new HashMap<>();
+		uniqueValues.put("network", uCSPRepository.findDistinctNetworks());
+		uniqueValues.put("vendor", uCSPRepository.findDistinctVendors());
+		uniqueValues.put("model", uCSPRepository.findDistinctModels());
+		return uniqueValues;
+	}
 }
+Again showing like no usages found here the above is service class
