@@ -1,100 +1,69 @@
-package com.verizon.ucs.restapi.controller;
+package com.verizon.ucs.restapi.controllers;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
+import com.verizon.ucs.restapi.dto.AppApiResponse;
+import com.verizon.ucs.restapi.dto.ApiRequest;
+import com.verizon.ucs.restapi.model.Device;
 import com.verizon.ucs.restapi.service.UCSPService;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+
+/**
+ * Controller interface for UCS Portal Application with JPA
+ */
 @RestController
-@RequestMapping("/api/unique")
+@RequestMapping("/portal")
+@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:8080"})
 public class UCSPController {
+	private static Logger logger = LoggerFactory.getLogger(UCSPController.class);
 
-    @Autowired
-    private UCSPService uCSPService;
+	@Autowired
+	private UCSPService uCSPService;
 
-    @GetMapping("/models")
-    public ResponseEntity<List<String>> getUniqueModels() {
-        return ResponseEntity.ok(uCSPService.getUniqueValues().get("models"));
-    }
+	@Operation(summary = "This operation is to get device details for the given device or IP or network or model or vendor")
+	@ApiResponses(value = { @ApiResponse(responseCode = "200", description = "OK.") })
+	@GetMapping("/get-devices")
+	public ResponseEntity<?> getDevices(@ModelAttribute ApiRequest apiRequest) {
 
-    @GetMapping("/vendors")
-    public ResponseEntity<List<String>> getUniqueVendors() {
-        return ResponseEntity.ok(uCSPService.getUniqueValues().get("vendors"));
-    }
+		AppApiResponse apiResponse = new AppApiResponse();
+		try {
+			List<Device> devices = uCSPService.searchDevices(apiRequest);
+			if (devices == null || devices.isEmpty()) {
+				apiResponse.setStatus(devices == null ? 400 : 204);
+				apiResponse.setMessage(devices == null ? "Invalid search criteria." : "No matching devices found.");
+			} else {
+				apiResponse.setMessage("Search request successful.");
+				apiResponse.setStatus(200);
+			}
+			apiResponse.setData(devices);
+			return new ResponseEntity<>(apiResponse, HttpStatus.OK);
 
-    @GetMapping("/networks")
-    public ResponseEntity<List<String>> getUniqueNetworks() {
-        return ResponseEntity.ok(uCSPService.getUniqueValues().get("networks"));
-    }
+		} catch (Exception e) {
+			String err = createErrorMessage("/get-devices", e);
+			logger.error(err + " Detail Message: {}", e);
+			apiResponse.setStatus(500);
+			apiResponse.setMessage(e.getMessage());
+			apiResponse.setError(err);
+			return new ResponseEntity<>(apiResponse, HttpStatus.INTERNAL_SERVER_ERROR);
+		}
+	}
 
-    // Existing endpoints...
+	private String createErrorMessage(String endpoint, Exception e) {
+		return "Error: " + e.getMessage() + " In Class: " + e.getStackTrace()[0].getClassName()
+				+ " In Method: " + e.getStackTrace()[0].getMethodName() + " at line number: "
+				+ e.getStackTrace()[0].getLineNumber() + " at endpoint: " + endpoint;
+	}
 }
-
-
-
-
-
-package com.verizon.ucs.restapi.service;
-
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-
-import com.verizon.ucs.restapi.repository.UCSPRepository;
-
-@Service
-public class UCSPService {
-
-    @Autowired
-    private UCSPRepository uCSPRepository;
-
-    // Method to get unique values for dropdowns
-    public Map<String, List<String>> getUniqueValues() {
-        Map<String, List<String>> uniqueValues = new HashMap<>();
-        uniqueValues.put("models", uCSPRepository.findDistinctModels());
-        uniqueValues.put("vendors", uCSPRepository.findDistinctVendors());
-        uniqueValues.put("networks", uCSPRepository.findDistinctNetworks());
-        return uniqueValues;
-    }
-
-    // Existing methods...
-}
-
-
-
-
-
-package com.verizon.ucs.restapi.repository;
-
-import java.util.List;
-
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.stereotype.Repository;
-
-import com.verizon.ucs.restapi.model.Device;
-
-@Repository
-public interface UCSPRepository extends JpaRepository<Device, Long> {
-
-    // Add methods to fetch distinct values
-    @Query("SELECT DISTINCT d.model FROM Device d WHERE d.model IS NOT NULL")
-    List<String> findDistinctModels();
-
-    @Query("SELECT DISTINCT d.vendor FROM Device d WHERE d.vendor IS NOT NULL")
-    List<String> findDistinctVendors();
-
-    @Query("SELECT DISTINCT d.network FROM Device d WHERE d.network IS NOT NULL")
-    List<String> findDistinctNetworks();
-
-    // Existing search methods...
-}
-
