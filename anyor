@@ -26,45 +26,68 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
  */
 @RestController
 @RequestMapping("/portal")
-@CrossOrigin(origins = {"http://localhost:3000","http://localhost:8080"})
+@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:8080"})
 public class UCSPController {
-	private static Logger logger = LoggerFactory.getLogger(UCSPController.class);
+    private static Logger logger = LoggerFactory.getLogger(UCSPController.class);
 
-	@Autowired
-	private UCSPService uCSPService;
+    @Autowired
+    private UCSPService uCSPService;
 
-	@Operation(summary = "This operation is to get device details for the given device or ip or network or model or vendor")
-	@ApiResponses(value = { @ApiResponse(responseCode = "200", description = "OK.") })
-	@GetMapping("/get-devices")
-	public ResponseEntity<?> getDevices(@ModelAttribute ApiRequest apiRequest) {
+    @Operation(summary = "This operation is to get device details for the given device or IP or network or model or vendor")
+    @ApiResponses(value = { @ApiResponse(responseCode = "200", description = "OK.") })
+    @GetMapping("/get-devices")
+    public ResponseEntity<?> getDevices(@ModelAttribute ApiRequest apiRequest) {
 
-	    AppApiResponse apiResponse = new AppApiResponse();
-	    try {
-	        List<Device> devices = uCSPService.searchDevices(apiRequest);
-	        if (devices == null || devices.isEmpty()) {
-	            apiResponse.setStatus(devices == null ? 400 : 204);
-	            apiResponse.setMessage(devices == null ? "Invalid search criteria." : "No matching devices found.");
-	        } else {
-	            apiResponse.setMessage("Search request successful.");
-	            apiResponse.setStatus(200);
-	        }
-	        apiResponse.setData(devices);
-	        return new ResponseEntity<>(apiResponse, HttpStatus.OK);
+        AppApiResponse apiResponse = new AppApiResponse();
+        try {
+            List<Device> devices = uCSPService.searchDevices(apiRequest);
+            if (devices == null || devices.isEmpty()) {
+                apiResponse.setStatus(devices == null ? 400 : 204);
+                apiResponse.setMessage(devices == null ? "Invalid search criteria." : "No matching devices found.");
+            } else {
+                apiResponse.setMessage("Search request successful.");
+                apiResponse.setStatus(200);
+            }
+            apiResponse.setData(devices);
+            return new ResponseEntity<>(apiResponse, HttpStatus.OK);
 
-	    } catch (Exception e) {
-	        String err = createErrorMessage("/get-devices",e);
-	        logger.error(err + " Detail Message: {}", e);
-	        apiResponse.setStatus(500);
-	        apiResponse.setMessage(e.getMessage());
-	        apiResponse.setError(err);
-	        return new ResponseEntity<>(apiResponse, HttpStatus.INTERNAL_SERVER_ERROR);
-	    }
-	}
+        } catch (Exception e) {
+            String err = createErrorMessage("/get-devices", e);
+            logger.error(err + " Detail Message: {}", e);
+            apiResponse.setStatus(500);
+            apiResponse.setMessage(e.getMessage());
+            apiResponse.setError(err);
+            return new ResponseEntity<>(apiResponse, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
 
-	private String createErrorMessage(String endpoint,Exception e) {
-	    return " Error: " + e.getMessage() + " In Class: " + e.getStackTrace()[0].getClassName() 
-	            + " In Method: " + e.getStackTrace()[0].getMethodName() + " at line number: "
-	            + e.getStackTrace()[0].getLineNumber() +" at endpoint: "+endpoint;
-	}
-	
+    @Operation(summary = "Fetch unique values for network, vendor, and model columns")
+    @ApiResponses(value = { 
+        @ApiResponse(responseCode = "200", description = "OK."), 
+        @ApiResponse(responseCode = "500", description = "Internal Server Error.") 
+    })
+    @GetMapping("/unique-values")
+    public ResponseEntity<?> getUniqueValues() {
+        AppApiResponse apiResponse = new AppApiResponse();
+        try {
+            Map<String, List<String>> uniqueValues = uCSPService.getUniqueValues();
+            apiResponse.setStatus(200);
+            apiResponse.setMessage("Unique values fetched successfully.");
+            apiResponse.setData(uniqueValues);
+            return new ResponseEntity<>(apiResponse, HttpStatus.OK);
+        } catch (Exception e) {
+            String err = createErrorMessage("/unique-values", e);
+            logger.error(err + " Detail Message: {}", e);
+            apiResponse.setStatus(500);
+            apiResponse.setMessage("An error occurred while fetching unique values.");
+            apiResponse.setError(err);
+            return new ResponseEntity<>(apiResponse, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    private String createErrorMessage(String endpoint, Exception e) {
+        return "Error: " + e.getMessage() + " In Class: " + e.getStackTrace()[0].getClassName() 
+                + " In Method: " + e.getStackTrace()[0].getMethodName() + " at line number: "
+                + e.getStackTrace()[0].getLineNumber() + " at endpoint: " + endpoint;
+    }
 }
