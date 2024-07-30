@@ -1,144 +1,38 @@
-package com.verizon.ucs.restapi.service;
+package com.verizon.ucs.restapi.repository;
+
+import com.verizon.ucs.restapi.model.Device;
 
 import java.util.List;
 
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
 
-import com.verizon.ucs.restapi.dto.ApiRequest;
-import com.verizon.ucs.restapi.model.Device;
-import com.verizon.ucs.restapi.repository.UCSPRepository;
+@Repository
+public interface UCSPRepository extends JpaRepository<Device, String> {
 
-@Service
-public class UCSPService {
+	List<Device> findByDeviceNameIgnoreCase(String deviceName);
 
-	@Autowired
-	private UCSPRepository uCSPRepository;
+	List<Device> findByLoopbackIgnoreCase(String loopback);
 
-	/*public List<Device> searchDevices(String searchTerm) {
-		return uCSPRepository
-				.findByDeviceNameIgnoreCaseOrLoopbackIgnoreCaseOrNetworkIgnoreCaseOrVendorIgnoreCaseOrModelIgnoreCase(
-						searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
-	}*/
+	List<Device> findByNetworkIgnoreCase(String network);
 
-	public List<Device> searchDevices(ApiRequest params) {
-		if (params.getDeviceName() != null && !params.getDeviceName().isEmpty()) {
-			return uCSPRepository.findByDeviceNameIgnoreCase(params.getDeviceName());
-		}
-		if (params.getLoopback() != null && !params.getLoopback().isEmpty()) {
-			return uCSPRepository.findByLoopbackIgnoreCase(params.getLoopback());
-		}
-		if (params.getNetwork() != null && !params.getNetwork().isEmpty()) {
-			return uCSPRepository.findByNetworkIgnoreCase(params.getNetwork());
-		}
-		if (params.getVendor() != null && !params.getVendor().isEmpty()) {
-			return uCSPRepository.findByVendorIgnoreCase(params.getVendor());
-		}
-		if (params.getModel() != null && !params.getModel().isEmpty()) {
-			return uCSPRepository.findByModelIgnoreCase(params.getModel());
-		}
+	List<Device> findByVendorIgnoreCase(String vendor);
 
-		return null;
-	}
+	List<Device> findByModelIgnoreCase(String model);
+
+	/*List<Device> findByDeviceNameIgnoreCaseOrLoopbackIgnoreCaseOrNetworkIgnoreCaseOrVendorIgnoreCaseOrModelIgnoreCase(
+			String deviceName, String loopback, String network, String vendor, String model);
+
+	List<Device> findByDeviceNameContainingIgnoreCaseOrLoopbackContainingIgnoreCaseOrNetworkContainingIgnoreCaseOrVendorContainingIgnoreCaseOrModelContainingIgnoreCase(
+			String deviceName, String loopback, String network, String vendor, String model);
+
+	 * @Query("SELECT d FROM Device d WHERE " +
+	 * "LOWER(d.name) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
+	 * "LOWER(d.ip) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
+	 * "LOWER(d.network) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
+	 * "LOWER(d.vendor) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
+	 * "LOWER(d.model) LIKE LOWER(CONCAT('%', :searchTerm, '%'))") List<Device>
+	 * search(@Param("searchTerm") String searchTerm);
+	 */
+
 }
-
-
-write code according to according to acceptence criteria:
-
-AC1: API Endpoint Creation
-
-Given I have access to the ms-restapi repository and the PostgreSQL database,
-
-When I implement a new API endpoint,
-
-Then the endpoint should allow fetching of unique values for network, vendor, and model columns from the devices table.
-
-
-
-AC2: Successful Database Connection
-
-Given the API is set up to connect to the PostgreSQL database,
-
-When a request is made to the new API endpoint,
-
-Then the API should successfully connect to the database without errors.
-
-
-
-AC3: Fetching Unique Values
-
-Given a successful connection to the database is established,
-
-When a request is made to the API endpoint,
-
-Then the API should return a list of unique values for the network, vendor, and model columns from the devices table.
-
-
-
-AC4: Response Structure
-
-Given a request is made to fetch unique values,
-
-When the API processes the request,
-
-Then the response should be structured in JSON format, with separate lists for each column (network, vendor, model), ensuring easy readability and integration.
-
-
-
-AC5: Error Handling
-
-Given any kind of error occurs during the request processing (e.g., database connection issues, query errors),
-
-When a request is made to the API endpoint,
-
-Then the API should return an appropriate error message and HTTP status code, indicating the nature of the error.
-
-
-Use this code inside this implement an API:
-AC1: API Endpoint Creation
-
-Given I have access to the ms-restapi repository and the PostgreSQL database,
-
-When I implement a new API endpoint,
-
-Then the endpoint should allow fetching of unique values for network, vendor, and model columns from the devices table.
-
-
-
-AC2: Successful Database Connection
-
-Given the API is set up to connect to the PostgreSQL database,
-
-When a request is made to the new API endpoint,
-
-Then the API should successfully connect to the database without errors.
-
-
-
-AC3: Fetching Unique Values
-
-Given a successful connection to the database is established,
-
-When a request is made to the API endpoint,
-
-Then the API should return a list of unique values for the network, vendor, and model columns from the devices table.
-
-
-
-AC4: Response Structure
-
-Given a request is made to fetch unique values,
-
-When the API processes the request,
-
-Then the response should be structured in JSON format, with separate lists for each column (network, vendor, model), ensuring easy readability and integration.
-
-
-
-AC5: Error Handling
-
-Given any kind of error occurs during the request processing (e.g., database connection issues, query errors),
-
-When a request is made to the API endpoint,
-
-Then the API should return an appropriate error message and HTTP status code, indicating the nature of the error.
