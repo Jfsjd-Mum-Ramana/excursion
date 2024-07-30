@@ -1,38 +1,98 @@
+package com.verizon.ucs.restapi.controller;
+
+import com.verizon.ucs.restapi.service.UCSPService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api")
+public class UCSPController {
+
+    @Autowired
+    private UCSPService uCSPService;
+
+    // Existing endpoints...
+
+    // New endpoint for fetching unique values
+    @GetMapping("/unique-values")
+    public ResponseEntity<Map<String, List<String>>> getUniqueValues() {
+        try {
+            Map<String, List<String>> uniqueValues = uCSPService.getUniqueValues();
+            return ResponseEntity.ok(uniqueValues);
+        } catch (Exception e) {
+            // Error handling: Return a 500 status code with a generic error message
+            return ResponseEntity.status(500).body(Map.of("error", "An unexpected error occurred"));
+        }
+    }
+}
+
+
+package com.verizon.ucs.restapi.service;
+
+import com.verizon.ucs.restapi.repository.UCSPRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+@Service
+public class UCSPService {
+
+    @Autowired
+    private UCSPRepository uCSPRepository;
+
+    // Existing methods...
+
+    // New method to fetch unique values
+    public Map<String, List<String>> getUniqueValues() {
+        Map<String, List<String>> uniqueValues = new HashMap<>();
+        uniqueValues.put("network", uCSPRepository.findDistinctNetworks());
+        uniqueValues.put("vendor", uCSPRepository.findDistinctVendors());
+        uniqueValues.put("model", uCSPRepository.findDistinctModels());
+        return uniqueValues;
+    }
+}
+
+
+
+
 package com.verizon.ucs.restapi.repository;
 
 import com.verizon.ucs.restapi.model.Device;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.stereotype.Repository;
 
 import java.util.List;
-
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
 
 @Repository
 public interface UCSPRepository extends JpaRepository<Device, String> {
 
-	List<Device> findByDeviceNameIgnoreCase(String deviceName);
+    List<Device> findByDeviceNameIgnoreCase(String deviceName);
 
-	List<Device> findByLoopbackIgnoreCase(String loopback);
+    List<Device> findByLoopbackIgnoreCase(String loopback);
 
-	List<Device> findByNetworkIgnoreCase(String network);
+    List<Device> findByNetworkIgnoreCase(String network);
 
-	List<Device> findByVendorIgnoreCase(String vendor);
+    List<Device> findByVendorIgnoreCase(String vendor);
 
-	List<Device> findByModelIgnoreCase(String model);
+    List<Device> findByModelIgnoreCase(String model);
 
-	/*List<Device> findByDeviceNameIgnoreCaseOrLoopbackIgnoreCaseOrNetworkIgnoreCaseOrVendorIgnoreCaseOrModelIgnoreCase(
-			String deviceName, String loopback, String network, String vendor, String model);
+    // Custom query methods for distinct values
+    @Query("SELECT DISTINCT d.network FROM Device d")
+    List<String> findDistinctNetworks();
 
-	List<Device> findByDeviceNameContainingIgnoreCaseOrLoopbackContainingIgnoreCaseOrNetworkContainingIgnoreCaseOrVendorContainingIgnoreCaseOrModelContainingIgnoreCase(
-			String deviceName, String loopback, String network, String vendor, String model);
+    @Query("SELECT DISTINCT d.vendor FROM Device d")
+    List<String> findDistinctVendors();
 
-	 * @Query("SELECT d FROM Device d WHERE " +
-	 * "LOWER(d.name) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
-	 * "LOWER(d.ip) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
-	 * "LOWER(d.network) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
-	 * "LOWER(d.vendor) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
-	 * "LOWER(d.model) LIKE LOWER(CONCAT('%', :searchTerm, '%'))") List<Device>
-	 * search(@Param("searchTerm") String searchTerm);
-	 */
-
+    @Query("SELECT DISTINCT d.model FROM Device d")
+    List<String> findDistinctModels();
 }
