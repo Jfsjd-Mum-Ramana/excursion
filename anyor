@@ -1,7 +1,5 @@
 package com.verizon.ucs.restapi.controllers;
 
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -21,9 +19,6 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 
-/**
- * Controller interface for UCS Portal Application with JPA
- */
 @RestController
 @RequestMapping("/portal")
 @CrossOrigin(origins = {"http://localhost:3000", "http://localhost:8080"})
