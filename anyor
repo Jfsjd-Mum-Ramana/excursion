@@ -1,105 +1,92 @@
 package com.verizon.ucs.restapi.controllers;
 
-import java.util.ArrayList;
-import java.util.List;
+import org.junit.platform.suite.api.IncludeEngines;
+import org.junit.platform.suite.api.SelectClasspathResource;
+import org.junit.platform.suite.api.Suite;
+import org.springframework.test.context.ContextConfiguration;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-
-import com.verizon.ucs.restapi.dto.AppApiResponse;
-import com.verizon.ucs.restapi.dto.ApiRequest;
-import com.verizon.ucs.restapi.model.Device;
-import com.verizon.ucs.restapi.service.UCSPService;
-
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
-
-/**
- * Controller interface for UCS Portal Application with JPA
- */
-@RestController
-@RequestMapping("/portal")
-@CrossOrigin(origins = {"http://localhost:3000","http://localhost:8080"})
-public class UCSPController {
-	private static Logger logger = LoggerFactory.getLogger(UCSPController.class);
-
-	@Autowired
-	private UCSPService uCSPService;
-
-	@Operation(summary = "This operation is to get device details for the given device or ip or network or model or vendor")
-	@ApiResponses(value = { @ApiResponse(responseCode = "200", description = "OK.") })
-	@GetMapping("/get-devices")
-	public ResponseEntity<?> getDevices(@ModelAttribute ApiRequest apiRequest) {
-
-	    AppApiResponse apiResponse = new AppApiResponse();
-	    try {
-	        List<Device> devices = uCSPService.searchDevices(apiRequest);
-	        if (devices == null || devices.isEmpty()) {
-	            apiResponse.setStatus(devices == null ? 400 : 204);
-	            apiResponse.setMessage(devices == null ? "Invalid search criteria." : "No matching devices found.");
-	        } else {
-	            apiResponse.setMessage("Search request successful.");
-	            apiResponse.setStatus(200);
-	        }
-	        apiResponse.setData(devices);
-	        return new ResponseEntity<>(apiResponse, HttpStatus.OK);
-
-	    } catch (Exception e) {
-	        String err = createErrorMessage("/get-devices",e);
-	        logger.error(err + " Detail Message: {}", e);
-	        apiResponse.setStatus(500);
-	        apiResponse.setMessage(e.getMessage());
-	        apiResponse.setError(err);
-	        return new ResponseEntity<>(apiResponse, HttpStatus.INTERNAL_SERVER_ERROR);
-	    }
-	}
-	@Operation(summary = "This operation is to get device details for the given device or IP or network or model or vendor")
-	@ApiResponses(value = { @ApiResponse(responseCode = "200", description = "OK.") })
-	@GetMapping("/unique/models")
-	public ResponseEntity<?> getUniqueModels() {
-		try {
-			List<String> models = uCSPService.getUniqueValues().get("models");
-			return ResponseEntity.ok(models);
-		} catch (Exception e) {
-			logger.error("Error fetching unique models: ", e);
-			return new ResponseEntity<>("Failed to fetch models", HttpStatus.INTERNAL_SERVER_ERROR);
-		}
-	}
-
-	@Operation(summary = "Fetch unique vendors for dropdown population")
-	@ApiResponses(value = { @ApiResponse(responseCode = "200", description = "OK.") })
-	@GetMapping("/unique/vendors")
-	public ResponseEntity<?> getUniqueVendors() {
-		try {
-			List<String> vendors = uCSPService.getUniqueValues().get("vendors");
-			return ResponseEntity.ok(vendors);
-		} catch (Exception e) {
-			logger.error("Error fetching unique vendors: ", e);
-			return new ResponseEntity<>("Failed to fetch vendors", HttpStatus.INTERNAL_SERVER_ERROR);
-		}
-	}
-
-	@Operation(summary = "Fetch unique networks for dropdown population")
-	@ApiResponses(value = { @ApiResponse(responseCode = "200", description = "OK.") })
-	@GetMapping("/unique/networks")
-	public ResponseEntity<?> getUniqueNetworks() {
-		try {
-			List<String> networks = uCSPService.getUniqueValues().get("networks");
-			return ResponseEntity.ok(networks);
-		} catch (Exception e) {
-			logger.error("Error fetching unique networks: ", e);
-			return new ResponseEntity<>("Failed to fetch networks", HttpStatus.INTERNAL_SERVER_ERROR);
-		}
-	}
-	private String createErrorMessage(String endpoint,Exception e) {
-	    return " Error: " + e.getMessage() + " In Class: " + e.getStackTrace()[0].getClassName() 
-	            + " In Method: " + e.getStackTrace()[0].getMethodName() + " at line number: "
-	            + e.getStackTrace()[0].getLineNumber() +" at endpoint: "+endpoint;
-	}
-	
+@Suite
+@IncludeEngines("cucumber")
+@SelectClasspathResource("features")
+@ContextConfiguration(classes = UCSPControllerTestSteps.class)
+public class RunCucumberTest {
 }
+
+
+
+
+
+
+package com.verizon.ucs.restapi.controllers;
+
+import com.verizon.ucs.restapi.service.UCSPService;
+import io.cucumber.java.en.Given;
+import io.cucumber.java.en.Then;
+import io.cucumber.java.en.When;
+import org.junit.jupiter.api.Assertions;
+import org.mockito.Mockito;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+
+import java.util.Collections;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+@WebMvcTest(UCSPController.class)
+@ContextConfiguration
+public class UCSPControllerTestSteps {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @MockBean
+    private UCSPService uCSPService;
+
+    private MvcResult result;
+
+    @Given("the UCS Portal API is up and running")
+    public void theUcsPortalApiIsUpAndRunning() {
+        // Assumes the context setup is sufficient to indicate the API is up and running
+    }
+
+    @When("I send a GET request to \"/portal/unique/models\"")
+    public void iSendAGetRequestToPortalUniqueModels() throws Exception {
+        Mockito.when(uCSPService.getUniqueValues().get("models")).thenReturn(Collections.singletonList("ModelX"));
+
+        result = mockMvc.perform(get("/portal/unique/models")
+                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andReturn();
+    }
+
+    @Then("the response status should be {int}")
+    public void theResponseStatusShouldBe(int status) throws Exception {
+        Assertions.assertEquals(status, result.getResponse().getStatus());
+    }
+
+    @Then("the response should contain a list of unique device models")
+    public void theResponseShouldContainAListOfUniqueDeviceModels() throws Exception {
+        String content = result.getResponse().getContentAsString();
+        Assertions.assertTrue(content.contains("[\"ModelX\"]"));
+    }
+}
+
+
+
+
+Feature: Fetch unique device models
+  As a user
+  I want to fetch unique device models from the UCS Portal
+  So that I can populate a dropdown list with the available models
+
+  Scenario: Fetch unique device models
+    Given the UCS Portal API is up and running
+    When I send a GET request to "/portal/unique/models"
+    Then the response status should be 200
+    And the response should contain a list of unique device models
