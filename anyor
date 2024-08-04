@@ -1,92 +1,114 @@
-package com.verizon.ucs.restapi.controllers;
+Feature: UCS Portal Device Management
+  As a user of the UCS Portal
+  I want to be able to search for devices and get unique models, vendors, and networks
+  So that I can effectively manage my devices
 
+  Scenario: Get device details for a given device or IP or network or model or vendor
+    Given the UCS Portal API is available
+    When I search for devices with a valid search criteria
+    Then I should get a successful response with device details
+
+  Scenario: Get unique device models
+    Given the UCS Portal API is available
+    When I request unique device models
+    Then I should get a successful response with the list of unique models
+
+  Scenario: Get unique device vendors
+    Given the UCS Portal API is available
+    When I request unique device vendors
+    Then I should get a successful response with the list of unique vendors
+
+  Scenario: Get unique device networks
+    Given the UCS Portal API is available
+    When I request unique device networks
+    Then I should get a successful response with the list of unique networks
+
+
+
+
+package com.verizon.ucs.restapi.steps;
+
+import static io.restassured.RestAssured.given;
+import static org.hamcrest.Matchers.*;
+
+import io.cucumber.java.en.Given;
+import io.cucumber.java.en.When;
+import io.cucumber.java.en.Then;
+import io.restassured.response.Response;
+
+public class UCSPControllerSteps {
+    private Response response;
+    private static final String BASE_URL = "http://localhost:8080/portal";
+
+    @Given("the UCS Portal API is available")
+    public void the_ucsp_portal_api_is_available() {
+        given().when().get(BASE_URL).then().statusCode(200);
+    }
+
+    @When("I search for devices with a valid search criteria")
+    public void i_search_for_devices_with_a_valid_search_criteria() {
+        response = given()
+                .param("deviceName", "validDeviceName")
+                .when().get(BASE_URL + "/get-devices");
+    }
+
+    @When("I request unique device models")
+    public void i_request_unique_device_models() {
+        response = given().when().get(BASE_URL + "/unique/models");
+    }
+
+    @When("I request unique device vendors")
+    public void i_request_unique_device_vendors() {
+        response = given().when().get(BASE_URL + "/unique/vendors");
+    }
+
+    @When("I request unique device networks")
+    public void i_request_unique_device_networks() {
+        response = given().when().get(BASE_URL + "/unique/networks");
+    }
+
+    @Then("I should get a successful response with device details")
+    public void i_should_get_a_successful_response_with_device_details() {
+        response.then().statusCode(200)
+                .body("status", equalTo(200))
+                .body("message", equalTo("Search request successful."));
+    }
+
+    @Then("I should get a successful response with the list of unique models")
+    public void i_should_get_a_successful_response_with_the_list_of_unique_models() {
+        response.then().statusCode(200)
+                .body("size()", greaterThan(0));
+    }
+
+    @Then("I should get a successful response with the list of unique vendors")
+    public void i_should_get_a_successful_response_with_the_list_of_unique_vendors() {
+        response.then().statusCode(200)
+                .body("size()", greaterThan(0));
+    }
+
+    @Then("I should get a successful response with the list of unique networks")
+    public void i_should_get_a_successful_response_with_the_list_of_unique_networks() {
+        response.then().statusCode(200)
+                .body("size()", greaterThan(0));
+    }
+}
+
+
+
+
+
+package com.verizon.ucs.restapi.runners;
+
+import org.junit.platform.suite.api.ConfigurationParameter;
 import org.junit.platform.suite.api.IncludeEngines;
 import org.junit.platform.suite.api.SelectClasspathResource;
 import org.junit.platform.suite.api.Suite;
-import org.springframework.test.context.ContextConfiguration;
+
+import static io.cucumber.junit.platform.engine.Constants.GLUE_PROPERTY_NAME;
 
 @Suite
 @IncludeEngines("cucumber")
-@SelectClasspathResource("features")
-@ContextConfiguration(classes = UCSPControllerTestSteps.class)
-public class RunCucumberTest {
+@SelectClasspathResource("com/verizon/ucs/restapi/features")
+@ConfigurationParameter(key = GLUE_PROPERTY_NAME, value = "com.verizon.ucs.restapi.steps")
+public class CucumberTest {
 }
-
-
-
-
-
-
-package com.verizon.ucs.restapi.controllers;
-
-import com.verizon.ucs.restapi.service.UCSPService;
-import io.cucumber.java.en.Given;
-import io.cucumber.java.en.Then;
-import io.cucumber.java.en.When;
-import org.junit.jupiter.api.Assertions;
-import org.mockito.Mockito;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.http.MediaType;
-import org.springframework.test.context.ContextConfiguration;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
-
-import java.util.Collections;
-
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
-@WebMvcTest(UCSPController.class)
-@ContextConfiguration
-public class UCSPControllerTestSteps {
-
-    @Autowired
-    private MockMvc mockMvc;
-
-    @MockBean
-    private UCSPService uCSPService;
-
-    private MvcResult result;
-
-    @Given("the UCS Portal API is up and running")
-    public void theUcsPortalApiIsUpAndRunning() {
-        // Assumes the context setup is sufficient to indicate the API is up and running
-    }
-
-    @When("I send a GET request to \"/portal/unique/models\"")
-    public void iSendAGetRequestToPortalUniqueModels() throws Exception {
-        Mockito.when(uCSPService.getUniqueValues().get("models")).thenReturn(Collections.singletonList("ModelX"));
-
-        result = mockMvc.perform(get("/portal/unique/models")
-                .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isOk())
-                .andReturn();
-    }
-
-    @Then("the response status should be {int}")
-    public void theResponseStatusShouldBe(int status) throws Exception {
-        Assertions.assertEquals(status, result.getResponse().getStatus());
-    }
-
-    @Then("the response should contain a list of unique device models")
-    public void theResponseShouldContainAListOfUniqueDeviceModels() throws Exception {
-        String content = result.getResponse().getContentAsString();
-        Assertions.assertTrue(content.contains("[\"ModelX\"]"));
-    }
-}
-
-
-
-
-Feature: Fetch unique device models
-  As a user
-  I want to fetch unique device models from the UCS Portal
-  So that I can populate a dropdown list with the available models
-
-  Scenario: Fetch unique device models
-    Given the UCS Portal API is up and running
-    When I send a GET request to "/portal/unique/models"
-    Then the response status should be 200
-    And the response should contain a list of unique device models
