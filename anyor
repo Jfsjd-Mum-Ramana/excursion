@@ -103,3 +103,37 @@ public class UCSPController {
 	}
 	
 }
+
+
+
+Collection: Integration of GraphQL with MS-RestAPI for Efficient Data Retrieval
+
+AC1. Given that I am a developer,
+
+   When I send a GraphQL query to the ms-restapi APIs,
+
+   Then it should return the requested data based on the GraphQL query.
+
+
+
+AC2. Given that I have enabled GraphQL for ms-restapi APIs,
+
+   When I send a GraphQL query that specifies only the data I need,
+
+   Then the API should return only the requested data, reducing unnecessary data transfer.
+
+
+
+AC3. Given that I have enabled GraphQL for ms-restapi APIs,
+
+   When I send a complex GraphQL query that involves multiple resources,
+
+   Then the API should return the data from all the involved resources in a single request, reducing the need for multiple round trips.
+
+
+
+AC4. Given that I have enabled GraphQL for ms-restapi APIs,
+
+   When I send a mutation request through GraphQL,
+
+   Then the API should perform the requested changes and return the updated data.
