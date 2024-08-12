@@ -1,57 +1,259 @@
-import org.junit.jupiter.api.*;
-import org.apache.sshd.client.SshClient;
-import org.apache.sshd.client.session.ClientSession;
-import org.apache.sshd.common.keyprovider.SimpleGeneratorHostKeyProvider;
-import java.io.IOException;
-import static org.junit.jupiter.api.Assertions.*;
+<dependencies>
+    <!-- Spring Boot Web Dependency -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
 
-class SSHServerSimulatorTest {
+    <!-- GraphQL Spring Boot Starter -->
+    <dependency>
+        <groupId>com.graphql-java-kickstart</groupId>
+        <artifactId>graphql-spring-boot-starter</artifactId>
+        <version>11.1.0</version>
+    </dependency>
 
-    private SSHServerSimulator sshServer;
+    <!-- GraphiQL - In-browser IDE for exploring GraphQL -->
+    <dependency>
+        <groupId>com.graphql-java-kickstart</groupId>
+        <artifactId>graphiql-spring-boot-starter</artifactId>
+        <version>11.1.0</version>
+    </dependency>
 
-    @BeforeEach
-    void setUp() {
-        sshServer = new SSHServerSimulator();
+    <!-- GraphQL Java Tools - To simplify GraphQL schema development -->
+    <dependency>
+        <groupId>com.graphql-java-kickstart</groupId>
+        <artifactId>graphql-java-tools</artifactId>
+        <version>11.1.0</version>
+    </dependency>
+</dependencies>
+
+
+
+
+
+type Query {
+    devices(filter: ApiRequestInput): [Device]
+    uniqueModels: [String]
+    uniqueVendors: [String]
+    uniqueNetworks: [String]
+}
+
+type Mutation {
+    addDevice(input: DeviceInput): Device
+}
+
+input ApiRequestInput {
+    deviceName: String
+    model: String
+    loopback: String
+    vendor: String
+    network: String
+}
+
+input DeviceInput {
+    name: String!
+    model: String!
+    vendor: String!
+    network: String!
+}
+
+type Device {
+    id: ID!
+    name: String
+    model: String
+    vendor: String
+    network: String
+}
+
+type AppApiResponse {
+    status: Int
+    message: String
+    data: [Device]
+    error: String
+}
+
+
+
+
+
+
+package com.verizon.ucs.restapi.graphql;
+
+import com.verizon.ucs.restapi.dto.ApiRequest;
+import com.verizon.ucs.restapi.model.Device;
+import com.verizon.ucs.restapi.service.UCSPService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
+import com.coxautodev.graphql.tools.GraphQLMutationResolver;
+import com.coxautodev.graphql.tools.GraphQLQueryResolver;
+
+import java.util.List;
+
+@Component
+public class GraphQLResolver implements GraphQLQueryResolver, GraphQLMutationResolver {
+
+    @Autowired
+    private UCSPService uCSPService;
+
+    // Query Resolver for devices
+    public List<Device> devices(ApiRequestInput filter) {
+        ApiRequest apiRequest = new ApiRequest();
+        apiRequest.setDeviceName(filter.getDeviceName());
+        apiRequest.setModel(filter.getModel());
+        apiRequest.setLoopback(filter.getLoopback());
+        apiRequest.setVendor(filter.getVendor());
+        apiRequest.setNetwork(filter.getNetwork());
+        return uCSPService.searchDevices(apiRequest);
     }
 
-    @AfterEach
-    void tearDown() {
-        // Stop the server after each test
-        stopServer();
+    // Query Resolver for unique models
+    public List<String> uniqueModels() {
+        return uCSPService.getUniqueValues().get("models");
     }
 
-    @Test
-    void testStartServer() {
-        assertDoesNotThrow(() -> sshServer.startServer());
+    // Query Resolver for unique vendors
+    public List<String> uniqueVendors() {
+        return uCSPService.getUniqueValues().get("vendors");
     }
 
-    @Test
-    void testSSHServerConnection() {
-        startServer();
-
-        assertDoesNotThrow(() -> {
-            SshClient client = SshClient.setUpDefaultClient();
-            client.start();
-
-            try (ClientSession session = client.connect("Uname", "localhost", 22).verify().getSession()) {
-                session.addPasswordIdentity("Password");
-                session.auth().verify();
-                assertTrue(session.isAuthenticated());
-            } finally {
-                client.stop();
-            }
-        });
+    // Query Resolver for unique networks
+    public List<String> uniqueNetworks() {
+        return uCSPService.getUniqueValues().get("networks");
     }
 
-    private void startServer() {
-        try {
-            sshServer.start();
-        } catch (IOException e) {
-            fail("Failed to start the SSH server: " + e.getMessage());
-        }
+    // Mutation Resolver for adding a new device
+    public Device addDevice(DeviceInput input) {
+        Device newDevice = new Device();
+        newDevice.setName(input.getName());
+        newDevice.setModel(input.getModel());
+        newDevice.setVendor(input.getVendor());
+        newDevice.setNetwork(input.getNetwork());
+
+        return uCSPService.saveDevice(newDevice);
+    }
+}
+
+
+
+
+
+
+
+
+package com.verizon.ucs.restapi.graphql;
+
+public class ApiRequestInput {
+    private String deviceName;
+    private String model;
+    private String loopback;
+    private String vendor;
+    private String network;
+
+    // Getters and Setters
+    public String getDeviceName() {
+        return deviceName;
     }
 
-    private void stopServer() {
-        // Implement server stop logic here if available
+    public void setDeviceName(String deviceName) {
+        this.deviceName = deviceName;
+    }
+
+    public String getModel() {
+        return model;
+    }
+
+    public void setModel(String model) {
+        this.model = model;
+    }
+
+    public String getLoopback() {
+        return loopback;
+    }
+
+    public void setLoopback(String loopback) {
+        this.loopback = loopback;
+    }
+
+    public String getVendor() {
+        return vendor;
+    }
+
+    public void setVendor(String vendor) {
+        this.vendor = vendor;
+    }
+
+    public String getNetwork() {
+        return network;
+    }
+
+    public void setNetwork(String network) {
+        this.network = network;
+    }
+}
+
+public class DeviceInput {
+    private String name;
+    private String model;
+    private String vendor;
+    private String network;
+
+    // Getters and Setters
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getModel() {
+        return model;
+    }
+
+    public void setModel(String model) {
+        this.model = model;
+    }
+
+    public String getVendor() {
+        return vendor;
+    }
+
+    public void setVendor(String vendor) {
+        this.vendor = vendor;
+    }
+
+    public String getNetwork() {
+        return network;
+    }
+
+    public void setNetwork(String network) {
+        this.network = network;
+    }
+}
+
+
+
+
+
+
+
+package com.verizon.ucs.restapi.service;
+
+import com.verizon.ucs.restapi.model.Device;
+import com.verizon.ucs.restapi.dto.ApiRequest;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+import java.util.Map;
+
+@Service
+public class UCSPService {
+
+    // Existing methods...
+
+    public Device saveDevice(Device device) {
+        // Logic to save a new device
+        // This might involve saving the device to a database
+        return device;
     }
 }
