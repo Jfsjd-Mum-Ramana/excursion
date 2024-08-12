@@ -104,36 +104,34 @@ public class UCSPController {
 	
 }
 
+Collections: Integrate Fetch UCG Sources api into S3 Audit Search Page
 
+AC1. Given that I am on the S3 Audit Search Page,
 
-Collection: Integration of GraphQL with MS-RestAPI for Efficient Data Retrieval
+   When I view the 'ucg_sources' dropdown,
 
-AC1. Given that I am a developer,
-
-   When I send a GraphQL query to the ms-restapi APIs,
-
-   Then it should return the requested data based on the GraphQL query.
-
-
-
-AC2. Given that I have enabled GraphQL for ms-restapi APIs,
-
-   When I send a GraphQL query that specifies only the data I need,
-
-   Then the API should return only the requested data, reducing unnecessary data transfer.
+   Then it should be populated with data fetched from the 'Fetch UCG Sources data' API.
 
 
 
-AC3. Given that I have enabled GraphQL for ms-restapi APIs,
+AC2. Given that the 'ucg_sources' data is updated in the backend,
 
-   When I send a complex GraphQL query that involves multiple resources,
+   When I refresh the S3 Audit Search Page,
 
-   Then the API should return the data from all the involved resources in a single request, reducing the need for multiple round trips.
+   Then the 'ucg_sources' dropdown should be updated with the latest data.
 
 
 
-AC4. Given that I have enabled GraphQL for ms-restapi APIs,
+AC3. Given that I have selected a source from the 'ucg_sources' dropdown,
 
-   When I send a mutation request through GraphQL,
+   When I perform a search,
 
-   Then the API should perform the requested changes and return the updated data.
+   Then the search results should be filtered based on the selected source.
+
+
+
+AC4. Given that an error occurs while fetching the 'ucg_sources' data,
+
+   When I view the 'ucg_sources' dropdown,
+
+   Then an appropriate error message should be displayed.
