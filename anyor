@@ -1,114 +1,105 @@
-Feature: UCS Portal Device Management
-  As a user of the UCS Portal
-  I want to be able to search for devices and get unique models, vendors, and networks
-  So that I can effectively manage my devices
+package com.verizon.ucs.restapi.controllers;
 
-  Scenario: Get device details for a given device or IP or network or model or vendor
-    Given the UCS Portal API is available
-    When I search for devices with a valid search criteria
-    Then I should get a successful response with device details
+import java.util.ArrayList;
+import java.util.List;
 
-  Scenario: Get unique device models
-    Given the UCS Portal API is available
-    When I request unique device models
-    Then I should get a successful response with the list of unique models
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
-  Scenario: Get unique device vendors
-    Given the UCS Portal API is available
-    When I request unique device vendors
-    Then I should get a successful response with the list of unique vendors
+import com.verizon.ucs.restapi.dto.AppApiResponse;
+import com.verizon.ucs.restapi.dto.ApiRequest;
+import com.verizon.ucs.restapi.model.Device;
+import com.verizon.ucs.restapi.service.UCSPService;
 
-  Scenario: Get unique device networks
-    Given the UCS Portal API is available
-    When I request unique device networks
-    Then I should get a successful response with the list of unique networks
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 
+/**
+ * Controller interface for UCS Portal Application with JPA
+ */
+@RestController
+@RequestMapping("/portal")
+@CrossOrigin(origins = {"http://localhost:3000","http://localhost:8080"})
+public class UCSPController {
+	private static Logger logger = LoggerFactory.getLogger(UCSPController.class);
 
+	@Autowired
+	private UCSPService uCSPService;
 
+	@Operation(summary = "This operation is to get device details for the given device or ip or network or model or vendor")
+	@ApiResponses(value = { @ApiResponse(responseCode = "200", description = "OK.") })
+	@GetMapping("/get-devices")
+	public ResponseEntity<?> getDevices(@ModelAttribute ApiRequest apiRequest) {
 
-package com.verizon.ucs.restapi.steps;
+	    AppApiResponse apiResponse = new AppApiResponse();
+	    try {
+	        List<Device> devices = uCSPService.searchDevices(apiRequest);
+	        if (devices == null || devices.isEmpty()) {
+	            apiResponse.setStatus(devices == null ? 400 : 204);
+	            apiResponse.setMessage(devices == null ? "Invalid search criteria." : "No matching devices found.");
+	        } else {
+	            apiResponse.setMessage("Search request successful.");
+	            apiResponse.setStatus(200);
+	        }
+	        apiResponse.setData(devices);
+	        return new ResponseEntity<>(apiResponse, HttpStatus.OK);
 
-import static io.restassured.RestAssured.given;
-import static org.hamcrest.Matchers.*;
+	    } catch (Exception e) {
+	        String err = createErrorMessage("/get-devices",e);
+	        logger.error(err + " Detail Message: {}", e);
+	        apiResponse.setStatus(500);
+	        apiResponse.setMessage(e.getMessage());
+	        apiResponse.setError(err);
+	        return new ResponseEntity<>(apiResponse, HttpStatus.INTERNAL_SERVER_ERROR);
+	    }
+	}
+	@Operation(summary = "This operation is to get device details for the given device or IP or network or model or vendor")
+	@ApiResponses(value = { @ApiResponse(responseCode = "200", description = "OK.") })
+	@GetMapping("/unique/models")
+	public ResponseEntity<?> getUniqueModels() {
+		try {
+			List<String> models = uCSPService.getUniqueValues().get("models");
+			return ResponseEntity.ok(models);
+		} catch (Exception e) {
+			logger.error("Error fetching unique models: ", e);
+			return new ResponseEntity<>("Failed to fetch models", HttpStatus.INTERNAL_SERVER_ERROR);
+		}
+	}
 
-import io.cucumber.java.en.Given;
-import io.cucumber.java.en.When;
-import io.cucumber.java.en.Then;
-import io.restassured.response.Response;
+	@Operation(summary = "Fetch unique vendors for dropdown population")
+	@ApiResponses(value = { @ApiResponse(responseCode = "200", description = "OK.") })
+	@GetMapping("/unique/vendors")
+	public ResponseEntity<?> getUniqueVendors() {
+		try {
+			List<String> vendors = uCSPService.getUniqueValues().get("vendors");
+			return ResponseEntity.ok(vendors);
+		} catch (Exception e) {
+			logger.error("Error fetching unique vendors: ", e);
+			return new ResponseEntity<>("Failed to fetch vendors", HttpStatus.INTERNAL_SERVER_ERROR);
+		}
+	}
 
-public class UCSPControllerSteps {
-    private Response response;
-    private static final String BASE_URL = "http://localhost:8080/portal";
-
-    @Given("the UCS Portal API is available")
-    public void the_ucsp_portal_api_is_available() {
-        given().when().get(BASE_URL).then().statusCode(200);
-    }
-
-    @When("I search for devices with a valid search criteria")
-    public void i_search_for_devices_with_a_valid_search_criteria() {
-        response = given()
-                .param("deviceName", "validDeviceName")
-                .when().get(BASE_URL + "/get-devices");
-    }
-
-    @When("I request unique device models")
-    public void i_request_unique_device_models() {
-        response = given().when().get(BASE_URL + "/unique/models");
-    }
-
-    @When("I request unique device vendors")
-    public void i_request_unique_device_vendors() {
-        response = given().when().get(BASE_URL + "/unique/vendors");
-    }
-
-    @When("I request unique device networks")
-    public void i_request_unique_device_networks() {
-        response = given().when().get(BASE_URL + "/unique/networks");
-    }
-
-    @Then("I should get a successful response with device details")
-    public void i_should_get_a_successful_response_with_device_details() {
-        response.then().statusCode(200)
-                .body("status", equalTo(200))
-                .body("message", equalTo("Search request successful."));
-    }
-
-    @Then("I should get a successful response with the list of unique models")
-    public void i_should_get_a_successful_response_with_the_list_of_unique_models() {
-        response.then().statusCode(200)
-                .body("size()", greaterThan(0));
-    }
-
-    @Then("I should get a successful response with the list of unique vendors")
-    public void i_should_get_a_successful_response_with_the_list_of_unique_vendors() {
-        response.then().statusCode(200)
-                .body("size()", greaterThan(0));
-    }
-
-    @Then("I should get a successful response with the list of unique networks")
-    public void i_should_get_a_successful_response_with_the_list_of_unique_networks() {
-        response.then().statusCode(200)
-                .body("size()", greaterThan(0));
-    }
-}
-
-
-
-
-
-package com.verizon.ucs.restapi.runners;
-
-import org.junit.platform.suite.api.ConfigurationParameter;
-import org.junit.platform.suite.api.IncludeEngines;
-import org.junit.platform.suite.api.SelectClasspathResource;
-import org.junit.platform.suite.api.Suite;
-
-import static io.cucumber.junit.platform.engine.Constants.GLUE_PROPERTY_NAME;
-
-@Suite
-@IncludeEngines("cucumber")
-@SelectClasspathResource("com/verizon/ucs/restapi/features")
-@ConfigurationParameter(key = GLUE_PROPERTY_NAME, value = "com.verizon.ucs.restapi.steps")
-public class CucumberTest {
+	@Operation(summary = "Fetch unique networks for dropdown population")
+	@ApiResponses(value = { @ApiResponse(responseCode = "200", description = "OK.") })
+	@GetMapping("/unique/networks")
+	public ResponseEntity<?> getUniqueNetworks() {
+		try {
+			List<String> networks = uCSPService.getUniqueValues().get("networks");
+			return ResponseEntity.ok(networks);
+		} catch (Exception e) {
+			logger.error("Error fetching unique networks: ", e);
+			return new ResponseEntity<>("Failed to fetch networks", HttpStatus.INTERNAL_SERVER_ERROR);
+		}
+	}
+	private String createErrorMessage(String endpoint,Exception e) {
+	    return " Error: " + e.getMessage() + " In Class: " + e.getStackTrace()[0].getClassName() 
+	            + " In Method: " + e.getStackTrace()[0].getMethodName() + " at line number: "
+	            + e.getStackTrace()[0].getLineNumber() +" at endpoint: "+endpoint;
+	}
+	
 }
