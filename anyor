@@ -1,137 +1,223 @@
-package com.verizon.ucs.restapi.controllers;
+package com.verizon.ucs.restapi.service;
 
-import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import com.verizon.ucs.restapi.dto.ApiRequest;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import com.verizon.ucs.restapi.model.Device;
+import com.verizon.ucs.restapi.repository.UCSPRepository;
+
+@Service
+public class UCSPService {
+
+	@Autowired
+	private UCSPRepository uCSPRepository;
+
+	public List<String> getUniqueUCGSources(){
+		return uCSPRepository.findDistinctUCGSources();
+	}
+	public List<String> getUniqueUCGProjects(){
+		return uCSPRepository.findDistinctProjects();
+	}
+
+
+	public List<Device> searchDevices(ApiRequest params) {
+		if (params.getDeviceName() != null && !params.getDeviceName().isEmpty()) {
+			return uCSPRepository.findByDeviceNameIgnoreCase(params.getDeviceName());
+		}
+		if (params.getLoopback() != null && !params.getLoopback().isEmpty()) {
+			return uCSPRepository.findByLoopbackIgnoreCase(params.getLoopback());
+		}
+		if (params.getNetwork() != null && !params.getNetwork().isEmpty()) {
+			return uCSPRepository.findByNetworkIgnoreCase(params.getNetwork());
+		}
+		if (params.getVendor() != null && !params.getVendor().isEmpty()) {
+			return uCSPRepository.findByVendorIgnoreCase(params.getVendor());
+		}
+		if (params.getModel() != null && !params.getModel().isEmpty()) {
+			return uCSPRepository.findByModelIgnoreCase(params.getModel());
+		}
+		return null;
+	}
+
+	public Map<String, List<String>> getUniqueValues() {
+		Map<String, List<String>> uniqueValues = new HashMap<>();
+		uniqueValues.put("models", uCSPRepository.findDistinctModels());
+		uniqueValues.put("vendors", uCSPRepository.findDistinctVendors());
+		uniqueValues.put("networks", uCSPRepository.findDistinctNetworks());
+		return uniqueValues;
+	}
+
+	public List<Device> getAllDevices() {
+		return uCSPRepository.findAll();
+	}
+}
+
+
+
+package com.verizon.ucs.restapi.repository;
+
 import java.util.List;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
-import com.verizon.ucs.restapi.dto.AppApiResponse;
+import com.verizon.ucs.restapi.model.Device;
+
+public interface UCSPRepository extends JpaRepository<Device, String> {
+
+	List<Device> findByDeviceNameIgnoreCase(String deviceName);
+	List<Device> findByLoopbackIgnoreCase(String loopback);
+	List<Device> findByNetworkIgnoreCase(String network);
+	List<Device> findByVendorIgnoreCase(String vendor);
+	List<Device> findByModelIgnoreCase(String model);
+
+	@Query("SELECT DISTINCT d.model FROM Device d")
+	List<String> findDistinctModels();
+
+	@Query("SELECT DISTINCT d.vendor FROM Device d")
+	List<String> findDistinctVendors();
+
+	@Query("SELECT DISTINCT d.network FROM Device d")
+	List<String> findDistinctNetworks();
+
+	@Query(nativeQuery=true, value="SELECT DISTINCT u.ucg_source FROM ucsp_ucgsources u")
+	List<String> findDistinctUCGSources();
+	@Query(nativeQuery=true, value="SELECT DISTINCT u.name FROM ucsp_projects u")
+	List<String> findDistinctProjects();
+
+
+	/*List<Device> findByDeviceNameIgnoreCaseOrLoopbackIgnoreCaseOrNetworkIgnoreCaseOrVendorIgnoreCaseOrModelIgnoreCase(
+			String deviceName, String loopback, String network, String vendor, String model);
+
+	List<Device> findByDeviceNameContainingIgnoreCaseOrLoopbackContainingIgnoreCaseOrNetworkContainingIgnoreCaseOrVendorContainingIgnoreCaseOrModelContainingIgnoreCase(
+			String deviceName, String loopback, String network, String vendor, String model);
+
+	 * @Query("SELECT d FROM Device d WHERE " +
+	 * "LOWER(d.name) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
+	 * "LOWER(d.ip) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
+	 * "LOWER(d.network) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
+	 * "LOWER(d.vendor) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
+	 * "LOWER(d.model) LIKE LOWER(CONCAT('%', :searchTerm, '%'))") List<Device>
+	 * search(@Param("searchTerm") String searchTerm);
+	 */
+}
+
+
+package com.verizon.ucs.restapi.controllers;
+
 import com.verizon.ucs.restapi.dto.ApiRequest;
 import com.verizon.ucs.restapi.model.Device;
 import com.verizon.ucs.restapi.service.UCSPService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.graphql.data.method.annotation.Argument;
+import org.springframework.graphql.data.method.annotation.QueryMapping;
+import org.springframework.graphql.data.method.annotation.SchemaMapping;
+import org.springframework.stereotype.Controller;
 
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import java.util.List;
 
 /**
  * Controller interface for UCS Portal Application with JPA
  */
-@RestController
-@RequestMapping("/portal")
-@CrossOrigin(origins = {"http://localhost:3000","http://localhost:8080"})
+@Controller
 public class UCSPController {
-	private static Logger logger = LoggerFactory.getLogger(UCSPController.class);
+    private static Logger logger = LoggerFactory.getLogger(UCSPController.class);
 
-	@Autowired
-	private UCSPService uCSPService;
+    @Autowired
+    private UCSPService uCSPService;
 
-	@Operation(summary = "This operation is to get device details for the given device or ip or network or model or vendor")
-	@ApiResponses(value = { @ApiResponse(responseCode = "200", description = "OK.") })
-	@GetMapping("/get-devices")
-	public ResponseEntity<?> getDevices(@ModelAttribute ApiRequest apiRequest) {
+    @QueryMapping(value = "searchDevices")
+    public List<Device> getFilteredDevices(@Argument ApiRequest apiRequest) {
+        List<Device> devices = uCSPService.searchDevices(apiRequest);
+        return devices;
+    }
 
-	    AppApiResponse apiResponse = new AppApiResponse();
-	    try {
-	        List<Device> devices = uCSPService.searchDevices(apiRequest);
-	        if (devices == null || devices.isEmpty()) {
-	            apiResponse.setStatus(devices == null ? 400 : 204);
-	            apiResponse.setMessage(devices == null ? "Invalid search criteria." : "No matching devices found.");
-	        } else {
-	            apiResponse.setMessage("Search request successful.");
-	            apiResponse.setStatus(200);
-	        }
-	        apiResponse.setData(devices);
-	        return new ResponseEntity<>(apiResponse, HttpStatus.OK);
+    @QueryMapping(value = "allDevices")
+    public List<Device> getAllDevices() {
+        return uCSPService.getAllDevices();
+    }
 
-	    } catch (Exception e) {
-	        String err = createErrorMessage("/get-devices",e);
-	        logger.error(err + " Detail Message: {}", e);
-	        apiResponse.setStatus(500);
-	        apiResponse.setMessage(e.getMessage());
-	        apiResponse.setError(err);
-	        return new ResponseEntity<>(apiResponse, HttpStatus.INTERNAL_SERVER_ERROR);
-	    }
-	}
-	@Operation(summary = "This operation is to get device details for the given device or IP or network or model or vendor")
-	@ApiResponses(value = { @ApiResponse(responseCode = "200", description = "OK.") })
-	@GetMapping("/unique/models")
-	public ResponseEntity<?> getUniqueModels() {
-		try {
-			List<String> models = uCSPService.getUniqueValues().get("models");
-			return ResponseEntity.ok(models);
-		} catch (Exception e) {
-			logger.error("Error fetching unique models: ", e);
-			return new ResponseEntity<>("Failed to fetch models", HttpStatus.INTERNAL_SERVER_ERROR);
-		}
-	}
+    @SchemaMapping(typeName = "Query", value = "uniqueModels")
+    public List<String> getUniqueModels() {
+        List<String> models = uCSPService.getUniqueValues().get("models");
+        return models;
+    }
 
-	@Operation(summary = "Fetch unique vendors for dropdown population")
-	@ApiResponses(value = { @ApiResponse(responseCode = "200", description = "OK.") })
-	@GetMapping("/unique/vendors")
-	public ResponseEntity<?> getUniqueVendors() {
-		try {
-			List<String> vendors = uCSPService.getUniqueValues().get("vendors");
-			return ResponseEntity.ok(vendors);
-		} catch (Exception e) {
-			logger.error("Error fetching unique vendors: ", e);
-			return new ResponseEntity<>("Failed to fetch vendors", HttpStatus.INTERNAL_SERVER_ERROR);
-		}
-	}
 
-	@Operation(summary = "Fetch unique networks for dropdown population")
-	@ApiResponses(value = { @ApiResponse(responseCode = "200", description = "OK.") })
-	@GetMapping("/unique/networks")
-	public ResponseEntity<?> getUniqueNetworks() {
-		try {
-			List<String> networks = uCSPService.getUniqueValues().get("networks");
-			return ResponseEntity.ok(networks);
-		} catch (Exception e) {
-			logger.error("Error fetching unique networks: ", e);
-			return new ResponseEntity<>("Failed to fetch networks", HttpStatus.INTERNAL_SERVER_ERROR);
-		}
-	}
-	private String createErrorMessage(String endpoint,Exception e) {
-	    return " Error: " + e.getMessage() + " In Class: " + e.getStackTrace()[0].getClassName() 
-	            + " In Method: " + e.getStackTrace()[0].getMethodName() + " at line number: "
-	            + e.getStackTrace()[0].getLineNumber() +" at endpoint: "+endpoint;
-	}
-	
+    @QueryMapping(value = "uniqueVendors")
+    public List<String> getUniqueVendors() {
+        List<String> vendors = uCSPService.getUniqueValues().get("vendors");
+        return vendors;
+    }
+
+    @QueryMapping
+    public List<String> uniqueNetworks() {
+        List<String> networks = uCSPService.getUniqueValues().get("networks");
+        return networks;
+    }
+
+    @QueryMapping(value = "uniqueUCGSources")
+    public List<String> getUniqueUCGSources() {
+        List<String> ucgSources = uCSPService.getUniqueUCGSources();
+        return ucgSources;
+    }
+
+    @QueryMapping(value = "uniqueUCGProjects")
+    public List<String> getUniqueUCGProjects() {
+        List<String> ucgProjects = uCSPService.getUniqueUCGProjects();
+        return ucgProjects;
+    }
 }
 
-Collections: Integrate Fetch UCG Sources api into S3 Audit Search Page
+type Query {
+    allDevices: [Device]
+    searchDevices(apiRequest: ApiRequest): [Device]
+    uniqueModels: [String]
+    uniqueNetworks: [String]
+    uniqueUCGSources: [String]
+    uniqueVendors: [String]
+    uniqueProjects: [String]
+}
 
-AC1. Given that I am on the S3 Audit Search Page,
+type Device {
+    deviceName: ID!
+    model: String
+    loopback: String
+    status: String
+    vendor: String
+    routerType: String
+    pollerCluster: String
+    pollerInterval: Int
+    network: String
+    lastUpdate: String
+    physIp: String
+}
 
-   When I view the 'ucg_sources' dropdown,
-
-   Then it should be populated with data fetched from the 'Fetch UCG Sources data' API.
-
-
-
-AC2. Given that the 'ucg_sources' data is updated in the backend,
-
-   When I refresh the S3 Audit Search Page,
-
-   Then the 'ucg_sources' dropdown should be updated with the latest data.
+input ApiRequest {
+    deviceName: String
+    model: String
+    loopback: String
+    vendor: String
+    network: String
+}
 
 
+AC1: Develop GraphQL API Given I have access to the PostgreSQL database When I develop the GraphQL API using ms-rest Then the API should be able to fetch unique UCG Sources related to the selected project from the PostgreSQL database
 
-AC3. Given that I have selected a source from the 'ucg_sources' dropdown,
+AC2: Test GraphQL API Given the GraphQL API has been developed When I send a request to the API with the appropriate GraphQL query and a project parameter Then the API should return the unique UCG Sources related to the selected project from the PostgreSQL database
 
-   When I perform a search,
+AC3: Handle database errors Given the GraphQL API is making a request to the PostgreSQL database When there is an error in fetching data from the database Then the API should return an appropriate error message
 
-   Then the search results should be filtered based on the selected source.
+AC4: Handle invalid GraphQL queries Given the GraphQL API has been developed When I send a request to the API with an invalid GraphQL query Then the API should return an appropriate error message
 
+AC5: API Integration with Reporting metrics page Given the GraphQL API has been developed and is running When the Reporting metrics page makes a request to the API with a selected project Then the unique UCG Sources related to the selected project fetched from the PostgreSQL database should be used to populate the UCG Sources dropdown on the Reporting metrics page.
 
-
-AC4. Given that an error occurs while fetching the 'ucg_sources' data,
-
-   When I view the 'ucg_sources' dropdown,
-
-   Then an appropriate error message should be displayed.
+It will accept the above acceptance criteria and the table name will have the columns id and name 
