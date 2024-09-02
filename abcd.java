@@ -1,83 +1,60 @@
-package com.verizon.ucs.restapi.dto;
-
-public class AppApiResponse {
-	
-	private int status = 200;
-	private String message = "";
-    private Object data;
-    private Object error;
-    
-	public int getStatus() {
-		return status;
-	}
-	public void setStatus(int status) {
-		this.status = status;
-	}
-	public String getMessage() {
-		return message;
-	}
-	public void setMessage(String message) {
-		this.message = message;
-	}
-	public Object getData() {
-		return data;
-	}
-	public void setData(Object data) {
-		this.data = data;
-	}
-	public Object getError() {
-		return error;
-	}
-	public void setError(Object error) {
-		this.error = error;
-	}
-    
-    
+type Query {
+    allDevices: [Device]
+    searchDevices(apiRequest: ApiRequest): [Device]
+    uniqueModels: [String]
+    uniqueNetworks: [String]
+    dailyTrends(trendsRequest: TrendsRequest): [Trends]
+    uniqueUCGSources: [String]
+    uniqueUCGSourcesByProject(projectId: ID): [String]
+    uniqueVendors: [String]
+    uniqueProjects: [Project]
 }
 
-
-
-package com.verizon.ucs.restapi.dto;
-
-public class ApiRequest {
-	
-	    private String deviceName;
-	    private String model;
-	    private String loopback;
-	    private String vendor;
-	    private String network;
-	    
-		public String getDeviceName() {
-			return deviceName;
-		}
-		public void setDeviceName(String deviceName) {
-			this.deviceName = deviceName;
-		}
-		public String getModel() {
-			return model;
-		}
-		public void setModel(String model) {
-			this.model = model;
-		}
-		public String getLoopback() {
-			return loopback;
-		}
-		public void setLoopback(String loopback) {
-			this.loopback = loopback;
-		}
-		public String getVendor() {
-			return vendor;
-		}
-		public void setVendor(String vendor) {
-			this.vendor = vendor;
-		}
-		public String getNetwork() {
-			return network;
-		}
-		public void setNetwork(String network) {
-			this.network = network;
-		}
-	    
-	    
-
+type Project {
+    id: ID
+    name: String
 }
+@QueryMapping(value = "uniqueUCGSourcesByProject")
+public List<String> getUniqueUCGSourcesByProject(@Argument Long projectId) {
+    try {
+        return uCSPService.getUniqueUCGSourcesByProject(projectId);
+    } catch (DataAccessException e) {
+        throw new GraphQLException("Database error occurred while fetching UCG Sources: " + e.getMessage());
+    } catch (RuntimeException e) {
+        throw new GraphQLException("Error: " + e.getMessage());
+    } catch (Exception e) {
+        throw new GraphQLException("An unexpected error occurred: " + e.getMessage());
+    }
+}
+@Controller
+public class UCSPController {
+
+    @Autowired
+    private UCSPService uCSPService;
+
+    @QueryMapping(value = "uniqueUCGSourcesByProject")
+    public List<String> getUniqueUCGSourcesByProject(@Argument Long projectId) {
+        try {
+            return uCSPService.getUniqueUCGSourcesByProject(projectId);
+        } catch (RuntimeException e) {
+            throw new GraphQLException(e.getMessage());
+        }
+    }
+}
+@Service
+public class UCSPService {
+
+    @Autowired
+    private UCSPRepository uCSPRepository;
+
+    // Fetch unique UCG Sources by Project ID
+    public List<String> getUniqueUCGSourcesByProject(Long projectId) {
+        List<String> ucgSources = uCSPRepository.findDistinctUCGSourcesByProject(projectId);
+        if (ucgSources == null || ucgSources.isEmpty()) {
+            throw new RuntimeException("No UCG Sources found for the given project ID");
+        }
+        return ucgSources;
+    }
+}
+@Query(nativeQuery = true, value = "SELECT DISTINCT u.ucgsource FROM ucsp_ucgsources u WHERE u.project_id = :projectId")
+List<String> findDistinctUCGSourcesByProject(@Param("projectId") Long projectId);
