@@ -1,159 +1,9 @@
-package com.verizon.cucumber;
-
-import com.verizon.ucs.restapi.controllers.UCSPController;
-import com.verizon.ucs.restapi.dto.ApiRequest;
-import com.verizon.ucs.restapi.model.Device;
-import com.verizon.ucs.restapi.model.UcspProject;
-import com.verizon.ucs.restapi.service.UCSPService;
-import io.cucumber.java.en.Given;
-import io.cucumber.java.en.Then;
-import io.cucumber.java.en.When;
-import org.springframework.beans.factory.annotation.Autowired;
-
-import java.util.List;
-import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.*;
-
-public class UCSPControllerCucumberStepDef {
-
-    @Autowired
-    private UCSPService ucspService;
-
-    @Autowired
-    private UCSPController ucspController;
-
-    private ApiRequest apiRequest;
-    private List<Device> devices;
-    private List<String> stringList;
-    private List<UcspProject> projectList;
-    private List<String> ugcSources;
-    private List<String> ugcProjects;
-
-    @Given("I have a device name {string}")
-    public void iHaveADeviceName(String deviceName) {
-        apiRequest = new ApiRequest();
-        apiRequest.setDeviceName(deviceName);
-    }
-
-    @When("I search for devices by device name")
-    public void iSearchForDevicesByDeviceName() {
-        devices = ucspService.searchDevices(apiRequest);
-    }
-
-    @Then("I should get a list of devices with the name {string}")
-    public void iShouldGetAListOfDevicesWithTheName(String deviceName) {
-        assertTrue(devices.stream().allMatch(device -> device.getDeviceName().equalsIgnoreCase(deviceName)));
-    }
-
-    @When("I request all devices")
-    public void iRequestAllDevices() {
-        devices = ucspService.getAllDevices();
-    }
-
-    @Then("I should get a list of all devices")
-    public void iShouldGetAListOfAllDevices() {
-        assertNotNull(devices);
-        assertTrue(devices.size() > 0);
-    }
-
-    @When("I request unique models")
-    public void iRequestUniqueModels() {
-        stringList = ucspService.getUniqueValues().get("models");
-    }
-
-    @Then("I should get a list of unique device models")
-    public void iShouldGetAListOfUniqueDeviceModels() {
-        assertNotNull(stringList);
-        assertTrue(stringList.size() > 0);
-    }
-
-    @Given("I have a device vendor {string}")
-    public void iHaveADeviceVendor(String vendor) {
-        apiRequest = new ApiRequest();
-        apiRequest.setVendor(vendor);
-    }
-
-    @When("I search for devices by device vendor")
-    public void iSearchForDevicesByDeviceVendor() {
-        devices = ucspService.searchDevices(apiRequest);
-    }
-
-    @Then("I should get a list of devices with the vendor {string}")
-    public void iShouldGetAListOfDevicesWithTheVendor(String vendor) {
-        assertTrue(devices.stream().allMatch(device -> device.getVendor().equalsIgnoreCase(vendor)));
-    }
-
-    @Given("I have a device network {string}")
-    public void iHaveADeviceNetwork(String network) {
-        apiRequest = new ApiRequest();
-        apiRequest.setNetwork(network);
-    }
-
-    @When("I search for devices by device network")
-    public void iSearchForDevicesByDeviceNetwork() {
-        devices = ucspService.searchDevices(apiRequest);
-    }
-
-    @Then("I should get a list of devices with the network {string}")
-    public void iShouldGetAListOfDevicesWithTheNetwork(String network) {
-        assertTrue(devices.stream().allMatch(device -> device.getNetwork().equalsIgnoreCase(network)));
-    }
-
-    @When("I request unique vendors")
-    public void iRequestUniqueVendors() {
-        stringList = ucspService.getUniqueValues().get("vendors");
-    }
-
-    @Then("I should get a list of unique vendors")
-    public void iShouldGetAListOfUniqueVendors() {
-        assertNotNull(stringList);
-        assertTrue(stringList.size() > 0);
-    }
-
-    @When("I request unique networks")
-    public void iRequestUniqueNetworks() {
-        stringList = ucspService.getUniqueValues().get("networks");
-    }
-
-    @Then("I should get a list of unique networks")
-    public void iShouldGetAListOfUniqueNetworks() {
-        assertNotNull(stringList);
-        assertTrue(stringList.size() > 0);
-    }
-
-    @When("I request unique UCG sources by project ID {long}")
-    public void iRequestUniqueUCGSourcesByProjectID(long projectId) {
-        ugcSources = ucspService.getUniqueUCGSourcesByProject(projectId);
-    }
-
-    @Then("I should get a list of unique UCG sources")
-    public void iShouldGetAListOfUniqueUCGSources() {
-        assertNotNull(ugcSources);
-        assertTrue(ugcSources.size() > 0);
-    }
-
-    @When("I request unique UCSP projects")
-    public void iRequestUniqueUCSPProjects() {
-        projectList = ucspService.getUniqueProjects();
-    }
-
-    @Then("I should get a list of unique UCSP projects")
-    public void iShouldGetAListOfUniqueUCSPProjects() {
-        assertNotNull(projectList);
-        assertTrue(projectList.size() > 0);
-    }
-}
-
-
-
-
-
 package com.verizon.ucs.restapi.controllers.test;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.verizon.ucs.restapi.controllers.UCSPController;
 import com.verizon.ucs.restapi.dto.ApiRequest;
+import com.verizon.ucs.restapi.dto.AppApiResponse;
 import com.verizon.ucs.restapi.dto.TrendsRequest;
 import com.verizon.ucs.restapi.model.Device;
 import com.verizon.ucs.restapi.model.Trends;
@@ -164,6 +14,8 @@ import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 
 import java.util.*;
 
@@ -227,7 +79,6 @@ class UCSPControllerTest {
             assertEquals("Test Exception", e.getMessage());
         }
     }
-
     @Test
     void getalldevicesTest() {
         List<Device> devices = new ArrayList<>();
@@ -255,6 +106,7 @@ class UCSPControllerTest {
         ApiRequest apirequest = new ApiRequest();
         when(ucspservice.searchDevices(apirequest)).thenReturn(null);
     }
+
 
     @Test
     void getdevicesTest_Exception() throws Exception {
@@ -294,11 +146,9 @@ class UCSPControllerTest {
 
     @Test
     void getuniqueucgsourcesTest() {
-        Long projectId = 1L; // Use a valid project ID for the test
         List<String> ucgsources = new ArrayList<>();
-        when(ucspservice.getUniqueUCGSourcesByProject(projectId)).thenReturn(ucgsources);
-        
-        List<String> result = ucspcontroller.getUniqueUCGSourcesByProject(projectId);
+        when(ucspservice.getUniqueUCGSources()).thenReturn(ucgsources);
+        List<String> result = ucspcontroller.getUniqueUCGSources();
         assertEquals(ucgsources, result);
     }
 
@@ -312,19 +162,110 @@ class UCSPControllerTest {
     }
 
     @Test
-    void getUniqueUCSPProjectTest() {
-        List<UcspProject> ucspProjects = new ArrayList<>();
-        when(ucspservice.getUniqueProjects()).thenReturn(ucspProjects);
-        List<UcspProject> result = ucspcontroller.getUniqueProjects();
-        assertEquals(ucspProjects, result);
+    public void testGetUniqueUcgProjects() {
+        List<Map<String, Object>> ucgProjects = new ArrayList<>();
+        when(ucspservice.getUniqueUCGProjects()).thenReturn(ucgProjects);
+        List<Map<String, Object>> result = ucspcontroller.getUniqueUCGProjects();
+        assertEquals(ucgProjects, result);
+        void getUniqueUCSPProjectTest () {
+            List<UcspProject> ucspProjects = new ArrayList<>();
+            when(ucspservice.getUniqueProjects()).thenReturn(ucspProjects);
+            List<UcspProject> result = ucspcontroller.getUniqueProjects();
+            assertEquals(ucspProjects, result);
+        }
+
+        // Helper method to convert Object to JSON String
+        private static String asJsonString ( final Object obj){
+            try {
+                return new ObjectMapper().writeValueAsString(obj);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
+    }
+}
+
+
+again shopwing lot of error resole this class use this controller class:
+
+package com.verizon.ucs.restapi.controllers;
+
+import com.verizon.ucs.restapi.dto.ApiRequest;
+import com.verizon.ucs.restapi.dto.TrendsRequest;
+import com.verizon.ucs.restapi.model.Device;
+import com.verizon.ucs.restapi.model.Trends;
+import com.verizon.ucs.restapi.model.UcspProject;
+import com.verizon.ucs.restapi.service.UCSPService;
+import graphql.GraphQLException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataAccessException;
+import org.springframework.graphql.data.method.annotation.Argument;
+import org.springframework.graphql.data.method.annotation.QueryMapping;
+import org.springframework.graphql.data.method.annotation.SchemaMapping;
+import org.springframework.stereotype.Controller;
+
+import java.util.List;
+
+/**
+ * Controller interface for UCS Portal Application with JPA
+ */
+@Controller
+public class UCSPController {
+    private static final Logger logger = LoggerFactory.getLogger(UCSPController.class);
+
+    @Autowired
+    private UCSPService uCSPService;
+
+    @QueryMapping(value = "searchDevices")
+    public List<Device> getFilteredDevices(@Argument ApiRequest apiRequest) {
+        return uCSPService.searchDevices(apiRequest);
     }
 
-    // Helper method to convert Object to JSON String
-    private static String asJsonString(final Object obj) {
+    @QueryMapping(value = "allDevices")
+    public List<Device> getAllDevices() {
+        return uCSPService.getAllDevices();
+    }
+
+    @SchemaMapping(typeName = "Query", value = "uniqueModels")
+    public List<String> getUniqueModels() {
+        return uCSPService.getUniqueValues().get("models");
+    }
+
+    @QueryMapping(value = "uniqueVendors")
+    public List<String> getUniqueVendors() {
+        return uCSPService.getUniqueValues().get("vendors");
+    }
+
+    @QueryMapping(value = "dailyTrends")
+    public List<Trends> getTrends(@Argument TrendsRequest trendsRequest) {
+        return uCSPService.getDailyTrends(trendsRequest);
+    }
+
+    @QueryMapping
+    public List<String> uniqueNetworks() {
+        return uCSPService.getUniqueValues().get("networks");
+    }
+
+    @QueryMapping(value = "uniqueUCSPProjects")
+    public List<UcspProject> getUniqueProjects() {
+        return uCSPService.getUniqueProjects();
+    }
+
+    @QueryMapping(value = "uniqueUCGSourcesByProject")
+    public List<String> getUniqueUCGSourcesByProject(@Argument Long projectId) {
         try {
-            return new ObjectMapper().writeValueAsString(obj);
+            return uCSPService.getUniqueUCGSourcesByProject(projectId);
+        } catch (DataAccessException e) {
+            logger.error("Database error occurred while fetching UCG Sources", e);
+            throw new GraphQLException("Database error: Unable to fetch UCG Sources for project ID: " + projectId);
+        } catch (RuntimeException e) {
+            logger.error("Runtime error occurred", e);
+            throw new GraphQLException("Runtime error: " + e.getMessage());
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            logger.error("Unexpected error occurred", e);
+            throw new GraphQLException("Unexpected error: " + e.getMessage());
         }
     }
 }
