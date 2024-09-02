@@ -1,48 +1,250 @@
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.Rule;
-import org.junit.rules.TemporaryFolder;
+package com.verizon.ucs.restapi.controllers;
 
-import java.io.*;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.util.zip.GZIPOutputStream;
+import com.verizon.ucs.restapi.dto.ApiRequest;
+import com.verizon.ucs.restapi.dto.TrendsRequest;
+import com.verizon.ucs.restapi.model.Device;
+import com.verizon.ucs.restapi.model.Trends;
+import com.verizon.ucs.restapi.model.UcspProject;
+import com.verizon.ucs.restapi.service.UCSPService;
+import graphql.GraphQLException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataAccessException;
+import org.springframework.graphql.data.method.annotation.Argument;
+import org.springframework.graphql.data.method.annotation.QueryMapping;
+import org.springframework.graphql.data.method.annotation.SchemaMapping;
+import org.springframework.stereotype.Controller;
 
-import static org.junit.Assert.*;
+import java.util.List;
+import java.util.Map;
 
-public class ZipUtilTest {
+/**
+ * Controller interface for UCS Portal Application with JPA
+ */
+@Controller
+public class UCSPController {
+    private static Logger logger = LoggerFactory.getLogger(UCSPController.class);
 
-    @Rule
-    public TemporaryFolder temporaryFolder = new TemporaryFolder();
+    @Autowired
+    private UCSPService uCSPService;
 
-    private File inputDir;
-    private File outputDir;
-    private File gzFile;
-    private String sampleContent = "This is a sample content for GZ file.";
+    @QueryMapping(value = "searchDevices")
+    public List<Device> getFilteredDevices(@Argument ApiRequest apiRequest) {
+        List<Device> devices = uCSPService.searchDevices(apiRequest);
+        return devices;
+    }
 
-    @Before
-    public void setUp() throws IOException {
-        inputDir = temporaryFolder.newFolder("input");
-        outputDir = temporaryFolder.newFolder("output");
-        gzFile = new File(inputDir, "sample.gz");
+    @QueryMapping(value = "allDevices")
+    public List<Device> getAllDevices() {
+        return uCSPService.getAllDevices();
+    }
 
-        // Create a sample .gz file
-        try (GZIPOutputStream gos = new GZIPOutputStream(new FileOutputStream(gzFile))) {
-            gos.write(sampleContent.getBytes());
+    @SchemaMapping(typeName = "Query", value = "uniqueModels")
+    public List<String> getUniqueModels() {
+        List<String> models = uCSPService.getUniqueValues().get("models");
+        return models;
+    }
+
+
+    @QueryMapping(value = "uniqueVendors")
+    public List<String> getUniqueVendors() {
+        List<String> vendors = uCSPService.getUniqueValues().get("vendors");
+        return vendors;
+    }
+    @QueryMapping(value = "dailyTrends")
+    public List<Trends> getTrends(@Argument TrendsRequest trendsRequest) {
+        List<Trends> trends = uCSPService.getDailyTrends(trendsRequest);
+        return trends;
+    }
+    @QueryMapping
+    public List<String> uniqueNetworks() {
+        List<String> networks = uCSPService.getUniqueValues().get("networks");
+        return networks;
+    }
+
+
+    @QueryMapping(value = "uniqueUCSPProjects")
+    public List<UcspProject> getUniqueProjects() {
+        List<UcspProject> ucgProjects = uCSPService.getUniqueProjects();
+        return ucgProjects;
+    }
+    @QueryMapping(value = "uniqueUCGSourcesByProject")
+    public List<String> getUniqueUCGSourcesByProject(@Argument Long projectId) {
+        try {
+            return uCSPService.getUniqueUCGSourcesByProject(projectId);
+        } catch (DataAccessException e) {
+            throw new GraphQLException("Database error occurred while fetching UCG Sources: " + e.getMessage());
+        } catch (RuntimeException e) {
+            throw new GraphQLException("Error: " + e.getMessage());
+        } catch (Exception e) {
+            throw new GraphQLException("An unexpected error occurred: " + e.getMessage());
         }
     }
-
-    @Test
-    public void testUnzipGZ() throws IOException {
-        // Call the method to be tested
-        ZipUtil.unzipGZ(gzFile.getAbsolutePath(), outputDir.getAbsolutePath());
-
-        // Verify the output file
-        File outputFile = new File(outputDir, "sample"); // The output file should be named "sample" without .gz
-        assertTrue(outputFile.exists());
-
-        // Verify the content of the output file
-        String content = new String(Files.readAllBytes(Paths.get(outputFile.getAbsolutePath())));
-        assertEquals(sampleContent, content);
-    }
 }
+
+package com.verizon.ucs.restapi.service;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import com.verizon.ucs.restapi.dto.ApiRequest;
+import com.verizon.ucs.restapi.dto.TrendsRequest;
+import com.verizon.ucs.restapi.model.Trends;
+import com.verizon.ucs.restapi.repository.UCSPTrendsRepository;
+import com.verizon.ucs.restapi.model.UcspProject;
+import com.verizon.ucs.restapi.repository.UCSPProjectsRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import com.verizon.ucs.restapi.model.Device;
+import com.verizon.ucs.restapi.repository.UCSPRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+@Service
+public class UCSPService {
+
+	private static final Logger logger = LoggerFactory.getLogger(UCSPService.class);
+
+	@Autowired
+	private UCSPRepository uCSPRepository;
+	@Autowired
+	private UCSPTrendsRepository uCSPTrendsRepository;
+
+	@Autowired
+	UCSPProjectsRepository ucspProjectsRepository;
+
+	public List<String> getUniqueUCGSourcesByProject(Long projectId) {
+		List<String> ucgSources = uCSPRepository.findDistinctUCGSourcesByProject(projectId);
+		if (ucgSources == null || ucgSources.isEmpty()) {
+			throw new RuntimeException("No UCG Sources found for the given project ID");
+		}
+		return ucgSources;
+	}
+
+	public List<Map<String, Object>> getUniqueUCGProjects() {
+		return uCSPRepository.findDistinctProjects();
+	}
+
+	public List<Device> searchDevices(ApiRequest params) {
+		if (params.getDeviceName() != null && !params.getDeviceName().isEmpty()) {
+			return uCSPRepository.findByDeviceNameIgnoreCase(params.getDeviceName());
+		}
+		if (params.getLoopback() != null && !params.getLoopback().isEmpty()) {
+			return uCSPRepository.findByLoopbackIgnoreCase(params.getLoopback());
+		}
+		if (params.getNetwork() != null && !params.getNetwork().isEmpty()) {
+			return uCSPRepository.findByNetworkIgnoreCase(params.getNetwork());
+		}
+		if (params.getVendor() != null && !params.getVendor().isEmpty()) {
+			return uCSPRepository.findByVendorIgnoreCase(params.getVendor());
+		}
+		if (params.getModel() != null && !params.getModel().isEmpty()) {
+			return uCSPRepository.findByModelIgnoreCase(params.getModel());
+		}
+		return null;
+	}
+	public List<Trends> getDailyTrends(TrendsRequest params) {
+		return uCSPTrendsRepository.findDailyTrends(params.getUcgSourceID(), params.getFromDate(), params.getToDate());
+	}
+
+	public Map<String, List<String>> getUniqueValues() {
+		Map<String, List<String>> uniqueValues = new HashMap<>();
+		uniqueValues.put("models", uCSPRepository.findDistinctModels());
+		uniqueValues.put("vendors", uCSPRepository.findDistinctVendors());
+		uniqueValues.put("networks", uCSPRepository.findDistinctNetworks());
+		return uniqueValues;
+	}
+
+	public List<Device> getAllDevices() {
+		return uCSPRepository.findAll();
+	}
+
+	public List<UcspProject> getUniqueProjects(){
+		return ucspProjectsRepository.findUniqueProjects();
+	}
+
+}
+
+
+package com.verizon.ucs.restapi.repository;
+
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
+
+import com.verizon.ucs.restapi.model.Trends;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+import com.verizon.ucs.restapi.model.Device;
+
+public interface UCSPRepository extends JpaRepository<Device, String> {
+
+	List<Device> findByDeviceNameIgnoreCase(String deviceName);
+	List<Device> findByLoopbackIgnoreCase(String loopback);
+	List<Device> findByNetworkIgnoreCase(String network);
+	List<Device> findByVendorIgnoreCase(String vendor);
+	List<Device> findByModelIgnoreCase(String model);
+
+	@Query("SELECT DISTINCT d.model FROM Device d")
+	List<String> findDistinctModels();
+
+	@Query("SELECT DISTINCT d.vendor FROM Device d")
+	List<String> findDistinctVendors();
+
+	@Query("SELECT DISTINCT d.network FROM Device d")
+	List<String> findDistinctNetworks();
+
+	@Query(nativeQuery = true, value = "SELECT DISTINCT u.ucgsource FROM ucsp_ucgsources u WHERE u.project_id = :projectId")
+	List<String> findDistinctUCGSourcesByProject(@Param("projectId") Long projectId);
+
+	@Query(nativeQuery=true, value="SELECT id, name FROM ucsp_projects")
+	List<Map<String, Object>> findDistinctProjects();
+
+
+	/*List<Device> findByDeviceNameIgnoreCaseOrLoopbackIgnoreCaseOrNetworkIgnoreCaseOrVendorIgnoreCaseOrModelIgnoreCase(
+			String deviceName, String loopback, String network, String vendor, String model);
+
+	List<Device> findByDeviceNameContainingIgnoreCaseOrLoopbackContainingIgnoreCaseOrNetworkContainingIgnoreCaseOrVendorContainingIgnoreCaseOrModelContainingIgnoreCase(
+			String deviceName, String loopback, String network, String vendor, String model);
+
+	 * @Query("SELECT d FROM Device d WHERE " +
+	 * "LOWER(d.name) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
+	 * "LOWER(d.ip) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
+	 * "LOWER(d.network) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
+	 * "LOWER(d.vendor) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
+	 * "LOWER(d.model) LIKE LOWER(CONCAT('%', :searchTerm, '%'))") List<Device>
+	 * search(@Param("searchTerm") String searchTerm);
+	 */
+}
+
+
+{
+  "errors": [
+    {
+      "message": "INTERNAL_ERROR for 4b19efb8-195d-b7e2-dcc3-1e1ad4f42517",
+      "locations": [
+        {
+          "line": 2,
+          "column": 3
+        }
+      ],
+      "path": [
+        "uniqueUCGSourcesByProject"
+      ],
+      "extensions": {
+        "classification": "INTERNAL_ERROR"
+      }
+    }
+  ],
+  "data": {
+    "uniqueUCGSourcesByProject": null
+  }
+}
+
+
+I have changed like this but showing the above error in graphql how to resolve this?
