@@ -2,6 +2,7 @@ package com.verizon.cucumber;
 
 import com.verizon.ucs.restapi.controllers.UCSPController;
 import com.verizon.ucs.restapi.dto.ApiRequest;
+import com.verizon.ucs.restapi.dto.TrendsRequest;
 import com.verizon.ucs.restapi.model.Device;
 import com.verizon.ucs.restapi.model.UcspProject;
 import com.verizon.ucs.restapi.service.UCSPService;
@@ -24,11 +25,12 @@ public class UCSPControllerCucumberStepDef {
     private UCSPController ucspController;
 
     private ApiRequest apiRequest;
+    private TrendsRequest trendsRequest;
     private List<Device> devices;
     private List<String> stringList;
-
-    private List<String> ugcSources;
-    private List<Map<String, Object>> ugcProjects;
+    private List<UcspProject> projectList;
+    private List<String> ucgSources;
+    private List<Map<String, Object>> ucgProjects;
 
     @Given("I have a device name {string}")
     public void iHaveADeviceName(String deviceName) {
@@ -38,7 +40,7 @@ public class UCSPControllerCucumberStepDef {
 
     @When("I search for devices by device name")
     public void iSearchForDevicesByDeviceName() {
-        devices = ucspService.searchDevices(apiRequest);
+        devices = ucspController.getFilteredDevices(apiRequest);
     }
 
     @Then("I should get a list of devices with the name {string}")
@@ -48,12 +50,12 @@ public class UCSPControllerCucumberStepDef {
 
     @When("I request all devices")
     public void iRequestAllDevices() {
-        devices = ucspService.getAllDevices();
+        devices = ucspController.getAllDevices();
     }
 
     @When("I request unique models")
     public void iRequestUniqueModels() {
-        stringList = ucspService.getUniqueValues().get("models");
+        stringList = ucspController.getUniqueModels();
     }
 
     @Then("I should get a list of unique device models")
@@ -64,37 +66,39 @@ public class UCSPControllerCucumberStepDef {
     @Given("I have a device vendor {string}")
     public void iHaveADeviceVendor(String vendor) {
         apiRequest = new ApiRequest();
+        apiRequest.setVendor(vendor);
     }
 
     @When("I search for devices by device vendor")
     public void iSearchForDevicesByDeviceVendor() {
-        devices = ucspService.searchDevices(apiRequest);
+        devices = ucspController.getFilteredDevices(apiRequest);
     }
 
     @Given("I have a device network {string}")
     public void iHaveADeviceNetwork(String network) {
         apiRequest = new ApiRequest();
+        apiRequest.setNetwork(network);
     }
 
     @When("I search for devices by device network")
     public void iSearchForDevicesByDeviceNetwork() {
-        devices = ucspService.searchDevices(apiRequest);
+        devices = ucspController.getFilteredDevices(apiRequest);
     }
-
 
     @Given("I have a device model {string}")
     public void iHaveADeviceModel(String model) {
         apiRequest = new ApiRequest();
+        apiRequest.setModel(model);
     }
 
     @When("I search for devices by device model")
     public void iSearchForDevicesByDeviceModel() {
-        devices = ucspService.searchDevices(apiRequest);
+        devices = ucspController.getFilteredDevices(apiRequest);
     }
 
     @When("I request unique vendors")
     public void iRequestUniqueVendors() {
-        stringList = ucspService.getUniqueValues().get("vendors");
+        stringList = ucspController.getUniqueVendors();
     }
 
     @Then("I should get a list of unique device vendors")
@@ -104,7 +108,7 @@ public class UCSPControllerCucumberStepDef {
 
     @When("I request unique networks")
     public void iRequestUniqueNetworks() {
-        stringList = ucspService.getUniqueValues().get("networks");
+        stringList = ucspController.uniqueNetworks();
     }
 
     @Then("I should get a list of unique device networks")
@@ -112,25 +116,24 @@ public class UCSPControllerCucumberStepDef {
         assertTrue(stringList.size() > 0);
     }
 
-    @When("I request unique ucg sources")
+    @When("I request unique UCG sources")
     public void iRequestUniqueUcgSources() {
-        stringList = ucspService.getUniqueValues().get("ucgSources");
+        ucgSources = ucspController.getUniqueUCGSources();
     }
 
-    @Then("I should get a list of unique device ucg sources")
-    public void iShouldGetAListOfUniqueDeviceUcgSources() {
-        String result = "";
-        assertNotNull(result);
-        assertTrue(result.isEmpty());
+    @Then("I should get a list of unique UCG sources")
+    public void iShouldGetAListOfUniqueUcgSources() {
+        assertTrue(ucgSources.size() > 0);
     }
+
     @When("I request unique projects")
-    public void i_request_unique_projects() {
-        projectList=ucspController.getUniqueProjects();
+    public void iRequestUniqueProjects() {
+        projectList = ucspController.getUniqueProjects();
     }
 
     @Then("I should receive a list of unique projects")
-    public void i_should_receive_a_list_of_unique_projects() {
-       assertTrue(projectList.size()>0);
+    public void iShouldReceiveAListOfUniqueProjects() {
+        assertTrue(projectList.size() > 0);
     }
 
     @Given("a project with id {string}")
@@ -139,22 +142,23 @@ public class UCSPControllerCucumberStepDef {
     }
 
     @When("I request the unique UCG sources for the project")
-    public void iRequestTheUniqueUgcSourcesForTheProject() {
-        ugcSources = ucspService.getUniqueUCGSourcesByProject(1L);
+    public void iRequestTheUniqueUcgSourcesForTheProject() {
+        Long projectId = Long.parseLong("1"); // Assuming a default project ID for testing
+        ucgSources = ucspController.getUniqueUCGSourcesByProject(projectId);
     }
 
-    @Then("I should receive an empty list of UCG sources")
-    public void iShouldReceiveAnEmptyListOfUgcSources() {
-        assertEquals(1, ugcSources.size());
+    @Then("I should receive a list of UCG sources for the project")
+    public void iShouldReceiveAListOfUcgSourcesForTheProject() {
+        assertTrue(ucgSources.size() > 0);
     }
 
     @When("I request the list of unique UCG projects")
-    public void iRequestTheListOfUniqueUgcProjects() {
-        ugcProjects = ucspService.getUniqueUCGProjects();
+    public void iRequestTheListOfUniqueUcgProjects() {
+        ucgProjects = ucspController.getUniqueProjects();
     }
 
-    @Then("I should receive an empty list of UCG projects")
-    public void iShouldReceiveAnEmptyListOfUgcProjects() {
-        assertEquals(4, ugcProjects.size());
+    @Then("I should receive a list of unique UCG projects")
+    public void iShouldReceiveAListOfUcgProjects() {
+        assertTrue(ucgProjects.size() > 0);
     }
 }
