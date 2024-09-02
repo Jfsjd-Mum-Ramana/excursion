@@ -1,45 +1,10 @@
-type Query {
-    allDevices: [Device]
-    searchDevices(apiRequest: ApiRequest): [Device]
-    uniqueModels: [String]
-    uniqueNetworks: [String]
-    uniqueUCGSources: [String]
-    uniqueUCGSourcesByProject(projectId: Long): [String]  # For fetching UCG sources by project ID
-    uniqueVendors: [String]
-    uniqueProjects: [String]
-}
-
-type Device {
-    deviceName: ID!
-    model: String
-    loopback: String
-    status: String
-    vendor: String
-    routerType: String
-    pollerCluster: String
-    pollerInterval: Int
-    network: String
-    lastUpdate: String
-    physIp: String
-}
-
-input ApiRequest {
-    deviceName: String
-    model: String
-    loopback: String
-    vendor: String
-    network: String
-}
-
-
-
-
-
-
 package com.verizon.ucs.restapi.controllers;
 
 import com.verizon.ucs.restapi.dto.ApiRequest;
+import com.verizon.ucs.restapi.dto.TrendsRequest;
 import com.verizon.ucs.restapi.model.Device;
+import com.verizon.ucs.restapi.model.Trends;
+import com.verizon.ucs.restapi.model.UcspProject;
 import com.verizon.ucs.restapi.service.UCSPService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,6 +15,7 @@ import org.springframework.graphql.data.method.annotation.SchemaMapping;
 import org.springframework.stereotype.Controller;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Controller interface for UCS Portal Application with JPA
@@ -78,12 +44,17 @@ public class UCSPController {
         return models;
     }
 
+
     @QueryMapping(value = "uniqueVendors")
     public List<String> getUniqueVendors() {
         List<String> vendors = uCSPService.getUniqueValues().get("vendors");
         return vendors;
     }
-
+    @QueryMapping(value = "dailyTrends")
+    public List<Trends> getTrends(@Argument TrendsRequest trendsRequest) {
+        List<Trends> trends = uCSPService.getDailyTrends(trendsRequest);
+        return trends;
+    }
     @QueryMapping
     public List<String> uniqueNetworks() {
         List<String> networks = uCSPService.getUniqueValues().get("networks");
@@ -96,22 +67,63 @@ public class UCSPController {
         return ucgSources;
     }
 
+    @QueryMapping(value = "uniqueUCSPProjects")
+    public List<UcspProject> getUniqueProjects() {
+        List<UcspProject> ucgProjects = uCSPService.getUniqueProjects();
+        return ucgProjects;
+    }
     @QueryMapping(value = "uniqueUCGSourcesByProject")
     public List<String> getUniqueUCGSourcesByProject(@Argument Long projectId) {
         return uCSPService.getUniqueUCGSourcesByProject(projectId);
     }
 
-    @QueryMapping(value = "uniqueUCGProjects")
-    public List<String> getUniqueUCGProjects() {
-        List<String> ucgProjects = uCSPService.getUniqueUCGProjects();
-        return ucgProjects;
+    @QueryMapping(value = "uniqueProjects")
+    public List<Map<String, Object>> getUniqueUCGProjects() {
+        return uCSPService.getUniqueUCGProjects();
     }
+
 }
 
+package com.verizon.ucs.restapi.model;
 
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.Id;
+import javax.persistence.Table;
 
+@Entity
+@Table(name="ucsp_projects")
+public class UcspProject {
+    @Id
+    @Column(name = "id", nullable = false)
+    private Integer id;
+    @Column(name = "name")
+    private String name;
 
+    public int getId() {
+        return id;
+    }
 
+    public void setId(int id) {
+        this.id = id;
+    }
+
+    @Override
+    public String toString() {
+        return "UcspProject{" +
+                "id=" + id +
+                ", name='" + name + '\'' +
+                '}';
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+}
 
 package com.verizon.ucs.restapi.service;
 
@@ -120,6 +132,11 @@ import java.util.List;
 import java.util.Map;
 
 import com.verizon.ucs.restapi.dto.ApiRequest;
+import com.verizon.ucs.restapi.dto.TrendsRequest;
+import com.verizon.ucs.restapi.model.Trends;
+import com.verizon.ucs.restapi.repository.UCSPTrendsRepository;
+import com.verizon.ucs.restapi.model.UcspProject;
+import com.verizon.ucs.restapi.repository.UCSPProjectsRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -131,68 +148,78 @@ import org.slf4j.LoggerFactory;
 @Service
 public class UCSPService {
 
-    private static final Logger logger = LoggerFactory.getLogger(UCSPService.class);
+	private static final Logger logger = LoggerFactory.getLogger(UCSPService.class);
 
-    @Autowired
-    private UCSPRepository uCSPRepository;
+	@Autowired
+	private UCSPRepository uCSPRepository;
+	@Autowired
+	private UCSPTrendsRepository uCSPTrendsRepository;
 
-    public List<String> getUniqueUCGSources() {
-        return uCSPRepository.findDistinctUCGSourcesByProject(null);
-    }
+	@Autowired
+	UCSPProjectsRepository ucspProjectsRepository;
 
-    public List<String> getUniqueUCGSourcesByProject(Long projectId) {
-        logger.debug("Fetching UCG Sources for project ID: " + projectId);
-        List<String> ucgSources = uCSPRepository.findDistinctUCGSourcesByProject(projectId);
-        logger.debug("Fetched UCG Sources: " + ucgSources);
-        return ucgSources;
-    }
+	public List<String> getUniqueUCGSources() {
+		return uCSPRepository.findDistinctUCGSourcesByProject();
+	}
 
-    public List<String> getUniqueUCGProjects() {
-        return uCSPRepository.findDistinctProjects();
-    }
+	public List<String> getUniqueUCGSourcesByProject(Long projectId) {
+		logger.debug("Fetching UCG Sources for project ID: " + projectId);
+		List<String> ucgSources = uCSPRepository.findDistinctUCGSourcesByProject(projectId);
+		logger.debug("Fetched UCG Sources: " + ucgSources);
+		return ucgSources;
+	}
 
-    public List<Device> searchDevices(ApiRequest params) {
-        if (params.getDeviceName() != null && !params.getDeviceName().isEmpty()) {
-            return uCSPRepository.findByDeviceNameIgnoreCase(params.getDeviceName());
-        }
-        if (params.getLoopback() != null && !params.getLoopback().isEmpty()) {
-            return uCSPRepository.findByLoopbackIgnoreCase(params.getLoopback());
-        }
-        if (params.getNetwork() != null && !params.getNetwork().isEmpty()) {
-            return uCSPRepository.findByNetworkIgnoreCase(params.getNetwork());
-        }
-        if (params.getVendor() != null && !params.getVendor().isEmpty()) {
-            return uCSPRepository.findByVendorIgnoreCase(params.getVendor());
-        }
-        if (params.getModel() != null && !params.getModel().isEmpty()) {
-            return uCSPRepository.findByModelIgnoreCase(params.getModel());
-        }
-        return null;
-    }
+	public List<Map<String, Object>> getUniqueUCGProjects() {
+		return uCSPRepository.findDistinctProjects();
+	}
 
-    public Map<String, List<String>> getUniqueValues() {
-        Map<String, List<String>> uniqueValues = new HashMap<>();
-        uniqueValues.put("models", uCSPRepository.findDistinctModels());
-        uniqueValues.put("vendors", uCSPRepository.findDistinctVendors());
-        uniqueValues.put("networks", uCSPRepository.findDistinctNetworks());
-        return uniqueValues;
-    }
+	public List<Device> searchDevices(ApiRequest params) {
+		if (params.getDeviceName() != null && !params.getDeviceName().isEmpty()) {
+			return uCSPRepository.findByDeviceNameIgnoreCase(params.getDeviceName());
+		}
+		if (params.getLoopback() != null && !params.getLoopback().isEmpty()) {
+			return uCSPRepository.findByLoopbackIgnoreCase(params.getLoopback());
+		}
+		if (params.getNetwork() != null && !params.getNetwork().isEmpty()) {
+			return uCSPRepository.findByNetworkIgnoreCase(params.getNetwork());
+		}
+		if (params.getVendor() != null && !params.getVendor().isEmpty()) {
+			return uCSPRepository.findByVendorIgnoreCase(params.getVendor());
+		}
+		if (params.getModel() != null && !params.getModel().isEmpty()) {
+			return uCSPRepository.findByModelIgnoreCase(params.getModel());
+		}
+		return null;
+	}
+	public List<Trends> getDailyTrends(TrendsRequest params) {
+		return uCSPTrendsRepository.findDailyTrends(params.getUcgSourceID(), params.getFromDate(), params.getToDate());
+	}
 
-    public List<Device> getAllDevices() {
-        return uCSPRepository.findAll();
-    }
+	public Map<String, List<String>> getUniqueValues() {
+		Map<String, List<String>> uniqueValues = new HashMap<>();
+		uniqueValues.put("models", uCSPRepository.findDistinctModels());
+		uniqueValues.put("vendors", uCSPRepository.findDistinctVendors());
+		uniqueValues.put("networks", uCSPRepository.findDistinctNetworks());
+		return uniqueValues;
+	}
+
+	public List<Device> getAllDevices() {
+		return uCSPRepository.findAll();
+	}
+
+	public List<UcspProject> getUniqueProjects(){
+		return ucspProjectsRepository.findUniqueProjects();
+	}
+
 }
-
-
-
-
-
-
 
 package com.verizon.ucs.restapi.repository;
 
+import java.util.Date;
 import java.util.List;
+import java.util.Map;
 
+import com.verizon.ucs.restapi.model.Trends;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -201,24 +228,112 @@ import com.verizon.ucs.restapi.model.Device;
 
 public interface UCSPRepository extends JpaRepository<Device, String> {
 
-    List<Device> findByDeviceNameIgnoreCase(String deviceName);
-    List<Device> findByLoopbackIgnoreCase(String loopback);
-    List<Device> findByNetworkIgnoreCase(String network);
-    List<Device> findByVendorIgnoreCase(String vendor);
-    List<Device> findByModelIgnoreCase(String model);
+	List<Device> findByDeviceNameIgnoreCase(String deviceName);
+	List<Device> findByLoopbackIgnoreCase(String loopback);
+	List<Device> findByNetworkIgnoreCase(String network);
+	List<Device> findByVendorIgnoreCase(String vendor);
+	List<Device> findByModelIgnoreCase(String model);
 
-    @Query("SELECT DISTINCT d.model FROM Device d")
-    List<String> findDistinctModels();
+	@Query("SELECT DISTINCT d.model FROM Device d")
+	List<String> findDistinctModels();
 
-    @Query("SELECT DISTINCT d.vendor FROM Device d")
-    List<String> findDistinctVendors();
+	@Query("SELECT DISTINCT d.vendor FROM Device d")
+	List<String> findDistinctVendors();
 
-    @Query("SELECT DISTINCT d.network FROM Device d")
-    List<String> findDistinctNetworks();
+	@Query("SELECT DISTINCT d.network FROM Device d")
+	List<String> findDistinctNetworks();
 
-    @Query(nativeQuery=true, value="SELECT DISTINCT u.ucg_source FROM ucsp_ucgsources u WHERE u.project_id = :projectId")
-    List<String> findDistinctUCGSourcesByProject(@Param("projectId") Long projectId);
+	@Query(nativeQuery=true, value="SELECT DISTINCT u.ucgsource FROM ucsp_ucgsources u WHERE u.project_id = :projectId")
+	List<String> findDistinctUCGSourcesByProject(@Param("projectId") Long projectId);
 
-    @Query(nativeQuery=true, value="SELECT DISTINCT u.name FROM ucsp_projects u")
-    List<String> findDistinctProjects();
+	@Query(nativeQuery=true, value="SELECT id, name FROM ucsp_projects")
+	List<Map<String, Object>> findDistinctProjects();
+
+
+	/*List<Device> findByDeviceNameIgnoreCaseOrLoopbackIgnoreCaseOrNetworkIgnoreCaseOrVendorIgnoreCaseOrModelIgnoreCase(
+			String deviceName, String loopback, String network, String vendor, String model);
+
+	List<Device> findByDeviceNameContainingIgnoreCaseOrLoopbackContainingIgnoreCaseOrNetworkContainingIgnoreCaseOrVendorContainingIgnoreCaseOrModelContainingIgnoreCase(
+			String deviceName, String loopback, String network, String vendor, String model);
+
+	 * @Query("SELECT d FROM Device d WHERE " +
+	 * "LOWER(d.name) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
+	 * "LOWER(d.ip) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
+	 * "LOWER(d.network) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
+	 * "LOWER(d.vendor) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
+	 * "LOWER(d.model) LIKE LOWER(CONCAT('%', :searchTerm, '%'))") List<Device>
+	 * search(@Param("searchTerm") String searchTerm);
+	 */
 }
+
+type Query {
+    allDevices: [Device]
+    searchDevices(apiRequest: ApiRequest): [Device]
+    uniqueModels: [String]
+    uniqueNetworks: [String]
+    dailyTrends(trendsRequest: TrendsRequest): [Trends]
+    uniqueUCGSources: [String]
+    uniqueUCGSourcesByProject(projectId: ID): [String]
+    uniqueVendors: [String]
+    uniqueProjects: [Project]
+}
+
+type Project {
+    id: ID
+    name: String
+}
+
+
+type Device {
+    deviceName: ID!
+    model: String
+    loopback: String
+    status: String
+    vendor: String
+    routerType: String
+    pollerCluster: String
+    pollerInterval: Int
+    network: String
+    lastUpdate: String
+    physIp: String
+}
+type UcspProject{
+    id:ID!
+    name:String!
+}
+
+
+input TrendsRequest {
+    ucgSourceID: Int
+    fromDate: String
+    toDate: String
+}
+
+type Trends {
+    id: ID!
+    ucgSourceID: Int
+    collectionDate: String
+    sizeOfFilesKB: Int
+    numberOfFiles: Int
+}
+
+input ApiRequest {
+    deviceName: String
+    model: String
+    loopback: String
+    vendor: String
+    network: String
+}
+
+
+The above classes I need to follow this acceptence criteria here in the code there is some query errors in repository or other classes resolve this here the acceptence criteria:
+
+AC1: Develop GraphQL API Given I have access to the PostgreSQL database When I develop the GraphQL API using ms-rest Then the API should be able to fetch unique UCG Sources related to the selected project from the PostgreSQL database
+
+AC2: Test GraphQL API Given the GraphQL API has been developed When I send a request to the API with the appropriate GraphQL query and a project parameter Then the API should return the unique UCG Sources related to the selected project from the PostgreSQL database
+
+AC3: Handle database errors Given the GraphQL API is making a request to the PostgreSQL database When there is an error in fetching data from the database Then the API should return an appropriate error message
+
+AC4: Handle invalid GraphQL queries Given the GraphQL API has been developed When I send a request to the API with an invalid GraphQL query Then the API should return an appropriate error message
+
+AC5: API Integration with Reporting metrics page Given the GraphQL API has been developed and is running When the Reporting metrics page makes a request to the API with a selected project Then the unique UCG Sources related to the selected project fetched from the PostgreSQL database should be used to populate the UCG Sources dropdown on the Reporting metrics page.
