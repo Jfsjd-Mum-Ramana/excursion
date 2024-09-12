@@ -1,83 +1,146 @@
-package com.verizon.ucs.s3helper.service;
+package com.verizon.ucs.s3helper.repository;
 
-import com.verizon.ucs.s3helper.model.Trends;
 import com.verizon.ucs.s3helper.model.UcspProject;
-import com.verizon.ucs.s3helper.model.UcspUcgSource;
-import com.verizon.ucs.s3helper.repository.UCSPProjectsRepository;
-import com.verizon.ucs.s3helper.repository.UCSPTrendsRepository;
-import com.verizon.ucs.s3helper.repository.UCSPUcgSourceRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
-import software.amazon.awssdk.services.s3.model.S3Object;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import java.util.List;
 
-import java.text.SimpleDateFormat;
-import java.util.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+@DataJpaTest
+public class UCSPProjectsRepositoryTest {
 
-public class S3HelperTest {
-
-    @Mock
-    private S3Client s3Client;
-
-    @Mock
+    @Autowired
     private UCSPProjectsRepository projectsRepository;
-
-    @Mock
-    private UCSPUcgSourceRepository ucgSourceRepository;
-
-    @Mock
-    private UCSPTrendsRepository trendsRepository;
-
-    @InjectMocks
-    private S3Helper s3Helper;
 
     @BeforeEach
     public void setup() {
-        MockitoAnnotations.openMocks(this);  // Initialize mocks before each test
+        // Create and save mock project data
+        UcspProject project1 = new UcspProject();
+        project1.setId(1);  // Assume setId is present
+        project1.setName("Project 1");
+        projectsRepository.save(project1);
+
+        UcspProject project2 = new UcspProject();
+        project2.setId(2);  
+        project2.setName("Project 2");
+        projectsRepository.save(project2);
     }
 
     @Test
-    public void testFetchAndStoreAuditData() throws Exception {
-        // Mock repositories
-        UcspProject project = new UcspProject();
-        project.setId(1); // Set an ID to avoid null pointer issues
-        project.setS3PrimaryPath("test-project-path/");
+    public void testFindUniqueProjects() {
+        List<UcspProject> uniqueProjects = projectsRepository.findUniqueProjects();
+        assertThat(uniqueProjects).isNotEmpty();
+        assertThat(uniqueProjects.size()).isEqualTo(2); // There should be 2 unique projects
+    }
+}
 
-        UcspUcgSource ucgSource = new UcspUcgSource();
-        ucgSource.setId(1);
-        ucgSource.setS3PrimaryPath("test-source-path/");
-        ucgSource.setProjectId(1);
 
-        // Mock findAll() to return a list with one project and one source
-        when(projectsRepository.findAll()).thenReturn(Collections.singletonList(project));
-        when(ucgSourceRepository.findAll()).thenReturn(Collections.singletonList(ucgSource));
 
-        // Mock S3Client response
-        ListObjectsV2Response response = ListObjectsV2Response.builder()
-                .contents(Collections.singletonList(S3Object.builder().key("test-project-path/test-source-path/2023-01-01/file.txt").size(1024L).build()))
-                .build();
-        when(s3Client.listObjectsV2(any())).thenReturn(response);
+package com.verizon.ucs.s3helper.repository;
 
-        // Call the method
-        s3Helper.fetchAndStoreAuditData("bucket-name");
+import com.verizon.ucs.s3helper.model.UcspUcgSource;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import static org.assertj.core.api.Assertions.assertThat;
 
-        // Verify that the save method is called on the trends repository
-        verify(trendsRepository, times(1)).save(any(Trends.class));
+@DataJpaTest
+public class UCSPUcgSourceRepositoryTest {
+
+    @Autowired
+    private UCSPUcgSourceRepository ucgSourceRepository;
+
+    @BeforeEach
+    public void setup() {
+        // Insert some mock UcspUcgSource data
+        UcspUcgSource source1 = new UcspUcgSource();
+        source1.setId(1);
+        source1.setProjectId(1);
+        ucgSourceRepository.save(source1);
+        
+        UcspUcgSource source2 = new UcspUcgSource();
+        source2.setId(2);
+        source2.setProjectId(2);
+        ucgSourceRepository.save(source2);
     }
 
     @Test
-    public void testDeleteOldTrendsData() {
-        // Call the method
-        s3Helper.deleteOldTrendsData();
+    public void testFindAllUcgSources() {
+        List<UcspUcgSource> sources = ucgSourceRepository.findAll();
+        assertThat(sources).isNotEmpty();
+        assertThat(sources.size()).isEqualTo(2); // There should be 2 ucg sources
+    }
+}
 
-        // Verify delete method is invoked with any Date parameter
-        verify(trendsRepository).deleteByCollectionDateBefore(any(Date.class));
+
+
+package com.verizon.ucs.s3helper.repository;
+
+import com.verizon.ucs.s3helper.model.Trends;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+@DataJpaTest
+public class UCSPTrendsRepositoryTest {
+
+    @Autowired
+    private UCSPTrendsRepository trendsRepository;
+
+    private int ucgSourceId = 1;
+    private Date collectionDate;
+
+    @BeforeEach
+    public void setup() throws Exception {
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+        collectionDate = dateFormat.parse("2023-01-01");
+
+        // Insert some mock data into the repository
+        Trends trend = new Trends();
+        trend.setUcgSourceID(ucgSourceId);
+        trend.setCollectionDate(collectionDate);
+        trend.setNumberOfFiles(5);
+        trend.setSizeOfFilesKB(1024);
+        trendsRepository.save(trend);
+    }
+
+    @Test
+    public void testFindDailyTrends() throws Exception {
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+        Date fromDate = dateFormat.parse("2023-01-01");
+        Date toDate = dateFormat.parse("2023-01-02");
+
+        List<Trends> trends = trendsRepository.findDailyTrends(ucgSourceId, fromDate, toDate);
+        assertThat(trends).isNotEmpty();
+        assertThat(trends.size()).isEqualTo(1);  // Expect 1 trend to be found
+    }
+
+    @Test
+    public void testExistsByUcgSourceIDAndCollectionDate() {
+        boolean exists = trendsRepository.existsByUcgSourceIDAndCollectionDate(ucgSourceId, collectionDate);
+        assertThat(exists).isTrue();  // The trend with ucgSourceId and collectionDate exists
+    }
+
+    @Test
+    public void testDeleteByCollectionDateBefore() throws Exception {
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+        Date thresholdDate = dateFormat.parse("2022-12-31");
+
+        trendsRepository.deleteByCollectionDateBefore(thresholdDate);
+
+        // Ensure the trend is still there because it's after the threshold date
+        List<Trends> remainingTrends = trendsRepository.findAll();
+        assertThat(remainingTrends.size()).isEqualTo(1);
     }
 }
