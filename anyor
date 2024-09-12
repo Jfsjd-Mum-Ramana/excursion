@@ -1,101 +1,236 @@
-@Repository
-public interface UCSPRepository extends JpaRepository<Device, String> {
+package com.verizon.ucs.s3helper.repository;
 
-    // Other methods ...
+import com.verizon.ucs.s3helper.model.UcspUcgSource;
+import org.springframework.data.jpa.repository.JpaRepository;
 
-    // Fix query to fetch unique UCG sources for a specific project ID
-    @Query(nativeQuery = true, value = "SELECT DISTINCT u.ucg_source FROM ucsp_ucgsources u JOIN ucsp_projects p ON u.project_id = p.id WHERE p.id = :projectId")
-    List<String> findDistinctUCGSourcesByProject(@Param("projectId") Long projectId);
+public interface UCSPUcgSourceRepository extends JpaRepository<UcspUcgSource, Integer> {
+}
 
-    // Other methods ...
+package com.verizon.ucs.s3helper.repository;
+
+import com.verizon.ucs.s3helper.model.UcspProject;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+
+import java.util.List;
+
+public interface UCSPProjectsRepository extends JpaRepository<UcspProject, Integer> {
+    @Query(nativeQuery=true,value="SELECT DISTINCT u.name,u.id FROM ucsp_projects u")
+    List<UcspProject> findUniqueProjects();
+
+}
+
+package com.verizon.ucs.s3helper.repository;
+
+import com.verizon.ucs.s3helper.model.Trends;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.Date;
+import java.util.List;
+
+
+public interface UCSPTrendsRepository extends JpaRepository<Trends, Long> {
+
+    @Query("SELECT t FROM Trends t WHERE t.ucgSourceID = ?1 AND t.collectionDate BETWEEN ?2 AND ?3")
+    List<Trends> findDailyTrends( int ucgSourceId,  Date fromDate,  Date toDate);
+
+    boolean existsByUcgSourceIDAndCollectionDate(int ucgSourceID, Date collectionDate);
+
+    void deleteByCollectionDateBefore(Date thresholdDate);
+
 }
 
 
+package com.verizon.ucs.s3helper.scheduler;
 
-@Service
-public class UCSPService {
+import com.verizon.ucs.s3helper.service.S3Helper;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
 
-    // Other service methods ...
+@Component
+public class Scheduler {
+
+    @Value("${aws.s3.bucket-name}")
+    private String bucketName;
 
     @Autowired
-    private UCSPRepository uCSPRepository;
+    private S3Helper auditService;
 
-    public List<String> getUniqueUCGSourcesByProject(Long projectId) {
-        try {
-            List<String> ucgSources = uCSPRepository.findDistinctUCGSourcesByProject(projectId);
-            if (ucgSources == null || ucgSources.isEmpty()) {
-                throw new RuntimeException("No UCG Sources found for the given project ID: " + projectId);
+    @Scheduled(fixedRate = 86400000) // Run once a day
+    public void scheduleAuditDataFetch() {
+        auditService.fetchAndStoreAuditData(bucketName);
+    }
+
+    @Scheduled(cron = "0 0 0 * * ?") // Runs every day at midnight
+    public void scheduleAuditDataCleanup() {
+        auditService.deleteOldTrendsData();
+    }
+}
+
+
+package com.verizon.ucs.s3helper.service;
+
+import com.verizon.ucs.s3helper.model.Trends;
+import com.verizon.ucs.s3helper.model.UcspProject;
+import com.verizon.ucs.s3helper.model.UcspUcgSource;
+import com.verizon.ucs.s3helper.repository.UCSPProjectsRepository;
+import com.verizon.ucs.s3helper.repository.UCSPTrendsRepository;
+import com.verizon.ucs.s3helper.repository.UCSPUcgSourceRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Service;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
+import software.amazon.awssdk.services.s3.model.S3Object;
+
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.*;
+
+@Service
+public class S3Helper {
+
+    @Autowired
+    private S3Client s3Client;
+
+    @Autowired
+    private UCSPProjectsRepository projectsRepository;
+
+    @Autowired
+    private UCSPUcgSourceRepository ucgSourceRepository;
+
+    @Autowired
+    private UCSPTrendsRepository trendsRepository;
+
+    @Value("${data.threshold-days}")
+    private int thresholdDays;
+
+    public void fetchAndStoreAuditData(String bucketName) {
+        List<UcspProject> projects = projectsRepository.findAll();
+        List<UcspUcgSource> ucgSources = ucgSourceRepository.findAll();
+
+        Map<String, Integer> fileCountMap = new HashMap<>();
+        Map<String, Long> fileSizeMap = new HashMap<>();
+        Map<String, Boolean> uCGSourceDateComboExistsMap = new HashMap<>();
+
+        // Calculate the date threshold
+        Calendar calendar = Calendar.getInstance();
+        calendar.add(Calendar.DAY_OF_YEAR, -thresholdDays);
+        Date thresholdDate = calendar.getTime();
+        System.out.println("Threshold Date: " + thresholdDate);
+        for (UcspProject project : projects) {
+            for (UcspUcgSource ucgSource : ucgSources) {
+                if (project.getId() == ucgSource.getProjectId()) {
+                    String continuationToken = null;
+                    do {
+                        String s3PrimaryPath = project.getS3PrimaryPath() + ucgSource.getS3PrimaryPath();
+                        ListObjectsV2Request listObjectsRequest = ListObjectsV2Request.builder()
+                                .bucket(bucketName)
+                                .prefix(s3PrimaryPath)
+                                .continuationToken(continuationToken)
+                                .build();
+                        ListObjectsV2Response listObjectsResponse = s3Client.listObjectsV2(listObjectsRequest);
+                        List<S3Object> objects = listObjectsResponse.contents();
+                        continuationToken = listObjectsResponse.nextContinuationToken();
+                        System.out.println("S3 Primary Path: " + s3PrimaryPath);
+                        System.out.println("Number of objects: " + objects.size());
+                        for (S3Object object : objects) {
+                            String key = object.key();
+                            System.out.println("Key: " + key);
+                            String[] keyParts = key.split("/");
+                            String dateFolder = keyParts[6]; // Assuming the date folder is at this position
+                            System.out.println("Date Folder: " + dateFolder);
+                            if (Objects.equals(dateFolder, "INDEX")){
+                                continue;
+                            }
+                            SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+                            Date collectionDate = null;
+                            try {
+                                collectionDate = dateFormat.parse(dateFolder);
+                            } catch (ParseException e) {
+                                e.printStackTrace();
+                            }
+                            String dateKey = ucgSource.getId() + "_" + dateFormat.format(collectionDate);
+
+                            // Skip if the collectionDate is before the thresholdDate
+                            if (collectionDate.before(thresholdDate)) {
+                                System.out.println("Threshold Date: " + thresholdDate);
+                                System.out.println("Collection Date: " + collectionDate);
+                                System.out.println("Data for dateFolder: " + dateFolder + " is before the threshold date. Skipping...");
+                                continue;
+                            }
+
+                            boolean exists;
+                            // Check if the ucgSourceID and collectionDate combo already exists in map to reduce queries
+                            if (uCGSourceDateComboExistsMap.getOrDefault(dateKey, null) != null){
+                                System.out.println("Key exists in map: Key: " + dateKey);
+                                exists = uCGSourceDateComboExistsMap.get(dateKey);
+                                System.out.println("Exists from Map: " + exists);
+                            }else{
+                                System.out.println("uCGSourceDateComboExistsMap.getOrDefault(dateKey, null) Value: " + uCGSourceDateComboExistsMap.getOrDefault(dateKey, null));
+                                // Check if Trends data for this ucgSourceID and collectionDate already exists in DB
+                                exists = trendsRepository.existsByUcgSourceIDAndCollectionDate(ucgSource.getId(), collectionDate);
+                                System.out.println("Key does not exist in map: Key: " + dateKey);
+                                uCGSourceDateComboExistsMap.put(dateKey, exists);
+                                System.out.println("Exists from DB: " + exists);
+                            }
+                            if (exists) {
+                                System.out.println("Data for ucgSourceID: " + ucgSource.getId() + " and collectionDate: " + collectionDate + " already exists. Skipping...");
+                                continue;
+                            } else {
+                                System.out.println("Data for ucgSourceID: " + ucgSource.getId() + " and collectionDate: " + collectionDate + " does not exist. Aggregating...");
+                            }
+                            fileCountMap.put(dateKey, fileCountMap.getOrDefault(dateKey, 0) + 1);
+                            fileSizeMap.put(dateKey, fileSizeMap.getOrDefault(dateKey, 0L) + object.size());
+                        }
+                    } while (continuationToken != null);
+                }
             }
-            return ucgSources;
-        } catch (DataAccessException e) {
-            logger.error("Database error occurred while fetching UCG Sources", e);
-            throw new GraphQLException("Database error: Unable to fetch UCG Sources for project ID: " + projectId);
-        } catch (RuntimeException e) {
-            logger.error("Runtime error occurred", e);
-            throw new GraphQLException("Runtime error: " + e.getMessage());
-        } catch (Exception e) {
-            logger.error("Unexpected error occurred", e);
-            throw new GraphQLException("Unexpected error: " + e.getMessage());
+        }
+        System.out.println("===================Inserting Data==================");
+        for (Map.Entry<String, Integer> entry : fileCountMap.entrySet()) {
+            String[] keyParts = entry.getKey().split("_");
+            int ucgSourceID = Integer.parseInt(keyParts[0]);
+            String dateStr = keyParts[1];
+            SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+            Date collectionDate = null;
+            try {
+                collectionDate = dateFormat.parse(dateStr);
+            } catch (ParseException e) {
+                e.printStackTrace();
+            }
+            int numberOfFiles = entry.getValue();
+            long sizeOfFilesKb = fileSizeMap.get(entry.getKey()) / 1024;
+            System.out.println("Date: " + dateStr + ", UcgSourceID: " + ucgSourceID + ", Number of Files: " + numberOfFiles + ", Size of Files (KB): " + sizeOfFilesKb);
+
+            Trends auditLog = new Trends();
+            auditLog.setSizeOfFilesKB((int) sizeOfFilesKb);
+            auditLog.setNumberOfFiles(numberOfFiles);
+            auditLog.setCollectionDate(collectionDate);
+            auditLog.setUcgSourceID(ucgSourceID); // Store against ucgSource ID
+            trendsRepository.save(auditLog);
         }
     }
 
-    // Other service methods ...
-}
-@Controller
-public class UCSPController {
-    private static final Logger logger = LoggerFactory.getLogger(UCSPController.class);
 
-    @Autowired
-    private UCSPService uCSPService;
+    public void deleteOldTrendsData() {
+        // Calculate the threshold date
+        Calendar calendar = Calendar.getInstance();
+        calendar.add(Calendar.DAY_OF_YEAR, -thresholdDays);
+        Date thresholdDate = calendar.getTime();
+        System.out.println("Deleting data older than: " + thresholdDate);
 
-    // Other controller methods ...
-
-    @QueryMapping(value = "uniqueUCGSourcesByProject")
-    public List<String> getUniqueUCGSourcesByProject(@Argument Long projectId) {
-        return uCSPService.getUniqueUCGSourcesByProject(projectId);
+        // Delete records older than the threshold date
+        trendsRepository.deleteByCollectionDateBefore(thresholdDate);
     }
-
-    // Other controller methods ...
-}
-query {
-  uniqueUCGSourcesByProject(projectId: 1) {
-    ucgSource
-  }
-}
-type Query {
-    uniqueUCGSourcesByProject(projectId: ID): [String]
-    # Other queries ...
 }
 
-type Project {
-    id: ID
-    name: String
-}
 
-# Other types and inputs...
-
-
-
-
-<dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-logging</artifactId>
-</dependency>
-<!-- Exclude default Logback -->
-<dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-logging</artifactId>
-    <scope>provided</scope>
-</dependency>
-
-<!-- Add Log4j2 dependency -->
-<dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-log4j2</artifactId>
-</dependency>
-<dependency>
-    <groupId>org.slf4j</groupId>
-    <artifactId>slf4j-api</artifactId>
-    <version>2.0.7</version>
-</dependency>
-
+provide JUnit test cases for the above all the classes. The code coverage will be 100% of line of each class.
