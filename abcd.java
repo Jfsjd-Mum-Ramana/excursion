@@ -1,110 +1,3 @@
-package com.verizon.ucs.s3helper.repository;
-
-import com.verizon.ucs.s3helper.model.UcspProject;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
-
-import java.util.List;
-
-import static org.assertj.core.api.Assertions.assertThat;
-
-@DataJpaTest
-public class UCSPProjectsRepositoryTest {
-
-    @Autowired
-    private UCSPProjectsRepository repository;
-
-    @Test
-    public void testFindUniqueProjects() {
-        List<UcspProject> projects = repository.findUniqueProjects();
-        // Add assertions based on your test data
-        assertThat(projects).isNotEmpty();
-    }
-}
-
-
-
-package com.verizon.ucs.s3helper.repository;
-
-import com.verizon.ucs.s3helper.model.Trends;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
-
-import java.util.Date;
-import java.util.List;
-
-import static org.assertj.core.api.Assertions.assertThat;
-
-@DataJpaTest
-public class UCSPTrendsRepositoryTest {
-
-    @Autowired
-    private UCSPTrendsRepository repository;
-
-    @Test
-    public void testFindDailyTrends() {
-        // Prepare test data and call the method
-        List<Trends> trends = repository.findDailyTrends(1, new Date(), new Date());
-        // Add assertions based on your test data
-        assertThat(trends).isNotEmpty();
-    }
-
-    @Test
-    public void testExistsByUcgSourceIDAndCollectionDate() {
-        boolean exists = repository.existsByUcgSourceIDAndCollectionDate(1, new Date());
-        // Add assertions based on your test data
-        assertThat(exists).isTrue();
-    }
-
-    @Test
-    public void testDeleteByCollectionDateBefore() {
-        repository.deleteByCollectionDateBefore(new Date());
-        // Verify that data is deleted; this might need additional setup
-    }
-}
-
-
-
-package com.verizon.ucs.s3helper.scheduler;
-
-import com.verizon.ucs.s3helper.service.S3Helper;
-import org.junit.jupiter.api.Test;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
-import org.springframework.scheduling.annotation.ScheduledAnnotationBeanPostProcessor;
-
-import static org.mockito.Mockito.verify;
-
-public class SchedulerTest {
-
-    @Mock
-    private S3Helper s3Helper;
-
-    @InjectMocks
-    private Scheduler scheduler;
-
-    public SchedulerTest() {
-        MockitoAnnotations.openMocks(this);
-    }
-
-    @Test
-    public void testScheduleAuditDataFetch() {
-        scheduler.scheduleAuditDataFetch();
-        verify(s3Helper).fetchAndStoreAuditData("your-bucket-name"); // Adjust if necessary
-    }
-
-    @Test
-    public void testScheduleAuditDataCleanup() {
-        scheduler.scheduleAuditDataCleanup();
-        verify(s3Helper).deleteOldTrendsData();
-    }
-}
-
-
-
 package com.verizon.ucs.s3helper.service;
 
 import com.verizon.ucs.s3helper.model.Trends;
@@ -113,6 +6,7 @@ import com.verizon.ucs.s3helper.model.UcspUcgSource;
 import com.verizon.ucs.s3helper.repository.UCSPProjectsRepository;
 import com.verizon.ucs.s3helper.repository.UCSPTrendsRepository;
 import com.verizon.ucs.s3helper.repository.UCSPUcgSourceRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -125,7 +19,6 @@ import java.text.SimpleDateFormat;
 import java.util.*;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 public class S3HelperTest {
@@ -145,34 +38,46 @@ public class S3HelperTest {
     @InjectMocks
     private S3Helper s3Helper;
 
-    public S3HelperTest() {
-        MockitoAnnotations.openMocks(this);
+    @BeforeEach
+    public void setup() {
+        MockitoAnnotations.openMocks(this);  // Initialize mocks before each test
     }
 
     @Test
     public void testFetchAndStoreAuditData() throws Exception {
         // Mock repositories
-        List<UcspProject> projects = Collections.singletonList(new UcspProject());
-        List<UcspUcgSource> ucgSources = Collections.singletonList(new UcspUcgSource());
-        when(projectsRepository.findAll()).thenReturn(projects);
-        when(ucgSourceRepository.findAll()).thenReturn(ucgSources);
+        UcspProject project = new UcspProject();
+        project.setId(1); // Set an ID to avoid null pointer issues
+        project.setS3PrimaryPath("test-project-path/");
 
-        // Mock S3Client
+        UcspUcgSource ucgSource = new UcspUcgSource();
+        ucgSource.setId(1);
+        ucgSource.setS3PrimaryPath("test-source-path/");
+        ucgSource.setProjectId(1);
+
+        // Mock findAll() to return a list with one project and one source
+        when(projectsRepository.findAll()).thenReturn(Collections.singletonList(project));
+        when(ucgSourceRepository.findAll()).thenReturn(Collections.singletonList(ucgSource));
+
+        // Mock S3Client response
         ListObjectsV2Response response = ListObjectsV2Response.builder()
-                .contents(Collections.singletonList(S3Object.builder().key("key").size(1024L).build()))
+                .contents(Collections.singletonList(S3Object.builder().key("test-project-path/test-source-path/2023-01-01/file.txt").size(1024L).build()))
                 .build();
         when(s3Client.listObjectsV2(any())).thenReturn(response);
 
         // Call the method
         s3Helper.fetchAndStoreAuditData("bucket-name");
 
-        // Verify interactions
+        // Verify that the save method is called on the trends repository
         verify(trendsRepository, times(1)).save(any(Trends.class));
     }
 
     @Test
     public void testDeleteOldTrendsData() {
+        // Call the method
         s3Helper.deleteOldTrendsData();
+
+        // Verify delete method is invoked with any Date parameter
         verify(trendsRepository).deleteByCollectionDateBefore(any(Date.class));
     }
 }
