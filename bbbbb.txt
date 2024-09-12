@@ -5,6 +5,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -36,6 +37,14 @@ public class UCSPProjectsRepositoryTest {
         assertThat(uniqueProjects.size()).isEqualTo(2); // There should be 2 unique projects
     }
 }
+
+// UCSPProjectsRepository.java
+@Repository
+public interface UCSPProjectsRepository extends JpaRepository<UcspProject, Integer> {
+    @Query("SELECT DISTINCT p FROM UcspProject p")
+    List<UcspProject> findUniqueProjects();
+}
+
 
 
 package com.verizon.ucs.s3helper.repository;
@@ -105,6 +114,16 @@ public class UCSPTrendsRepositoryTest {
     }
 }
 
+// UCSPTrendsRepository.java
+@Repository
+public interface UCSPTrendsRepository extends JpaRepository<Trends, Integer> {
+    List<Trends> findDailyTrends(int ucgSourceId, Date fromDate, Date toDate);
+    boolean existsByUcgSourceIDAndCollectionDate(int ucgSourceId, Date collectionDate);
+    void deleteByCollectionDateBefore(Date collectionDate);
+}
+
+
+
 package com.verizon.ucs.s3helper.repository;
 
 import com.verizon.ucs.s3helper.model.UcspUcgSource;
@@ -145,6 +164,14 @@ public class UCSPUcgSourceRepositoryTest {
     }
 }
 
+// UCSPUcgSourceRepository.java
+@Repository
+public interface UCSPUcgSourceRepository extends JpaRepository<UcspUcgSource, Integer> {
+}
+
+
+
+
 package com.verizon.ucs.s3helper.service;
 
 import com.verizon.ucs.s3helper.model.Trends;
@@ -164,7 +191,8 @@ import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
 import software.amazon.awssdk.services.s3.model.S3Object;
 
 import java.text.SimpleDateFormat;
-import java.util.*;
+import java.util.Collections;
+import java.util.Date;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
@@ -229,21 +257,3 @@ public class S3HelperTest {
         verify(trendsRepository).deleteByCollectionDateBefore(any(Date.class));
     }
 }
-
-package com.verizon.ucs.s3helper;
-
-import org.junit.jupiter.api.Test;
-import org.springframework.boot.SpringBootConfiguration;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.ContextConfiguration;
-
-@SpringBootTest
-class MsUcsps3ApplicationTests {
-
-	@Test
-	void contextLoads() {
-	}
-
-}
-
-These are the classes showing errors please resolve them 
