@@ -1,124 +1,59 @@
-return (
-    <Container maxWidth="lg">
-        <Typography gutterBottom variant="h4" className="header" fontWeight={"bold"} paddingTop={"15px"}>
-            UCS Portal
-        </Typography>
-        <Card sx={{ boxShadow: 1, border: 1 }}>
-            <CardContent>
-                <Grid container spacing={2}>
-                    <Grid item xs={12} sm={6} md={3}>
-                        <TextField
-                            placeholder="Enter Device Name"
-                            fullWidth
-                            variant="outlined"
-                            value={selectedDeviceName}
-                            onChange={(event) => handleTextFieldChange(setSelectedDeviceName, resetSelections)(event)}
-                            label="Device Name"
-                        />
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={3}>
-                        <TextField
-                            placeholder="Enter Device IP"
-                            fullWidth
-                            variant="outlined"
-                            value={selectedDeviceIp}
-                            onChange={(event) => handleTextFieldChange(setSelectedDeviceIp, resetSelections)(event)}
-                            label="Device IP"
-                        />
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={3}>
-                        <FormControl fullWidth variant="outlined">
-                            <InputLabel id="device-model-select-label">Device Model</InputLabel>
-                            <Select
-                                labelId="device-model-select-label"
-                                value={selectedDeviceModel}
-                                onChange={(event) => handleSelectChange(setSelectedDeviceModel, resetSelections)(event)}
-                                label="Device Model"
-                            >
-                                {deviceModels.map((model) => (
-                                    <MenuItem key={model} value={model}>
-                                        {model}
-                                    </MenuItem>
-                                ))}
-                            </Select>
-                        </FormControl>
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={3}>
-                        <FormControl fullWidth variant="outlined">
-                            <InputLabel id="device-vendor-select-label">Device Vendor</InputLabel>
-                            <Select
-                                labelId="device-vendor-select-label"
-                                value={selectedDeviceVendor}
-                                onChange={(event) => handleSelectChange(setSelectedDeviceVendor, resetSelections)(event)}
-                                label="Device Vendor"
-                            >
-                                {deviceVendors.map((vendor) => (
-                                    <MenuItem key={vendor} value={vendor}>
-                                        {vendor}
-                                    </MenuItem>
-                                ))}
-                            </Select>
-                        </FormControl>
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={3}>
-                        <FormControl fullWidth variant="outlined">
-                            <InputLabel id="device-network-select-label">Device Network</InputLabel>
-                            <Select
-                                labelId="device-network-select-label"
-                                value={selectedDeviceNetwork}
-                                onChange={(event) => handleSelectChange(setSelectedDeviceNetwork, resetSelections)(event)}
-                                label="Device Network"
-                            >
-                                {deviceNetworks.map((network) => (
-                                    <MenuItem key={network} value={network}>
-                                        {network}
-                                    </MenuItem>
-                                ))}
-                            </Select>
-                        </FormControl>
-                    </Grid>
-                </Grid>
-                <Button
-                    variant="contained"
-                    color="primary"
-                    onClick={handleSubmit}
-                    disabled={!selectedDeviceName && !selectedDeviceIp && !selectedDeviceModel && !selectedDeviceVendor && !selectedDeviceNetwork}
-                    sx={{ mt: 2 }}
-                >
-                    Submit
-                </Button>
-            </CardContent>
-        </Card>
-        <Box mt={4} sx={{ height: 400, width: "100%" }}>
-            <DataGrid
-                rows={data}
-                columns={columns}
-                initialState={{
-                    pagination: {
-                        paginationModel: {
-                            pageSize: 10,
-                            page: 0
-                        }
-                    }
-                }}
-                sx={{
-                    boxShadow: 1,
-                    border: 1,
-                }}
-                pageSizeOptions={[5, 10, 25]}
-                pagination
-                slotProps={{
-                    footer: {
-                        sx: {
-                            justifyContent: "flex-start"
-                        }
-                    }
-                }}
-                checkboxSelection
-                disableRowSelectionOnClick
-                loading={loading}
-                autoHeight
-            />
-        </Box>
-    </Container>
-);
+export const UNIQUE_MODELS_QUERY = `
+    query{
+        uniqueModels
+    }
+`;
+
+export const UNIQUE_VENDORS_QUERY = `
+    query{
+        uniqueVendors
+    }
+`;
+
+export const UNIQUE_NETWORKS_QUERY = `
+    query{
+        uniqueNetworks
+    }
+`;
+export const UNIQUE_UGS_SOURCE_QUERY = `
+query GetUniqueUCGSourcesByProject($projectId: ID!) {
+  uniqueUCGSourcesByProject(projectId: $projectId) {
+    id
+    name
+  }
+}
+`;
+export const UNIQUE_PROJECT_QUERY = `
+query {
+    uniqueUCSPProjects {
+        id
+        name                            
+    }
+}
+`;
+
+export const GET_DAILY_TRENDS_DATA = `query GetDailyTrends($ucgSourceID: Int!, $fromDate: String!, $toDate: String!) {
+  dailyTrends(trendsRequest: { ucgSourceID: $ucgSourceID, fromDate: $fromDate, toDate: $toDate }) {
+    collectionDate
+    sizeOfFilesKB
+    numberOfFiles
+  }
+}`
+
+export const GET_DEVICE_DETAILS = (selectedDeviceName: string, selectedDeviceModel: string, selectedDeviceIp: string, selectedDeviceVendor: string, selectedDeviceNetwork: string) => `
+{
+  searchDevices(apiRequest:{
+		deviceName: "${selectedDeviceName}",
+        model: "${selectedDeviceModel}",
+        loopback: "${selectedDeviceIp}",
+        vendor: "${selectedDeviceVendor}",
+        network: "${selectedDeviceNetwork}"
+  }){
+    deviceName
+    model
+    vendor
+    routerType
+    status
+  }
+}
+`;
