@@ -1,259 +1,494 @@
-package com.verizon.ucs.s3helper.repository;
+package com.verizon.ucs.restapi.service;
 
-import com.verizon.ucs.s3helper.model.UcspProject;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+import com.verizon.ucs.restapi.dto.ApiRequest;
+import com.verizon.ucs.restapi.dto.TrendsRequest;
+import com.verizon.ucs.restapi.model.Device;
+import com.verizon.ucs.restapi.model.Trends;
+import com.verizon.ucs.restapi.model.UcspProject;
+import com.verizon.ucs.restapi.repository.UCSPProjectsRepository;
+import com.verizon.ucs.restapi.repository.UCSPRepository;
+import com.verizon.ucs.restapi.repository.UCSPTrendsRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.stereotype.Service;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
+@Service
+public class UCSPService {
 
-@DataJpaTest
-public class UCSPProjectsRepositoryTest {
+	private static final Logger logger = LoggerFactory.getLogger(UCSPService.class);
 
-    @Autowired
-    private UCSPProjectsRepository projectsRepository;
+	@Autowired
+	private UCSPRepository uCSPRepository;
 
-    @BeforeEach
-    public void setup() {
-        // Create and save mock project data
-        UcspProject project1 = new UcspProject();
-        project1.setId(1);  // Assume setId is present
-        project1.setName("Project 1");
-        projectsRepository.save(project1);
+	@Autowired
+	private UCSPTrendsRepository uCSPTrendsRepository;
 
-        UcspProject project2 = new UcspProject();
-        project2.setId(2);
-        project2.setName("Project 2");
-        projectsRepository.save(project2);
-    }
+	@Autowired
+	private UCSPProjectsRepository ucspProjectsRepository;
 
-    @Test
-    public void testFindUniqueProjects() {
-        List<UcspProject> uniqueProjects = projectsRepository.findUniqueProjects();
-        assertThat(uniqueProjects).isNotEmpty();
-        assertThat(uniqueProjects.size()).isEqualTo(2); // There should be 2 unique projects
-    }
+	public List<UcspProject> getUniqueUCGSourcesByProject(Long projectId) {
+		try {
+			List<UcspProject> ucgSources = ucspProjectsRepository.findDistinctUCGSourcesByProject(projectId);
+			if (ucgSources == null || ucgSources.isEmpty()) {
+				throw new RuntimeException("No UCG Sources found for the given project ID: " + projectId);
+			}
+			return ucgSources;
+		} catch (Exception e) {
+			logger.error("Error in service method getUniqueUCGSourcesByProject", e);
+			throw e;
+		}
+	}
+
+	public List<Device> searchDevices(ApiRequest params) {
+		if (params.getDeviceName() != null && !params.getDeviceName().isEmpty()) {
+			return uCSPRepository.findByDeviceNameIgnoreCase(params.getDeviceName());
+		}
+		if (params.getLoopback() != null && !params.getLoopback().isEmpty()) {
+			return uCSPRepository.findByLoopbackIgnoreCase(params.getLoopback());
+		}
+		if (params.getNetwork() != null && !params.getNetwork().isEmpty()) {
+			return uCSPRepository.findByNetworkIgnoreCase(params.getNetwork());
+		}
+		if (params.getVendor() != null && !params.getVendor().isEmpty()) {
+			return uCSPRepository.findByVendorIgnoreCase(params.getVendor());
+		}
+		if (params.getModel() != null && !params.getModel().isEmpty()) {
+			return uCSPRepository.findByModelIgnoreCase(params.getModel());
+		}
+		return null;
+	}
+
+	public List<Trends> getDailyTrends(TrendsRequest params) {
+		return uCSPTrendsRepository.findDailyTrends(params.getUcgSourceID(), params.getFromDate(), params.getToDate());
+	}
+
+	public Map<String, List<String>> getUniqueValues() {
+		Map<String, List<String>> uniqueValues = new HashMap<>();
+		uniqueValues.put("models", uCSPRepository.findDistinctModels());
+		uniqueValues.put("vendors", uCSPRepository.findDistinctVendors());
+		uniqueValues.put("networks", uCSPRepository.findDistinctNetworks());
+		return uniqueValues;
+	}
+	public List<String> getUniqueUCGSources(){
+		return uCSPRepository.findDistinctUCGSources();
+	}
+	public List<Device> getAllDevices() {
+		return uCSPRepository.findAll();
+	}
+
+	public List<UcspProject> getUniqueProjects() {
+		return ucspProjectsRepository.findUniqueProjects();
+	}
 }
 
-// UCSPProjectsRepository.java
-@Repository
-public interface UCSPProjectsRepository extends JpaRepository<UcspProject, Integer> {
-    @Query("SELECT DISTINCT p FROM UcspProject p")
-    List<UcspProject> findUniqueProjects();
-}
 
+package com.verizon.ucs.restapi.repository;
 
-
-package com.verizon.ucs.s3helper.repository;
-
-import com.verizon.ucs.s3helper.model.Trends;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
-
-import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import com.verizon.ucs.restapi.model.Trends;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
-@DataJpaTest
-public class UCSPTrendsRepositoryTest {
+import com.verizon.ucs.restapi.model.Device;
 
-    @Autowired
-    private UCSPTrendsRepository trendsRepository;
+public interface UCSPRepository extends JpaRepository<Device, String> {
 
-    private int ucgSourceId = 1;
-    private Date collectionDate;
+	List<Device> findByDeviceNameIgnoreCase(String deviceName);
 
-    @BeforeEach
-    public void setup() throws Exception {
-        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
-        collectionDate = dateFormat.parse("2023-01-01");
+	List<Device> findByLoopbackIgnoreCase(String loopback);
 
-        // Insert some mock data into the repository
-        Trends trend = new Trends();
-        trend.setUcgSourceID(ucgSourceId);
-        trend.setCollectionDate(collectionDate);
-        trend.setNumberOfFiles(5);
-        trend.setSizeOfFilesKB(1024);
-        trendsRepository.save(trend);
-    }
+	List<Device> findByNetworkIgnoreCase(String network);
 
-    @Test
-    public void testFindDailyTrends() throws Exception {
-        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
-        Date fromDate = dateFormat.parse("2023-01-01");
-        Date toDate = dateFormat.parse("2023-01-02");
+	List<Device> findByVendorIgnoreCase(String vendor);
 
-        List<Trends> trends = trendsRepository.findDailyTrends(ucgSourceId, fromDate, toDate);
-        assertThat(trends).isNotEmpty();
-        assertThat(trends.size()).isEqualTo(1);  // Expect 1 trend to be found
-    }
+	List<Device> findByModelIgnoreCase(String model);
 
-    @Test
-    public void testExistsByUcgSourceIDAndCollectionDate() {
-        boolean exists = trendsRepository.existsByUcgSourceIDAndCollectionDate(ucgSourceId, collectionDate);
-        assertThat(exists).isTrue();  // The trend with ucgSourceId and collectionDate exists
-    }
+	@Query("SELECT DISTINCT d.model FROM Device d")
+	List<String> findDistinctModels();
 
-    @Test
-    public void testDeleteByCollectionDateBefore() throws Exception {
-        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
-        Date thresholdDate = dateFormat.parse("2022-12-31");
+	@Query("SELECT DISTINCT d.vendor FROM Device d")
+	List<String> findDistinctVendors();
 
-        trendsRepository.deleteByCollectionDateBefore(thresholdDate);
+	@Query("SELECT DISTINCT d.network FROM Device d")
+	List<String> findDistinctNetworks();
 
-        // Ensure the trend is still there because it's after the threshold date
-        List<Trends> remainingTrends = trendsRepository.findAll();
-        assertThat(remainingTrends.size()).isEqualTo(1);
-    }
-}
+	@Query(nativeQuery=true, value="SELECT DISTINCT u.ucg_source FROM ucsp_ucgsources u")
+	List<String> findDistinctUCGSources();
 
-// UCSPTrendsRepository.java
-@Repository
-public interface UCSPTrendsRepository extends JpaRepository<Trends, Integer> {
-    List<Trends> findDailyTrends(int ucgSourceId, Date fromDate, Date toDate);
-    boolean existsByUcgSourceIDAndCollectionDate(int ucgSourceId, Date collectionDate);
-    void deleteByCollectionDateBefore(Date collectionDate);
+	/*List<Device> findByDeviceNameIgnoreCaseOrLoopbackIgnoreCaseOrNetworkIgnoreCaseOrVendorIgnoreCaseOrModelIgnoreCase(
+			String deviceName, String loopback, String network, String vendor, String model);
+
+	List<Device> findByDeviceNameContainingIgnoreCaseOrLoopbackContainingIgnoreCaseOrNetworkContainingIgnoreCaseOrVendorContainingIgnoreCaseOrModelContainingIgnoreCase(
+			String deviceName, String loopback, String network, String vendor, String model);
+
+	 * @Query("SELECT d FROM Device d WHERE " +
+	 * "LOWER(d.name) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
+	 * "LOWER(d.ip) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
+	 * "LOWER(d.network) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
+	 * "LOWER(d.vendor) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
+	 * "LOWER(d.model) LIKE LOWER(CONCAT('%', :searchTerm, '%'))") List<Device>
+	 * search(@Param("searchTerm") String searchTerm);
+	 */
 }
 
 
+package com.verizon.ucs.restapi.model;
 
-package com.verizon.ucs.s3helper.repository;
+import javax.persistence.*;
+import java.sql.Timestamp;
 
-import com.verizon.ucs.s3helper.model.UcspUcgSource;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+@Entity
+@Table(name = "devices")
+public class Device {
+
+	@Id
+	@Column(name = "device_name", nullable = false)
+	private String deviceName;
+
+	@Column(name = "model")
+	private String model;
+
+	@Column(name = "loopback")
+	private String loopback;
+
+	@Column(name = "status")
+	private String status;
+
+	@Column(name = "vendor")
+	private String vendor;
+
+	@Column(name = "router_type")
+	private String routerType;
+
+	@Column(name = "pollercluster")
+	private String pollerCluster;
+
+	@Column(name = "poller_interval")
+	private Integer pollerInterval;
+
+	@Column(name = "network", nullable = false)
+	private String network;
+
+	@Column(name = "last_update", columnDefinition = "timestamp default now()")
+	private Timestamp lastUpdate;
+
+	@Column(name = "phys_ip")
+	private String physIp;
+
+	/*@Column(name = "name")
+    private String name;
+
+    @Column(name = "asn")
+    private Integer asn;
+
+    @Column(name = "sub_asn")
+    private Integer subAsn;
+    
+    @Column(name = "hub_name")
+    private String hubName;
+    
+    @Column(name = "usage")
+    private String usage;
+
+    @Column(name = "snmp_comm_string")
+    private String snmpCommString;
+
+    @Column(name = "code_version")
+    private String codeVersion;
+
+    @Column(name = "subtechnology")
+    private String subtechnology;
+    
+     @Column(name = "poll_interval", columnDefinition = "int4 default 86400")
+    private Integer pollInterval;
+
+    @Column(name = "max_oids")
+    private Integer maxOids;
+
+    @Column(name = "max_pdu_size")
+    private Integer maxPduSize;
+
+    @Column(name = "max_retries")
+    private Integer maxRetries;
+
+    @Column(name = "max_pdu_per_sec")
+    private Integer maxPduPerSec;
+
+    @Column(name = "wug_threads")
+    private Integer wugThreads;
+
+    @Column(name = "uptime")
+    private String uptime;
+
+    @Column(name = "indx_type")
+    private String indxType;
+    
+    @Column(name = "pollerclusterlov")
+    private String pollerclusterlov;
+
+    @Column(name = "pollerclusteralarm")
+    private String pollerclusteralarm;
+
+    @Column(name = "phys_ip_address")
+    private String physIpAddress;
+
+    @Column(name = "location_code")
+    private String locationCode;
+    
+    @Column(name = "functional_type")
+    private String functionalType;
+
+    @Column(name = "shelf_type")
+    private String shelfType;
+
+    @Column(name = "telem_mngd_network")
+    private String telemMngdNetwork;
+
+    @Column(name = "domain_flag")
+    private String domainFlag;
+    */
+	public String getDeviceName() {
+		return deviceName;
+	}
+
+	public void setDeviceName(String deviceName) {
+		this.deviceName = deviceName;
+	}
+
+	public String getModel() {
+		return model;
+	}
+
+	public void setModel(String model) {
+		this.model = model;
+	}
+
+	public String getLoopback() {
+		return loopback;
+	}
+
+	public void setLoopback(String loopback) {
+		this.loopback = loopback;
+	}
+
+	public String getStatus() {
+		return status;
+	}
+
+	public void setStatus(String status) {
+		this.status = status;
+	}
+
+	public String getVendor() {
+		return vendor;
+	}
+
+	public void setVendor(String vendor) {
+		this.vendor = vendor;
+	}
+
+	public String getRouterType() {
+		return routerType;
+	}
+
+	public void setRouterType(String routerType) {
+		this.routerType = routerType;
+	}
+
+	public String getPollerCluster() {
+		return pollerCluster;
+	}
+
+	public void setPollerCluster(String pollerCluster) {
+		this.pollerCluster = pollerCluster;
+	}
+
+	public String getNetwork() {
+		return network;
+	}
+
+	public void setNetwork(String network) {
+		this.network = network;
+	}
+
+	public Integer getPollerInterval() {
+		return pollerInterval;
+	}
+
+	public void setPollerInterval(Integer pollerInterval) {
+		this.pollerInterval = pollerInterval;
+	}
+
+	public Timestamp getLastUpdate() {
+		return lastUpdate;
+	}
+
+	public void setLastUpdate(Timestamp lastUpdate) {
+		this.lastUpdate = lastUpdate;
+	}
+
+	public String getPhysIp() {
+		return physIp;
+	}
+
+	public void setPhysIp(String physIp) {
+		this.physIp = physIp;
+	}
+
+
+}
+
+
+package com.verizon.ucs.restapi.controllers;
+
+import com.verizon.ucs.restapi.dto.ApiRequest;
+import com.verizon.ucs.restapi.dto.TrendsRequest;
+import com.verizon.ucs.restapi.model.Device;
+import com.verizon.ucs.restapi.model.Trends;
+import com.verizon.ucs.restapi.model.UcspProject;
+import com.verizon.ucs.restapi.service.UCSPService;
+import graphql.GraphQLException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.dao.DataAccessException;
+import org.springframework.graphql.data.method.annotation.Argument;
+import org.springframework.graphql.data.method.annotation.QueryMapping;
+import org.springframework.graphql.data.method.annotation.SchemaMapping;
+import org.springframework.stereotype.Controller;
 
 import java.util.List;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
-@DataJpaTest
-public class UCSPUcgSourceRepositoryTest {
+/**
+ * Controller interface for UCS Portal Application with JPA
+ */
+@Controller
+public class UCSPController {
+    private static final Logger logger = LoggerFactory.getLogger(UCSPController.class);
 
     @Autowired
-    private UCSPUcgSourceRepository ucgSourceRepository;
+    private UCSPService uCSPService;
 
-    @BeforeEach
-    public void setup() {
-        // Insert some mock UcspUcgSource data
-        UcspUcgSource source1 = new UcspUcgSource();
-        source1.setId(1);
-        source1.setProjectId(1);
-        ucgSourceRepository.save(source1);
-
-        UcspUcgSource source2 = new UcspUcgSource();
-        source2.setId(2);
-        source2.setProjectId(2);
-        ucgSourceRepository.save(source2);
+    @QueryMapping(value = "searchDevices")
+    public List<Device> getFilteredDevices(@Argument ApiRequest apiRequest) {
+        return uCSPService.searchDevices(apiRequest);
     }
 
-    @Test
-    public void testFindAllUcgSources() {
-        List<UcspUcgSource> sources = ucgSourceRepository.findAll();
-        assertThat(sources).isNotEmpty();
-        assertThat(sources.size()).isEqualTo(2); // There should be 2 ucg sources
+    @QueryMapping(value = "allDevices")
+    public List<Device> getAllDevices() {
+        return uCSPService.getAllDevices();
+    }
+
+    @SchemaMapping(typeName = "Query", value = "uniqueModels")
+    public List<String> getUniqueModels() {
+        return uCSPService.getUniqueValues().get("models");
+    }
+
+    @QueryMapping(value = "uniqueVendors")
+    public List<String> getUniqueVendors() {
+        return uCSPService.getUniqueValues().get("vendors");
+    }
+
+    @QueryMapping(value = "dailyTrends")
+    public List<Trends> getTrends(@Argument TrendsRequest trendsRequest) {
+        return uCSPService.getDailyTrends(trendsRequest);
+    }
+
+    @QueryMapping
+    public List<String> uniqueNetworks() {
+        return uCSPService.getUniqueValues().get("networks");
+    }
+
+    @QueryMapping(value = "uniqueUCSPProjects")
+    public List<UcspProject> getUniqueProjects() {
+        List<UcspProject> ucgProjects = uCSPService.getUniqueProjects();
+        return ucgProjects;
+    }
+
+    @QueryMapping(value = "uniqueUCGSources")
+    public List<String> getUniqueUCGSources() {
+        List<String> ucgSources = uCSPService.getUniqueUCGSources();
+        return ucgSources;
+    }
+
+    @QueryMapping(value = "uniqueUCGSourcesByProject")
+    public List<UcspProject> getUniqueUCGSourcesByProject(@Argument Long projectId) {
+        try {
+            return uCSPService.getUniqueUCGSourcesByProject(projectId);
+        } catch (DataAccessException e) {
+            logger.error("Database error occurred while fetching UCG Sources", e);
+            throw new GraphQLException("Database error: Unable to fetch UCG Sources for project ID: " + projectId);
+        } catch (RuntimeException e) {
+            logger.error("Runtime error occurred", e);
+            throw new GraphQLException("Runtime error: " + e.getMessage());
+        } catch (Exception e) {
+            logger.error("Unexpected error occurred", e);
+            throw new GraphQLException("Unexpected error: " + e.getMessage());
+        }
     }
 }
 
-// UCSPUcgSourceRepository.java
-@Repository
-public interface UCSPUcgSourceRepository extends JpaRepository<UcspUcgSource, Integer> {
+
+Here the backend class details take reference and modify to display the remaining fields in the grid here the graphql file:
+
+type Query {
+    allDevices: [Device]
+    searchDevices(apiRequest: ApiRequest): [Device]
+    uniqueModels: [String]
+    uniqueNetworks: [String]
+    dailyTrends(trendsRequest: TrendsRequest): [Trends]
+    uniqueUCGSources: [String]
+    uniqueUCGSourcesByProject(projectId: ID): [UcspProject]
+    uniqueVendors: [String]
+    uniqueUCSPProjects:[UcspProject]
+}
+
+type Device {
+    deviceName: ID!
+    model: String
+    loopback: String
+    status: String
+    vendor: String
+    routerType: String
+    pollerCluster: String
+    pollerInterval: Int
+    network: String
+    lastUpdate: String
+    physIp: String
+}
+type UcspProject{
+    id:ID!
+    name:String!
 }
 
 
+input TrendsRequest {
+    ucgSourceID: Int
+    fromDate: String
+    toDate: String
+}
 
+type Trends {
+    id: ID!
+    ucgSourceID: Int
+    collectionDate: String
+    sizeOfFilesKB: Int
+    numberOfFiles: Int
+}
 
-package com.verizon.ucs.s3helper.service;
-
-import com.verizon.ucs.s3helper.model.Trends;
-import com.verizon.ucs.s3helper.model.UcspProject;
-import com.verizon.ucs.s3helper.model.UcspUcgSource;
-import com.verizon.ucs.s3helper.repository.UCSPProjectsRepository;
-import com.verizon.ucs.s3helper.repository.UCSPTrendsRepository;
-import com.verizon.ucs.s3helper.repository.UCSPUcgSourceRepository;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
-import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
-import software.amazon.awssdk.services.s3.model.S3Object;
-
-import java.text.SimpleDateFormat;
-import java.util.Collections;
-import java.util.Date;
-
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
-
-public class S3HelperTest {
-
-    @Mock
-    private S3Client s3Client;
-
-    @Mock
-    private UCSPProjectsRepository projectsRepository;
-
-    @Mock
-    private UCSPUcgSourceRepository ucgSourceRepository;
-
-    @Mock
-    private UCSPTrendsRepository trendsRepository;
-
-    @InjectMocks
-    private S3Helper s3Helper;
-
-    @BeforeEach
-    public void setup() {
-        MockitoAnnotations.openMocks(this);  // Initialize mocks before each test
-    }
-
-    @Test
-    public void testFetchAndStoreAuditData() throws Exception {
-        // Mock repositories
-        UcspProject project = new UcspProject();
-        project.setId(1); // Set an ID to avoid null pointer issues
-        project.setS3PrimaryPath("test-project-path/");
-
-        UcspUcgSource ucgSource = new UcspUcgSource();
-        ucgSource.setId(1);
-        ucgSource.setS3PrimaryPath("test-source-path/");
-        ucgSource.setProjectId(1);
-
-        // Mock findAll() to return a list with one project and one source
-        when(projectsRepository.findAll()).thenReturn(Collections.singletonList(project));
-        when(ucgSourceRepository.findAll()).thenReturn(Collections.singletonList(ucgSource));
-
-        // Mock S3Client response
-        ListObjectsV2Response response = ListObjectsV2Response.builder()
-                .contents(Collections.singletonList(S3Object.builder().key("test-project-path/test-source-path/2023-01-01/file.txt").size(1024L).build()))
-                .build();
-        when(s3Client.listObjectsV2((ListObjectsV2Request) any())).thenReturn(response);
-
-        // Call the method
-        s3Helper.fetchAndStoreAuditData("bucket-name");
-
-        // Verify that the save method is called on the trends repository
-        verify(trendsRepository, times(1)).save(any(Trends.class));
-    }
-
-    @Test
-    public void testDeleteOldTrendsData() {
-        // Call the method
-        s3Helper.deleteOldTrendsData();
-
-        // Verify delete method is invoked with any Date parameter
-        verify(trendsRepository).deleteByCollectionDateBefore(any(Date.class));
-    }
+input ApiRequest {
+    deviceName: String
+    model: String
+    loopback: String
+    vendor: String
+    network: String
 }
