@@ -1,3 +1,80 @@
+### **Objectives**
+The primary objective of this project is to design and implement a scatter plot visualization for MCP and Trap trends in the Overall Health Metrics dashboard. This includes ensuring dynamic and real-time updates based on user selections. The implementation aims to:
+
+1. **Provide Insights:** Offer a clear and interactive visualization of metrics for various protocols (e.g., SNMP, WSS, gRPC) to assist in monitoring and analyzing system health trends.
+2. **Enhance Usability:** Enable users to filter and view data dynamically based on selected protocols and data types.
+3. **Support Scalability:** Design a flexible system to handle multiple protocols, data types, and increasing volumes of data efficiently.
+4. **Ensure Integration:** Facilitate seamless interaction between the UI, backend APIs, and the database.
+
+---
+
+### **Scope**
+The scope of this implementation includes:
+
+1. **UI Development:**
+   - Create a scatter plot visualization using React and TypeScript.
+   - Implement color coding for different protocols.
+   - Add interactive features for dynamic updates based on protocol and data type selections.
+
+2. **Database Design:**
+   - Define a schema to store protocols, data types, and their corresponding metrics.
+   - Populate the database with dummy data for testing and development.
+
+3. **Data Sources:**
+   - Identify and integrate various data sources such as SNMP, gRPC, WSS, TL1, and syslog.
+   - Collect, process, and store data for visualization.
+
+4. **API Development:**
+   - Design RESTful APIs to fetch protocols, data types, and metrics data.
+   - Ensure APIs support real-time and dynamic updates for the scatter plot.
+
+5. **Testing and Validation:**
+   - Test the scatter plot for functionality, responsiveness, and accuracy of data representation.
+   - Validate database queries, API responses, and UI interactions.
+
+6. **Documentation:**
+   - Provide detailed technical documentation covering all implementation aspects, including UI, database, APIs, and sample data.
+
+
+
+
+
+
+
+### **Business Requirement**
+
+The business requires a robust and interactive solution to monitor and analyze MCP (Management Control Protocol) and Trap trends within the Overall Health Metrics dashboard. This visualization is critical for ensuring operational efficiency and system health monitoring across various protocols and data types. The scatter plot should provide actionable insights to users for decision-making and troubleshooting.
+
+### **Key Requirements**
+
+1. **Real-Time Monitoring**:  
+   Provide real-time and historical insights into system performance metrics across different protocols such as SNMP, WSS, gRPC, TL1, and syslog.
+
+2. **Dynamic Filtering**:  
+   Allow users to filter data by protocol, data type, and time range, enabling a customized view of metrics.
+
+3. **Enhanced Usability**:  
+   Offer an intuitive and visually appealing scatter plot that uses color coding to differentiate protocols and ensure easy identification of trends.
+
+4. **Scalable Design**:  
+   Build a solution that accommodates growing data volumes and supports additional protocols and data types as needed.
+
+5. **Actionable Insights**:  
+   Equip users with clear visualization tools to identify patterns, anomalies, and trends in system health, facilitating proactive decision-making.
+
+6. **Seamless Integration**:  
+   Integrate the scatter plot with existing systems, APIs, and databases to provide a unified user experience.
+
+### **Expected Benefits**
+- **Improved Monitoring**: Enhanced ability to track and understand MCP and Trap trends over time.  
+- **Proactive Maintenance**: Early identification of anomalies or issues in system metrics.  
+- **Better Decision-Making**: Data-driven insights to optimize operations and resource allocation.  
+- **Operational Efficiency**: Streamlined workflows through dynamic and real-time updates.  
+
+This project is a critical step in improving system observability and operational oversight for stakeholders.
+
+
+
 Documentation for MCP and Trap Trends Graph in Overall Health Metrics Dashboard
 
 1. Introduction
@@ -298,3 +375,458 @@ This document outlines the requirements and steps to implement the MCP and Trap 
 
 
 
+Certainly! Below is the updated structure for **PostgreSQL** with explanations. The changes from the original SQL are primarily around the **data types** and how constraints are defined in PostgreSQL.
+
+---
+
+### **PostgreSQL Database Structure with `id` Column**
+
+#### **1. `ucs_collections` Table**
+
+##### **Purpose:**
+This table stores metadata about each collection, including details about the devices involved and the source of the data.
+
+##### **Create Table Query (PostgreSQL Syntax):**
+
+```sql
+CREATE TABLE ucs_collections (
+    id SERIAL PRIMARY KEY,  -- Unique identifier for each collection (Primary Key)
+    collection_name VARCHAR(255) NOT NULL UNIQUE,  -- Name of the collection (Unique constraint)
+    device_name VARCHAR(255) NOT NULL,  -- Name of the device
+    device_ip INET NOT NULL,  -- IP address of the device (Using PostgreSQL's INET type for IPs)
+    ucg_source VARCHAR(255) NOT NULL,  -- Source of the UCG data
+    vendor VARCHAR(255) NOT NULL  -- Vendor associated with the device
+);
+```
+
+##### **Explanation:**
+- **`id`**: The `id` column is defined as **`SERIAL`**, which auto-increments in PostgreSQL. This means that a new value is automatically generated for each new row.
+- **`collection_name`**: This is the name of the collection. It's marked **`NOT NULL`** and has a **`UNIQUE`** constraint to ensure that no two collections have the same name.
+- **`device_ip`**: The `INET` type is used for the `device_ip` column to ensure that only valid IP addresses (IPv4/IPv6) are stored.
+  
+---
+
+#### **2. `collection_metrics` Table**
+
+##### **Purpose:**
+This table stores the metrics related to each collection, with a foreign key linking to the `ucs_collections` table based on `collection_name`.
+
+##### **Create Table Query (PostgreSQL Syntax):**
+
+```sql
+CREATE TABLE collection_metrics (
+    id SERIAL PRIMARY KEY,  -- Unique identifier for each metric (Primary Key)
+    collection_name VARCHAR(255) NOT NULL,  -- Name of the collection (Foreign Key)
+    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  -- Timestamp of the last update (with default value)
+    number_of_msgs INT NOT NULL,  -- Number of messages in the collection
+    size_of_msgs BIGINT NOT NULL,  -- Size of messages in bytes (supports large sizes)
+    
+    -- Foreign Key constraint to ensure referential integrity
+    CONSTRAINT fk_collection_name FOREIGN KEY (collection_name) REFERENCES ucs_collections(collection_name) ON DELETE CASCADE,
+    
+    -- Ensure collection_name is unique within the metrics table (a collection can have only one metric entry)
+    CONSTRAINT unique_collection_metric UNIQUE (collection_name)
+);
+```
+
+##### **Explanation:**
+- **`id`**: The `id` column is again defined as **`SERIAL`** to auto-increment with each new entry.
+- **`collection_name`**: This is the foreign key linking `collection_metrics` to `ucs_collections`. It refers to the `collection_name` column in `ucs_collections` and enforces referential integrity.
+- **`ON DELETE CASCADE`**: This ensures that when a record in `ucs_collections` is deleted, all related entries in `collection_metrics` will also be automatically deleted.
+- **`last_updated`**: This column is set to the current timestamp by default when a record is created.
+- **`BIGINT`**: Used for `size_of_msgs` to store large message sizes (in bytes).
+
+---
+
+### **Sample Queries for PostgreSQL**
+
+#### **1. Insert Data into `ucs_collections`:**
+
+```sql
+INSERT INTO ucs_collections (collection_name, device_name, device_ip, ucg_source, vendor)
+VALUES 
+('Collection1', 'DeviceA', '192.168.1.1', 'SNMP', 'VendorX'),
+('Collection2', 'DeviceB', '192.168.1.2', 'WSS', 'VendorY');
+```
+
+#### **2. Insert Data into `collection_metrics`:**
+
+```sql
+INSERT INTO collection_metrics (collection_name, number_of_msgs, size_of_msgs)
+VALUES 
+('Collection1', 1000, 204800),
+('Collection2', 500, 102400);
+```
+
+#### **3. Retrieve Data with Join:**
+
+To fetch all collections and their associated metrics:
+
+```sql
+SELECT c.id AS collection_id, c.collection_name, c.device_name, c.device_ip, 
+       m.id AS metric_id, m.last_updated, m.number_of_msgs, m.size_of_msgs
+FROM ucs_collections c
+LEFT JOIN collection_metrics m ON c.collection_name = m.collection_name;
+```
+
+#### **4. Update Data in `collection_metrics`:**
+
+```sql
+UPDATE collection_metrics
+SET number_of_msgs = 1200, size_of_msgs = 250000
+WHERE collection_name = 'Collection1';
+```
+
+#### **5. Delete a Collection and Cascade:**
+
+When deleting a collection, the related metrics are automatically deleted:
+
+```sql
+DELETE FROM ucs_collections
+WHERE collection_name = 'Collection1';
+```
+
+---
+
+### **Summary of Changes for PostgreSQL:**
+
+1. **Tables:**
+   - The `id` column is defined as **`SERIAL`** for auto-incrementing, making it the **primary key** for each table.
+   - **`collection_name`** is **`UNIQUE`** in both tables, ensuring that each collection has a distinct name.
+
+2. **Foreign Key Relationship:**
+   - **`collection_name`** in `collection_metrics` is defined as a **foreign key** referencing the `collection_name` in `ucs_collections`.
+   - **`ON DELETE CASCADE`** ensures that when a collection is deleted, its associated metrics are automatically deleted as well.
+
+3. **Data Types:**
+   - **`INET`** is used for storing IP addresses in `device_ip`.
+   - **`TIMESTAMP`** for the `last_updated` column, with a default value set to the current timestamp.
+
+4. **Constraints:**
+   - **`PRIMARY KEY`** ensures each row is unique based on the `id`.
+   - **`UNIQUE`** ensures that the `collection_name` is unique across both tables.
+
+5. **Sample Queries:**
+   - Insert, update, select, and delete queries are provided, including the **JOIN** operation to fetch data from both tables.
+
+This structure uses PostgreSQL-specific types like **`SERIAL`** for auto-increment and **`INET`** for IP addresses, ensuring both uniqueness and data integrity for your collections and their metrics.
+
+
+
+
+
+
+### **Essential API Requirements for Scatter Plot Visualization**
+
+To ensure the scatter plot functions correctly with dynamic updates based on user input, the following are the key APIs required:
+
+---
+
+### **1. Get Collection Data API**
+
+#### **Purpose:**
+Fetches collection metadata, which includes device details and protocol information needed for the scatter plot.
+
+#### **Endpoint:**
+- **GET /api/collections**
+
+#### **Request:**
+No parameters.
+
+#### **Response:**
+```json
+[
+  {
+    "id": 1,
+    "collection_name": "Collection1",
+    "device_name": "DeviceA",
+    "device_ip": "192.168.1.1",
+    "ucg_source": "SNMP",
+    "vendor": "VendorX"
+  }
+]
+```
+
+#### **Why We Need It:**
+- This API provides the necessary metadata about collections (e.g., device name, protocol, vendor) that the user can select from for scatter plot visualization.
+
+---
+
+### **2. Get Metrics for Specific Collection API**
+
+#### **Purpose:**
+Fetches the metrics (like number of messages, message size) for a specific collection required to plot the scatter plot.
+
+#### **Endpoint:**
+- **GET /api/metrics/{collection_name}**
+
+#### **Request:**
+- **Path Parameter:** `collection_name` (the name of the collection)
+
+#### **Response:**
+```json
+{
+  "collection_name": "Collection1",
+  "last_updated": "2024-11-20T10:30:00Z",
+  "number_of_msgs": 1000,
+  "size_of_msgs": 204800
+}
+```
+
+#### **Why We Need It:**
+- This data (metrics) is essential to visualize the scatter plot, specifically the x and y axis values like the number of messages and message size.
+
+---
+
+### **3. Get Scatter Plot Data API**
+
+#### **Purpose:**
+Retrieves both collection and metric data based on selected protocol and data type (e.g., number of messages or size of messages) to populate the scatter plot.
+
+#### **Endpoint:**
+- **GET /api/scatter-plot-data**
+
+#### **Request Parameters:**
+- `protocol`: (SNMP, WSS, etc.)
+- `data_type`: (e.g., "number_of_msgs", "size_of_msgs")
+
+#### **Response:**
+```json
+{
+  "scatter_plot_data": [
+    {
+      "collection_name": "Collection1",
+      "x_value": 1000,  // Represents number of messages
+      "y_value": 204800 // Represents size of messages
+    }
+  ]
+}
+```
+
+#### **Why We Need It:**
+- This API is used to fetch the data required for dynamically rendering the scatter plot. It ensures that only relevant data (based on the user's protocol and data type selection) is fetched.
+
+---
+
+### **4. Filter Data by Protocol API**
+
+#### **Purpose:**
+Filters the available collections by the selected protocol (e.g., SNMP, WSS, gRPC), allowing users to visualize only the data for a specific protocol.
+
+#### **Endpoint:**
+- **GET /api/filter-by-protocol**
+
+#### **Request Parameters:**
+- `protocol`: (SNMP, WSS, gRPC, etc.)
+
+#### **Response:**
+```json
+{
+  "filtered_collections": [
+    {
+      "collection_name": "Collection1",
+      "device_name": "DeviceA",
+      "device_ip": "192.168.1.1",
+      "ucg_source": "SNMP",
+      "vendor": "VendorX"
+    }
+  ]
+}
+```
+
+#### **Why We Need It:**
+- This ensures that the scatter plot can be filtered based on the selected protocol, allowing users to narrow down the data they are visualizing.
+
+---
+
+### **5. Get Available Protocols API**
+
+#### **Purpose:**
+Fetches the list of protocols supported, so users can select which protocol they want to visualize data for.
+
+#### **Endpoint:**
+- **GET /api/protocols**
+
+#### **Response:**
+```json
+{
+  "protocols": ["SNMP", "WSS", "gRPC", "TL1", "syslog"]
+}
+```
+
+#### **Why We Need It:**
+- The frontend needs to present available protocols for selection, allowing the user to choose which protocol’s data to visualize in the scatter plot.
+
+---
+
+### **Conclusion**
+
+These five APIs provide the core functionality needed for the **scatter plot** visualization:
+1. **Get Collection Data** to populate available collections.
+2. **Get Metrics for a Specific Collection** to fetch data for the scatter plot.
+3. **Get Scatter Plot Data** to retrieve specific data points (metrics) for the scatter plot.
+4. **Filter Data by Protocol** to allow users to filter collections by protocol type.
+5. **Get Available Protocols** to present protocol choices for the user.
+
+These APIs are essential for dynamic and flexible data visualizations in the **Overall Health Metrics** dashboard.
+
+
+
+
+
+
+### **Tasks Breakdown for Scatter Plot Visualization Implementation**
+
+To implement the MCP and Trap trends graph in the **Overall Health Metrics dashboard**, here's a breakdown of tasks involved, including a brief explanation for each.
+
+---
+
+### **1. Analyze UI Implementations**
+
+#### **Objective:**
+- Identify and document the user interface (UI) components required for the scatter plot.
+  
+#### **Details:**
+- **Scatter Plot Visualization:** Design the scatter plot where each point represents a collection. The x and y axes should be dynamic, depending on the data type (e.g., number of messages, size of messages).
+- **Color Coding:** Implement color-coding for different protocols to distinguish data points (e.g., SNMP, WSS, gRPC).
+- **Dynamic Updates:** Ensure the scatter plot dynamically updates based on the selected data type (e.g., number of messages or size of messages) and protocol.
+
+#### **Why It’s Important:**
+This ensures the frontend is ready to display the data correctly and offers users an interactive experience based on protocol and data type selection.
+
+---
+
+### **2. Analyze Database Structure**
+
+#### **Objective:**
+- Define the database structure required to store data for the collections and metrics.
+
+#### **Details:**
+- **Tables:** Two primary tables are needed: `ucs_collections` for collection metadata (e.g., device name, IP, protocol, vendor) and another table (e.g., `metrics`) for storing the actual data (e.g., number of messages, size of messages).
+- **Relationships:** Ensure `collection_name` in the `metrics` table is a foreign key that references the `collection_name` in the `ucs_collections` table.
+
+#### **Why It’s Important:**
+This ensures that data can be correctly stored and accessed to support the scatter plot visualization. The relational structure will also ensure data integrity and consistency.
+
+---
+
+### **3. Analyze Data Sources**
+
+#### **Objective:**
+- Identify where and how the data will be sourced for each protocol.
+
+#### **Details:**
+- **Protocols:** Data will be sourced from SNMP, WSS, gRPC, TL1, syslog, and possibly other protocols.
+- **Integration:** Integrate these data sources by identifying how the data will be collected, processed, and stored in the database.
+
+#### **Why It’s Important:**
+Understanding the data sources will ensure that accurate and timely data is available for the scatter plot. The data must be processed and stored in a structured manner for easy retrieval.
+
+---
+
+### **4. Analyze API Requirements**
+
+#### **Objective:**
+- Define the API endpoints that will fetch the necessary data for the scatter plot and enable dynamic updates.
+
+#### **Details:**
+- **Endpoints:** 
+  - Get collection metadata.
+  - Fetch metrics data based on collection name.
+  - Provide filtered data based on protocol.
+- **Request/Response Formats:** Define the format for each endpoint, specifying how requests will be made and how the data will be returned (e.g., JSON format).
+
+#### **Why It’s Important:**
+APIs are the backbone of data retrieval for the scatter plot. They ensure data is fetched dynamically based on user selection and provide the necessary endpoints to update the front end as needed.
+
+---
+
+### **5. Create Database Tables**
+
+#### **Objective:**
+- Define and create the database tables to store protocol data and collection types.
+
+#### **Details:**
+- **SQL Schema:** Write SQL queries to create tables such as `ucs_collections` and `metrics`.
+- **Indexes:** Set up indexes for faster querying and retrieval, especially for frequently accessed columns like `collection_name`.
+
+#### **Why It’s Important:**
+Creating the tables ensures that data is stored properly and can be accessed efficiently for the scatter plot visualization.
+
+---
+
+### **6. Populate Tables with Dummy Data**
+
+#### **Objective:**
+- Insert sample data into the database to test the scatter plot functionality.
+
+#### **Details:**
+- **Dummy Data:** Create a few records for both `ucs_collections` and `metrics` tables. This allows for testing the entire flow of data from the database to the front end.
+- **Test Data:** Include different protocols and data types to ensure the scatter plot can handle various scenarios.
+
+#### **Why It’s Important:**
+Dummy data allows you to verify that the system works correctly before connecting to live data sources. It’s essential for development and testing.
+
+---
+
+### **7. Implement Scatter Plot Visualization in Frontend**
+
+#### **Objective:**
+- Develop the scatter plot using ReactJS to visualize the collected data.
+
+#### **Details:**
+- **UI Implementation:** Use libraries like Chart.js or D3.js to render the scatter plot.
+- **Color Coding:** Implement the color-coding based on protocol.
+- **Dynamic Updates:** Make sure the plot dynamically updates as the user selects different data types or protocols.
+
+#### **Why It’s Important:**
+This is the core feature where the data will be displayed. The accuracy and functionality of the scatter plot will directly affect the user experience.
+
+---
+
+### **8. Connect Backend APIs with Frontend**
+
+#### **Objective:**
+- Integrate the backend APIs with the frontend to display the correct data in the scatter plot.
+
+#### **Details:**
+- **API Integration:** Use AJAX or Axios to call backend APIs from the frontend, retrieve data, and update the scatter plot in real-time.
+- **Dynamic Data Updates:** Ensure that when the user selects a different protocol or data type, the plot automatically updates without a full page reload.
+
+#### **Why It’s Important:**
+This ensures that the scatter plot is interactive and reflects real-time data changes based on user selection. Without this, the frontend and backend will be disconnected, leading to static visualizations.
+
+---
+
+### **9. Test Functionality**
+
+#### **Objective:**
+- Conduct thorough testing of the entire system to ensure it works as expected.
+
+#### **Details:**
+- **Unit Tests:** Test individual API endpoints and UI components.
+- **End-to-End Testing:** Verify the entire flow from selecting a protocol to displaying the scatter plot with correct data.
+- **Performance Testing:** Test the performance of data retrieval and rendering, especially for large datasets.
+
+#### **Why It’s Important:**
+Testing ensures that the system works correctly and meets the project requirements. It helps identify and fix any bugs or issues before deployment.
+
+---
+
+### **10. Compile Findings into a Detailed Implementation Plan**
+
+#### **Objective:**
+- Document all steps, decisions, and findings throughout the development process.
+
+#### **Details:**
+- **Documentation:** Write a detailed report summarizing the database structure, API requirements, UI design, and testing results.
+- **Future Improvements:** Document any areas for future enhancements or optimizations.
+
+#### **Why It’s Important:**
+A well-documented plan ensures that the implementation can be easily understood and maintained by other developers or teams. It also provides a clear roadmap for the project.
+
+---
+
+### **Conclusion**
+
+The breakdown of tasks ensures that each component of the **MCP and Trap trends graph** in the **Overall Health Metrics** dashboard is addressed in a logical sequence. This structured approach will help deliver a robust, functional system that provides dynamic and real-time visualizations based on user-selected data and protocols.
