@@ -1,31 +1,248 @@
-import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
-import java.io.IOException;
-import org.slf4j.Logger;
+Here’s the implementation of the required APIs in **Java** using **Spring Boot** and **PostgreSQL**:
 
-import static org.mockito.Mockito.*;
+---
 
-class SSHServerSimulatorTest {
+### **1. Get Scatter Plot Data API**
 
-    @Test
-    void testStartServerSuccessfully() throws IOException {
-        SSHServerSimulator sshServerSimulator = new SSHServerSimulator();
-        Logger mockLogger = Mockito.mock(Logger.class);
-        sshServerSimulator.setLogger(mockLogger);
+#### **Endpoint:**  
+`GET /api/alarms/scatter-plot-data`
 
-        assertDoesNotThrow(() -> sshServerSimulator.startServer());
+#### **Implementation**
 
-        verify(mockLogger).info("SSH Server started on localhost @port 22");
-    }
+##### **Controller:**
+```java
+@RestController
+@RequestMapping("/api/alarms")
+public class ScatterPlotController {
 
-    @Test
-    void testStartServerThrowsIOException() throws IOException {
-        SSHServerSimulator sshServerSimulator = new SSHServerSimulator();
-        Logger mockLogger = Mockito.mock(Logger.class);
-        sshServerSimulator.setLogger(mockLogger);
+    @Autowired
+    private ScatterPlotService scatterPlotService;
 
-        doThrow(IOException.class).when(mockLogger).info("SSH Server started on localhost @port 22");
-
-        assertThrows(IOException.class, () -> sshServerSimulator.startServer());
+    @GetMapping("/scatter-plot-data")
+    public ResponseEntity<?> getScatterPlotData(
+            @RequestParam String protocol,
+            @RequestParam String dataType) {
+        try {
+            List<ScatterPlotData> scatterPlotData = scatterPlotService.getScatterPlotData(protocol, dataType);
+            return ResponseEntity.ok(Map.of("scatter_plot_data", scatterPlotData));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                                 .body(Map.of("error", e.getMessage()));
+        }
     }
 }
+```
+
+##### **Service:**
+```java
+@Service
+public class ScatterPlotService {
+
+    @Autowired
+    private ScatterPlotRepository scatterPlotRepository;
+
+    public List<ScatterPlotData> getScatterPlotData(String protocol, String dataType) {
+        return scatterPlotRepository.fetchScatterPlotData(protocol, dataType);
+    }
+}
+```
+
+##### **Repository:**
+```java
+@Repository
+public class ScatterPlotRepository {
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    public List<ScatterPlotData> fetchScatterPlotData(String protocol, String dataType) {
+        String query = """
+            SELECT m.collection_name, m.last_updated AS date, m.%s AS y_value
+            FROM metrics m
+            JOIN ucs_collections uc ON m.collection_name = uc.collection_name
+            WHERE uc.ucg_source = ?
+        """.formatted(dataType);
+
+        return jdbcTemplate.query(
+            query,
+            new Object[]{protocol},
+            (rs, rowNum) -> new ScatterPlotData(
+                rs.getString("collection_name"),
+                rs.getTimestamp("date").toLocalDateTime(),
+                rs.getInt("y_value")
+            )
+        );
+    }
+}
+```
+
+##### **Model:**
+```java
+public class ScatterPlotData {
+    private String collectionName;
+    private LocalDateTime date;
+    private int yValue;
+
+    public ScatterPlotData(String collectionName, LocalDateTime date, int yValue) {
+        this.collectionName = collectionName;
+        this.date = date;
+        this.yValue = yValue;
+    }
+
+    // Getters and Setters
+}
+```
+
+---
+
+### **2. Filter Data by Protocol API**
+
+#### **Endpoint:**  
+`GET /api/alarms/scatter-plot-data/{protocol}`
+
+#### **Implementation**
+
+##### **Controller:**
+```java
+@GetMapping("/scatter-plot-data/{protocol}")
+public ResponseEntity<?> getFilteredDataByProtocol(@PathVariable String protocol) {
+    try {
+        List<ScatterPlotData> filteredData = scatterPlotService.filterDataByProtocol(protocol);
+        return ResponseEntity.ok(Map.of("scatter_plot_data", filteredData));
+    } catch (Exception e) {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                             .body(Map.of("error", e.getMessage()));
+    }
+}
+```
+
+##### **Service:**
+```java
+public List<ScatterPlotData> filterDataByProtocol(String protocol) {
+    return scatterPlotRepository.filterDataByProtocol(protocol);
+}
+```
+
+##### **Repository:**
+```java
+public List<ScatterPlotData> filterDataByProtocol(String protocol) {
+    String query = """
+        SELECT m.collection_name, m.last_updated AS date, m.number_of_msgs AS y_value
+        FROM metrics m
+        JOIN ucs_collections uc ON m.collection_name = uc.collection_name
+        WHERE uc.ucg_source = ?
+    """;
+
+    return jdbcTemplate.query(
+        query,
+        new Object[]{protocol},
+        (rs, rowNum) -> new ScatterPlotData(
+            rs.getString("collection_name"),
+            rs.getTimestamp("date").toLocalDateTime(),
+            rs.getInt("y_value")
+        )
+    );
+}
+```
+
+---
+
+### **3. Get Available Protocols API**
+
+#### **Endpoint:**  
+`GET /api/alarms/protocols`
+
+#### **Implementation**
+
+##### **Controller:**
+```java
+@GetMapping("/protocols")
+public ResponseEntity<?> getAvailableProtocols() {
+    try {
+        List<String> protocols = scatterPlotService.getAvailableProtocols();
+        return ResponseEntity.ok(Map.of("protocols", protocols));
+    } catch (Exception e) {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                             .body(Map.of("error", e.getMessage()));
+    }
+}
+```
+
+##### **Service:**
+```java
+public List<String> getAvailableProtocols() {
+    return scatterPlotRepository.fetchAvailableProtocols();
+}
+```
+
+##### **Repository:**
+```java
+public List<String> fetchAvailableProtocols() {
+    String query = "SELECT DISTINCT ucg_source AS protocol FROM ucs_collections";
+
+    return jdbcTemplate.query(
+        query,
+        (rs, rowNum) -> rs.getString("protocol")
+    );
+}
+```
+
+---
+
+### **PostgreSQL Database Setup**
+
+#### **Schema:**
+```sql
+CREATE TABLE ucs_collections (
+    id SERIAL PRIMARY KEY,
+    collection_name VARCHAR(255) UNIQUE NOT NULL,
+    device_name VARCHAR(255),
+    device_ip VARCHAR(15),
+    ucg_source VARCHAR(50),
+    vendor VARCHAR(50)
+);
+
+CREATE TABLE metrics (
+    id SERIAL PRIMARY KEY,
+    collection_name VARCHAR(255) REFERENCES ucs_collections(collection_name),
+    last_updated TIMESTAMP,
+    number_of_msgs INT,
+    size_of_msgs INT
+);
+```
+
+#### **Sample Data:**
+```sql
+INSERT INTO ucs_collections (collection_name, device_name, device_ip, ucg_source, vendor)
+VALUES 
+('Collection1', 'DeviceA', '192.168.0.1', 'SNMP', 'VendorA'),
+('Collection2', 'DeviceB', '192.168.0.2', 'WSS', 'VendorB');
+
+INSERT INTO metrics (collection_name, last_updated, number_of_msgs, size_of_msgs)
+VALUES 
+('Collection1', '2024-11-28 10:30:00', 500, 204800),
+('Collection2', '2024-11-28 11:00:00', 700, 307200);
+```
+
+---
+
+### **Testing the APIs**
+
+1. **Run the Spring Boot Application**:
+   - Start the application using `mvn spring-boot:run`.
+
+2. **Test Endpoints:**
+   - Use tools like **Postman** or **curl**:
+     - `GET /api/alarms/scatter-plot-data?protocol=SNMP&data_type=number_of_msgs`
+     - `GET /api/alarms/scatter-plot-data/SNMP`
+     - `GET /api/alarms/protocols`
+
+3. **Verify Outputs:**
+   - Check the JSON responses for the expected structure.
+
+---
+
+### **Conclusion**
+
+- These APIs in Java provide a robust backend for fetching scatter plot data, filtering by protocol, and retrieving available protocols.  
+- **Spring Boot** ensures scalability and maintainability for the backend services, while **PostgreSQL** offers reliable data storage and querying.
