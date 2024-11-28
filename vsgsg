@@ -1,175 +1,19 @@
-To include the three APIs (`Get Scatter Plot Data API`, `Filter Data by Protocol API`, and `Get Available Protocols API`) into the provided Java code, we'll add the following updates:
-
-1. **Controller Updates:** Add methods in the `UCSPController` to handle these APIs.
-2. **Service Updates:** Implement service-layer methods for fetching scatter plot data, filtering by protocol, and getting available protocols.
-3. **Repository Updates:** Add queries to fetch the required data from the database.
-
-Here’s how the updated code will look:
-
----
-
-### **Controller Updates**
-
-```java
-@QueryMapping(value = "scatterPlotData")
-public List<ScatterPlotDataDTO> getScatterPlotData(@Argument String protocol, @Argument String dataType) {
-    return uCSPService.getScatterPlotData(protocol, dataType);
-}
-
-@QueryMapping(value = "scatterPlotDataByProtocol")
-public List<ScatterPlotDataDTO> filterScatterPlotDataByProtocol(@Argument String protocol) {
-    return uCSPService.filterScatterPlotDataByProtocol(protocol);
-}
-
-@QueryMapping(value = "availableProtocols")
-public List<String> getAvailableProtocols() {
-    return uCSPService.getAvailableProtocols();
-}
-```
-
----
-
-### **Service Updates**
-
-Add methods in the `UCSPService` class to provide the business logic for these APIs.
-
-```java
-public List<ScatterPlotDataDTO> getScatterPlotData(String protocol, String dataType) {
-    // Fetch data based on protocol and data type
-    List<Map<String, Object>> results = uCSPRepository.fetchScatterPlotData(protocol, dataType);
-    return results.stream()
-        .map(result -> new ScatterPlotDataDTO(
-                (String) result.get("collection_name"),
-                (Date) result.get("date"),
-                ((Number) result.get("y_value")).longValue()
-        ))
-        .collect(Collectors.toList());
-}
-
-public List<ScatterPlotDataDTO> filterScatterPlotDataByProtocol(String protocol) {
-    // Fetch data filtered by protocol
-    List<Map<String, Object>> results = uCSPRepository.filterScatterPlotDataByProtocol(protocol);
-    return results.stream()
-        .map(result -> new ScatterPlotDataDTO(
-                (String) result.get("collection_name"),
-                (Date) result.get("date"),
-                ((Number) result.get("y_value")).longValue()
-        ))
-        .collect(Collectors.toList());
-}
-
-public List<String> getAvailableProtocols() {
-    // Fetch distinct protocols
-    return uCSPRepository.fetchAvailableProtocols();
-}
-```
-
----
-
-### **Repository Updates**
-
-Add queries in the `UCSPRepository` interface to fetch data for the scatter plot, filter by protocol, and get available protocols.
-
-```java
-@Query(nativeQuery = true, value = "SELECT collection_name, last_updated AS date, " +
-        "CASE :dataType " +
-        "WHEN 'number_of_msgs' THEN number_of_msgs " +
-        "WHEN 'size_of_msgs' THEN size_of_msgs " +
-        "END AS y_value " +
-        "FROM scatter_plot_data WHERE protocol = :protocol")
-List<Map<String, Object>> fetchScatterPlotData(@Param("protocol") String protocol, @Param("dataType") String dataType);
-
-@Query(nativeQuery = true, value = "SELECT collection_name, last_updated AS date, y_value " +
-        "FROM scatter_plot_data WHERE protocol = :protocol")
-List<Map<String, Object>> filterScatterPlotDataByProtocol(@Param("protocol") String protocol);
-
-@Query(nativeQuery = true, value = "SELECT DISTINCT protocol FROM scatter_plot_data")
-List<String> fetchAvailableProtocols();
-```
-
----
-
-### **DTO Class**
-
-Define a `ScatterPlotDataDTO` class to encapsulate the scatter plot data.
-
-```java
-public class ScatterPlotDataDTO {
-    private String collectionName;
-    private Date date;
-    private Long yValue;
-
-    // Constructor
-    public ScatterPlotDataDTO(String collectionName, Date date, Long yValue) {
-        this.collectionName = collectionName;
-        this.date = date;
-        this.yValue = yValue;
+{
+  "_links" : {
+    "ucspProjects" : {
+      "href" : "http://localhost:8080/ucspProjects{?page,size,sort}",
+      "templated" : true
+    },
+    "trendses" : {
+      "href" : "http://localhost:8080/trendses{?page,size,sort}",
+      "templated" : true
+    },
+    "devices" : {
+      "href" : "http://localhost:8080/devices{?page,size,sort}",
+      "templated" : true
+    },
+    "profile" : {
+      "href" : "http://localhost:8080/profile"
     }
-
-    // Getters and Setters
-    public String getCollectionName() {
-        return collectionName;
-    }
-
-    public void setCollectionName(String collectionName) {
-        this.collectionName = collectionName;
-    }
-
-    public Date getDate() {
-        return date;
-    }
-
-    public void setDate(Date date) {
-        this.date = date;
-    }
-
-    public Long getYValue() {
-        return yValue;
-    }
-
-    public void setYValue(Long yValue) {
-        this.yValue = yValue;
-    }
+  }
 }
-```
-
----
-
-### **GraphQL Schema**
-
-Add the new APIs to the GraphQL schema.
-
-```graphql
-type Query {
-    scatterPlotData(protocol: String!, dataType: String!): [ScatterPlotData]
-    scatterPlotDataByProtocol(protocol: String!): [ScatterPlotData]
-    availableProtocols: [String]
-}
-
-type ScatterPlotData {
-    collectionName: String
-    date: String
-    yValue: Long
-}
-```
-
----
-
-### **Summary of Changes**
-
-1. **Controller Layer:**
-   - Added three new `@QueryMapping` methods for the APIs.
-
-2. **Service Layer:**
-   - Implemented methods to handle logic for fetching scatter plot data, filtering by protocol, and fetching available protocols.
-
-3. **Repository Layer:**
-   - Defined SQL queries to fetch data from the `scatter_plot_data` table.
-
-4. **DTO Class:**
-   - Created `ScatterPlotDataDTO` for transferring scatter plot data.
-
-5. **GraphQL Schema:**
-   - Updated to include the new queries and their return types.
-
-These updates integrate the new APIs into your backend seamlessly while adhering to the existing code structure and standards. Let me know if you'd like any further modifications!
