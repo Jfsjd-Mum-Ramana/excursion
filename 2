@@ -1,47 +1,179 @@
-To integrate the required APIs into your existing Spring Boot application with GraphQL, I will guide you through adding endpoints to the controller and service layers for each of the three APIs you've mentioned.
+I understand now that you're asking for a detailed implementation of **three specific APIs** based on your previous request: 1) Fetch Scatter Plot Data, 2) Filter Data by Protocol, and 3) Get Available Protocols.
 
-### 1. **Add the required service methods** in your service class.  
-We will add three service methods to retrieve scatter plot data, filter data by protocol, and get available protocols.
+Let's go through each API step by step, focusing on the backend service and controller logic. We'll be using **Spring Boot** with **GraphQL** to handle the requests.
 
-### Service Layer (`UcspService.java`)
+### 1. **API to Fetch Scatter Plot Data**
+   This API will fetch data based on the given protocol and data type.
+
+### 2. **API to Filter Data by Protocol**
+   This API will return filtered data based on the selected protocol.
+
+### 3. **API to Get Available Protocols**
+   This API will return a list of available protocols.
+
+### Let's start by writing the detailed code for these three APIs:
+
+---
+
+### **Controller (`UCSPController`)**
 
 ```java
-@Service
-public class UcspService {
+package com.verizon.ucs.restapi.controllers;
+
+import com.verizon.ucs.restapi.model.ScatterPlotData;
+import com.verizon.ucs.restapi.service.UCSPService;
+import graphql.GraphQLException;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.graphql.data.method.annotation.Argument;
+import org.springframework.graphql.data.method.annotation.QueryMapping;
+import org.springframework.stereotype.Controller;
+
+import java.util.List;
+
+@Controller
+public class UCSPController {
 
     @Autowired
-    private UCSPRepository ucspRepository;
+    private UCSPService uCSPService;
 
-    @Autowired
-    private UCSPProjectsRepository ucspProjectsRepository;
-
-    // API 1: Get Scatter Plot Data
-    public List<ScatterPlotData> getScatterPlotData(String protocol, String dataType) {
-        return ucspRepository.findScatterPlotData(protocol, dataType); // Adjust to match actual repository query
+    // API to get scatter plot data based on protocol and data type
+    @QueryMapping(value = "scatterPlotData")
+    public List<ScatterPlotData> getScatterPlotData(@Argument String protocol, @Argument String dataType) {
+        try {
+            return uCSPService.getScatterPlotData(protocol, dataType);
+        } catch (Exception e) {
+            throw new GraphQLException("Error fetching scatter plot data", e);
+        }
     }
 
-    // API 2: Filter Data by Protocol
-    public List<ScatterPlotData> filterDataByProtocol(String protocol) {
-        return ucspRepository.filterDataByProtocol(protocol); // Adjust to match actual repository query
+    // API to filter data by protocol
+    @QueryMapping(value = "filterByProtocol")
+    public List<ScatterPlotData> getDataByProtocol(@Argument String protocol) {
+        try {
+            return uCSPService.filterDataByProtocol(protocol);
+        } catch (Exception e) {
+            throw new GraphQLException("Error fetching data by protocol", e);
+        }
     }
 
-    // API 3: Get Available Protocols
+    // API to get available protocols
+    @QueryMapping(value = "availableProtocols")
     public List<String> getAvailableProtocols() {
-        return Arrays.asList("SNMP", "WSS", "gRPC", "TL1", "syslog"); // Return static list for now or fetch from database
+        try {
+            return uCSPService.getAvailableProtocols();
+        } catch (Exception e) {
+            throw new GraphQLException("Error fetching available protocols", e);
+        }
     }
 }
 ```
 
-### 2. **Create a Data Transfer Object (DTO)** for Scatter Plot Data.
-To structure the response data properly, define a `ScatterPlotData` class.
+---
+
+### **Service (`UCSPService`)**
+
+In the service class, we'll define methods to handle the business logic for the three APIs.
 
 ```java
-public class ScatterPlotData {
-    private String collectionName;
-    private String date;
-    private Long yValue;
+package com.verizon.ucs.restapi.service;
 
-    // Getters and setters
+import com.verizon.ucs.restapi.model.ScatterPlotData;
+import com.verizon.ucs.restapi.repository.UCSPRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+@Service
+public class UCSPService {
+
+    @Autowired
+    private UCSPRepository uCSPRepository;
+
+    // Fetch scatter plot data based on protocol and data type
+    public List<ScatterPlotData> getScatterPlotData(String protocol, String dataType) {
+        return uCSPRepository.fetchScatterPlotData(protocol, dataType);
+    }
+
+    // Filter data by protocol
+    public List<ScatterPlotData> filterDataByProtocol(String protocol) {
+        return uCSPRepository.filterDataByProtocol(protocol);
+    }
+
+    // Get list of available protocols
+    public List<String> getAvailableProtocols() {
+        return uCSPRepository.fetchAvailableProtocols();
+    }
+}
+```
+
+---
+
+### **Repository (`UCSPRepository`)**
+
+The repository will interact with the database to fetch data using custom queries.
+
+```java
+package com.verizon.ucs.restapi.repository;
+
+import com.verizon.ucs.restapi.model.ScatterPlotData;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+
+@Repository
+public interface UCSPRepository extends JpaRepository<ScatterPlotData, Long> {
+
+    // Query to fetch scatter plot data based on protocol and data type
+    @Query("SELECT new com.verizon.ucs.restapi.model.ScatterPlotData(s.collectionName, s.date, s.value) " +
+           "FROM ScatterPlotData s WHERE s.protocol = :protocol AND s.dataType = :dataType")
+    List<ScatterPlotData> fetchScatterPlotData(String protocol, String dataType);
+
+    // Query to filter data by protocol
+    @Query("SELECT new com.verizon.ucs.restapi.model.ScatterPlotData(s.collectionName, s.date, s.value) " +
+           "FROM ScatterPlotData s WHERE s.protocol = :protocol")
+    List<ScatterPlotData> filterDataByProtocol(String protocol);
+
+    // Query to fetch all available protocols
+    @Query("SELECT DISTINCT s.protocol FROM ScatterPlotData s")
+    List<String> fetchAvailableProtocols();
+}
+```
+
+---
+
+### **Model (`ScatterPlotData`)**
+
+We need a model that represents the data structure for the scatter plot.
+
+```java
+package com.verizon.ucs.restapi.model;
+
+import javax.persistence.Entity;
+import javax.persistence.Id;
+import java.time.LocalDateTime;
+
+@Entity
+public class ScatterPlotData {
+
+    @Id
+    private Long id;
+    private String collectionName;
+    private LocalDateTime date;
+    private String protocol;
+    private String dataType;
+    private Long value;
+
+    // Constructor
+    public ScatterPlotData(String collectionName, LocalDateTime date, Long value) {
+        this.collectionName = collectionName;
+        this.date = date;
+        this.value = value;
+    }
+
+    // Getters and Setters
     public String getCollectionName() {
         return collectionName;
     }
@@ -50,130 +182,222 @@ public class ScatterPlotData {
         this.collectionName = collectionName;
     }
 
-    public String getDate() {
+    public LocalDateTime getDate() {
         return date;
     }
 
-    public void setDate(String date) {
+    public void setDate(LocalDateTime date) {
         this.date = date;
     }
 
-    public Long getyValue() {
-        return yValue;
+    public Long getValue() {
+        return value;
     }
 
-    public void setyValue(Long yValue) {
-        this.yValue = yValue;
+    public void setValue(Long value) {
+        this.value = value;
+    }
+
+    public String getProtocol() {
+        return protocol;
+    }
+
+    public void setProtocol(String protocol) {
+        this.protocol = protocol;
+    }
+
+    public String getDataType() {
+        return dataType;
+    }
+
+    public void setDataType(String dataType) {
+        this.dataType = dataType;
     }
 }
 ```
 
-### 3. **Define the GraphQL Queries** in the schema.
-You need to create GraphQL queries that will expose these services. Here's the updated `schema.graphqls` for the queries.
+---
+
+### **Detailed Breakdown of the Code**:
+
+#### **1. `UCSPController`**
+- **scatterPlotData**: This query will fetch scatter plot data based on the provided protocol and data type.
+- **filterByProtocol**: This query will return filtered data based on the selected protocol.
+- **availableProtocols**: This query will return a list of all available protocols from the database.
+
+#### **2. `UCSPService`**
+- **getScatterPlotData**: Calls the repository method to fetch data based on protocol and data type.
+- **filterDataByProtocol**: Filters data by the protocol.
+- **getAvailableProtocols**: Fetches a list of all protocols from the database.
+
+#### **3. `UCSPRepository`**
+- **fetchScatterPlotData**: Retrieves scatter plot data from the database based on protocol and data type.
+- **filterDataByProtocol**: Fetches filtered data by protocol.
+- **fetchAvailableProtocols**: Fetches the distinct protocols present in the database.
+
+---
+
+### **Database Table Example (`scatter_plot_data`)**
+
+The repository methods assume that there is a table called `scatter_plot_data` in the database with the following structure:
+
+| Column        | Data Type   | Description                    |
+|---------------|-------------|--------------------------------|
+| `id`          | `BIGINT`    | Primary Key                    |
+| `collectionName` | `VARCHAR` | Name of the collection         |
+| `date`        | `TIMESTAMP` | Date when the data was recorded|
+| `protocol`    | `VARCHAR`   | Protocol (e.g., SNMP, WSS)     |
+| `dataType`    | `VARCHAR`   | Data type (e.g., number_of_msgs, size_of_msgs) |
+| `value`       | `BIGINT`    | The value for the scatter plot |
+
+---
+
+### **Testing the APIs**:
+To test the APIs, you can use a GraphQL client like Postman or GraphiQL to query the following:
+
+1. **Fetch Scatter Plot Data**:
+   ```graphql
+   query {
+     scatterPlotData(protocol: "SNMP", dataType: "number_of_msgs") {
+       collectionName
+       date
+       value
+     }
+   }
+   ```
+
+2. **Filter Data by Protocol**:
+   ```graphql
+   query {
+     filterByProtocol(protocol: "SNMP") {
+       collectionName
+       date
+       value
+     }
+   }
+   ```
+
+3. **Get Available Protocols**:
+   ```graphql
+   query {
+     availableProtocols
+   }
+   ```
+
+---
+
+This structure provides a robust backend with clear separation between the controller, service, and repository layers. It also gives flexibility to fetch scatter plot data, filter by protocol, and retrieve available protocols.
+
+
+Certainly! Below is the **GraphQL schema** that aligns with the API endpoints you described for fetching scatter plot data, filtering data by protocol, and getting available protocols.
+
+### **GraphQL Schema (`schema.graphqls`)**
 
 ```graphql
+# Query type defines the available queries to retrieve data
 type Query {
-    getScatterPlotData(protocol: String, dataType: String): [ScatterPlotData]
-    filterDataByProtocol(protocol: String): [ScatterPlotData]
-    getAvailableProtocols: [String]
+
+  # Fetch scatter plot data based on protocol and data type
+  scatterPlotData(protocol: String!, dataType: String!): [ScatterPlotData!]!
+
+  # Filter data based on the selected protocol
+  filterByProtocol(protocol: String!): [ScatterPlotData!]!
+
+  # Get available protocols
+  availableProtocols: [String!]!
 }
 
+# Type that represents the scatter plot data returned in queries
 type ScatterPlotData {
-    collectionName: String
-    date: String
-    yValue: Long
+  collectionName: String!
+  date: String!
+  value: Long!
+}
+
+```
+
+### **Explanation of the GraphQL Schema**:
+
+1. **Query Type**:
+    - **scatterPlotData**: Fetches scatter plot data based on the provided `protocol` and `dataType`. It returns a list of `ScatterPlotData` objects.
+    - **filterByProtocol**: Filters the data by `protocol` (e.g., SNMP) and returns the filtered list of `ScatterPlotData` objects.
+    - **availableProtocols**: Returns a list of available protocols (e.g., SNMP, WSS, gRPC, TL1).
+
+2. **ScatterPlotData Type**:
+    - Represents the data for each scatter plot point.
+    - **collectionName**: The name of the collection.
+    - **date**: The date of the data point.
+    - **value**: The numeric value associated with the data point (e.g., number of messages or size of messages).
+
+### **Schema Details**:
+
+- The `Query` type defines the top-level queries that can be executed to interact with the GraphQL API.
+- The `scatterPlotData` query expects two arguments: `protocol` (e.g., SNMP) and `dataType` (e.g., number_of_msgs or size_of_msgs).
+- The `filterByProtocol` query accepts a `protocol` argument and returns all relevant data filtered by that protocol.
+- The `availableProtocols` query returns all unique protocols that can be used for filtering the data.
+
+### **Sample GraphQL Query**:
+
+To fetch scatter plot data based on a protocol and data type:
+
+```graphql
+query {
+  scatterPlotData(protocol: "SNMP", dataType: "number_of_msgs") {
+    collectionName
+    date
+    value
+  }
 }
 ```
 
-### 4. **Controller Layer** (`UcspController.java`)
-Expose the API endpoints using a REST controller.
+To filter data by protocol:
 
-```java
-@RestController
-@RequestMapping("/api/alarms")
-public class UcspController {
-
-    @Autowired
-    private UcspService ucspService;
-
-    // API 1: Get Scatter Plot Data
-    @GetMapping("/scatter-plot-data")
-    public ResponseEntity<Map<String, List<ScatterPlotData>>> getScatterPlotData(
-            @RequestParam String protocol, 
-            @RequestParam String dataType) {
-        List<ScatterPlotData> data = ucspService.getScatterPlotData(protocol, dataType);
-        Map<String, List<ScatterPlotData>> response = new HashMap<>();
-        response.put("scatter_plot_data", data);
-        return ResponseEntity.ok(response);
-    }
-
-    // API 2: Filter Data by Protocol
-    @GetMapping("/scatter-plot-data/{protocol}")
-    public ResponseEntity<Map<String, List<ScatterPlotData>>> filterDataByProtocol(
-            @PathVariable String protocol) {
-        List<ScatterPlotData> data = ucspService.filterDataByProtocol(protocol);
-        Map<String, List<ScatterPlotData>> response = new HashMap<>();
-        response.put("scatter_plot_data", data);
-        return ResponseEntity.ok(response);
-    }
-
-    // API 3: Get Available Protocols
-    @GetMapping("/protocols")
-    public ResponseEntity<Map<String, List<String>>> getAvailableProtocols() {
-        List<String> protocols = ucspService.getAvailableProtocols();
-        Map<String, List<String>> response = new HashMap<>();
-        response.put("protocols", protocols);
-        return ResponseEntity.ok(response);
-    }
+```graphql
+query {
+  filterByProtocol(protocol: "SNMP") {
+    collectionName
+    date
+    value
+  }
 }
 ```
 
-### 5. **Repository Methods** (`UCSPRepository.java`)
-Now, define the custom queries to interact with the database. These methods should correspond to the required functionalities.
+To get the available protocols:
 
-```java
-@Repository
-public class UCSPRepository {
-
-    @PersistenceContext
-    private EntityManager entityManager;
-
-    // Custom query for fetching scatter plot data based on protocol and data type
-    public List<ScatterPlotData> findScatterPlotData(String protocol, String dataType) {
-        String sql = "SELECT c.collection_name, m.last_updated, m." + dataType + " " +
-                     "FROM ucsp_alarm_inventory c " +
-                     "JOIN ucsp_alarm_metrics m ON c.collection_name = m.collection_name " +
-                     "WHERE c.ucg_source = :protocol";
-        
-        TypedQuery<Object[]> query = entityManager.createQuery(sql, Object[].class);
-        query.setParameter("protocol", protocol);
-        
-        List<Object[]> results = query.getResultList();
-        List<ScatterPlotData> scatterPlotData = new ArrayList<>();
-        
-        for (Object[] result : results) {
-            ScatterPlotData data = new ScatterPlotData();
-            data.setCollectionName((String) result[0]);
-            data.setDate(((Timestamp) result[1]).toString()); // Adjust for date format if needed
-            data.setyValue((Long) result[2]);
-            scatterPlotData.add(data);
-        }
-        
-        return scatterPlotData;
-    }
-
-    // Custom query for filtering data by protocol
-    public List<ScatterPlotData> filterDataByProtocol(String protocol) {
-        return findScatterPlotData(protocol, "number_of_msgs"); // Example for filtering by number_of_msgs
-    }
+```graphql
+query {
+  availableProtocols
 }
 ```
 
-### Summary of Changes:
-- **Service Layer**: We created methods that fetch the scatter plot data, filter by protocol, and return available protocols.
-- **Controller Layer**: The REST API endpoints are exposed to handle GET requests for the scatter plot data, filtering, and available protocols.
-- **Repository Layer**: The repository handles the database queries to fetch the necessary data.
-- **GraphQL**: We defined queries in the schema to expose the relevant information via GraphQL.
+### **How to Use the GraphQL Schema in Spring Boot**:
 
-### Testing
-Ensure that you test each API endpoint with different parameters to verify the correct data is returned for the scatter plot, filtering by protocol, and fetching available protocols.
+1. **Add GraphQL Dependencies**:
+   In your `pom.xml` (for Maven) or `build.gradle` (for Gradle), include the necessary dependencies for Spring Boot with GraphQL support.
+
+   **Maven**:
+   ```xml
+   <dependency>
+       <groupId>com.graphql-java</groupId>
+       <artifactId>graphql-java</artifactId>
+       <version>17.3</version>
+   </dependency>
+   <dependency>
+       <groupId>com.graphql-java</groupId>
+       <artifactId>spring-boot-starter-graphql</artifactId>
+       <version>3.2.0</version>
+   </dependency>
+   ```
+
+   **Gradle**:
+   ```gradle
+   implementation 'com.graphql-java:spring-boot-starter-graphql:3.2.0'
+   ```
+
+2. **Place the Schema**:
+   Place the schema file (`schema.graphqls`) in the `src/main/resources` folder.
+
+3. **Spring Boot Configuration**:
+   Spring Boot with the `spring-boot-starter-graphql` starter automatically handles the GraphQL endpoints, and you can query them using the `/graphql` endpoint.
+
+By following this structure, you can interact with your GraphQL API to retrieve the desired data and perform the required operations for your scatter plot visualization.
