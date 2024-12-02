@@ -658,3 +658,41 @@ In the above code the API of controller the below two API's are showing null dat
     public List<ScatterPlotData> scatterPlotDataByProtocol(String protocol) {
         return uCSPService.getScatterPlotDataByProtocol(protocol);
     }
+
+
+Here is the table structure:
+
+1. `ucsp_alarm_inventory` Table
+Purpose:
+This table stores metadata about each collection, including details about the devices involved and the source of the data.
+
+
+CREATE TABLE ucsp_alarm_inventory(
+    id SERIAL PRIMARY KEY,  
+    collection_name VARCHAR(255) NOT NULL UNIQUE,  
+    device_name VARCHAR(255) NOT NULL, 
+    device_ip INET NOT NULL, 
+    ucg_source VARCHAR(255) NOT NULL,  
+    vendor VARCHAR(255) NOT NULL  );
+
+
+Explanation:
+- id: The `id` column is defined as SERIAL, which auto-increments in PostgreSQL. This means that a new value is automatically generated for each new row.
+- collection_name: This is the name of the collection. It's marked NOT NULL and has a UNIQUE constraint to ensure that no two collections have the same name.
+- device_ip: The `INET` type is used for the `device_ip` column to ensure that only valid IP addresses (IPv4/IPv6) are stored.
+  
+2. `ucsp_alarm_metrics` Table
+Purpose:
+This table stores the metrics related to each collection, with a foreign key linking to the `ucsp_alarm_inventory` table based on `collection_name`.
+
+
+
+CREATE TABLE ucsp_alarm_metrics(
+    id SERIAL PRIMARY KEY,  
+    collection_name VARCHAR(255) NOT NULL,
+    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  
+    number_of_msgs INT NOT NULL, 
+    size_of_msgs BIGINT NOT NULL,     
+    CONSTRAINT fk_collection_name FOREIGN KEY (collection_name) REFERENCES     ucsp_alarm_inventory(collection_name) ON DELETE CASCADE,
+    CONSTRAINT unique_collection_metric UNIQUE (collection_name)
+);
