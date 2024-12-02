@@ -1,284 +1,42 @@
-import React, { useEffect, useState } from 'react';
-import axios from 'axios';
-import { __UCS_GRAPHQL_URL__ } from '../../api-endpoints';
-import { UNIQUE_UGS_SOURCE_QUERY, UNIQUE_PROJECT_QUERY, GET_DAILY_TRENDS_DATA } from '../../graphQL/graphqlQueries';
-import LoadingButton from "@mui/lab/LoadingButton";
-import { LineChart } from '@mui/x-charts/LineChart';
-import { AxisConfig, ChartsXAxisProps } from '@mui/x-charts';
-import { Box, FormControl, Grid, InputLabel, MenuItem, Select, SelectChangeEvent, TextField, Autocomplete, Button } from '@mui/material';
-import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import dayjs, { Dayjs } from 'dayjs';
-import { DatePicker } from "@mui/x-date-pickers/DatePicker";
-import { useTheme } from "@mui/material/styles";
-import { useSnackbar } from '../../utils/SnackbarContext';
+Remember that this are the tables has been created and also inserted values will be here:
 
-const generateLast10Dates = () => {
-    const dates = [];
-    for (let i = 0; i < 10; i++) {
-        dates.push(dayjs().subtract(i, 'day').format('YYYY-MM-DD'));
-    }
-    //console.log(dates,"dates");
-    //return dates.reverse(); 
-    return dates;
-};
+CREATE TABLE ucsp_alarm_metrics(
+    id SERIAL PRIMARY KEY,  
+    collection_name VARCHAR(255) NOT NULL,
+    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  
+    number_of_msgs INT NOT NULL, 
+    size_of_msgs BIGINT NOT NULL,     
+    CONSTRAINT fk_collection_name FOREIGN KEY (collection_name) REFERENCES     ucsp_alarm_inventory(collection_name) ON DELETE CASCADE,
+    CONSTRAINT unique_collection_metric UNIQUE (collection_name)
+);
 
 
-const DailyTrend: React.FC = () => {
-    const theme = useTheme()
-    const [projectList, setProjectList] = useState<any[]>([]);
-    const [ucgSourceList, setUcgSourceList] = useState<{ id: number, name: string }[]>([]);
-
-    const [selectedProject, setSelectedProject] = useState<any>(null);
-    const [selectedUCGSource, setSelectedUCGSource] = useState<number>(0);
-    const [fromDate, setSelectedFromDate] = useState<Dayjs>(dayjs().subtract(1, 'month'));
-    const [toDate, setSelectedToDate] = useState<Dayjs | null>(dayjs());
-    const [loading, setLoading] = useState<boolean>(false);
-    const [ucgsourceLoading, setUcgsourceLoading] = useState<boolean>(false);
-
-    const [isFetched, setIsFetched] = useState(false);
-    const [responseData, setResponseData] = useState<any[]>([]);
-    const { showSnackbar } = useSnackbar();
-    const last10Dates = generateLast10Dates();
-
-    //const data = [ { "collectionDate": "2024-08-16", "sizeOfFilesKB": 340, "numberOfFiles": 45 }, { "collectionDate": "2024-08-17", "sizeOfFilesKB": 340, "numberOfFiles": 45 }, { "collectionDate": "2024-08-18", "sizeOfFilesKB": 251, "numberOfFiles": 10 }, { "collectionDate": "2024-08-19", "sizeOfFilesKB": 456, "numberOfFiles": 78 }, { "collectionDate": "2024-08-20", "sizeOfFilesKB": 310, "numberOfFiles": 46 }, { "collectionDate": "2024-08-21", "sizeOfFilesKB": 234, "numberOfFiles": 56 }, { "collectionDate": "2024-08-22", "sizeOfFilesKB": 453, "numberOfFiles": 67 }, { "collectionDate": "2024-08-23", "sizeOfFilesKB": 300, "numberOfFiles": 41 }, { "collectionDate": "2024-08-24", "sizeOfFilesKB": 980, "numberOfFiles": 30 }, { "collectionDate": "2024-08-25", "sizeOfFilesKB": 340, "numberOfFiles": 45 }, { "collectionDate": "2024-08-26", "sizeOfFilesKB": 251, "numberOfFiles": 10 }, { "collectionDate": "2024-08-27", "sizeOfFilesKB": 251, "numberOfFiles": 10 }, { "collectionDate": "2024-08-28", "sizeOfFilesKB": 251, "numberOfFiles": 10 }, { "collectionDate": "2024-08-29", "sizeOfFilesKB": 175, "numberOfFiles": 62 }, { "collectionDate": "2024-09-01", "sizeOfFilesKB": 1101, "numberOfFiles": 42 }, { "collectionDate": "2024-09-02", "sizeOfFilesKB": 150, "numberOfFiles": 21 }, { "collectionDate": "2024-09-03", "sizeOfFilesKB": 232, "numberOfFiles": 12 } ];
-    useEffect(() => {
-        //setResponseData(data);
-        const fetchProjectData = async () => {
-            try {
-                const projectResponse = await axios.post(__UCS_GRAPHQL_URL__, {
-                    query: UNIQUE_PROJECT_QUERY,
-                });
-                if (projectResponse.data?.data?.uniqueUCSPProjects && projectResponse.data.data.uniqueUCSPProjects.length > 0) {
-                    setProjectList(projectResponse.data.data.uniqueUCSPProjects);
-                }
-            } catch (error) {
-                showSnackbar('Error fetching project data!');
-                console.error('Error fetching project data', error);
-            }
-        };
-        fetchProjectData();
-    }, []);
-
-    const handleProjectChange = async (options: any) => {
-        setSelectedProject(options);
-        setUcgsourceLoading(true);
-        setSelectedUCGSource(0);
-        setUcgSourceList([]);
-        if (options && options.id) {
-            try {
-                const ucgSourcesResponse = await axios.post(__UCS_GRAPHQL_URL__, {
-                    query: UNIQUE_UGS_SOURCE_QUERY,
-                    variables: { projectId: options.id },
-                });
-                if (ucgSourcesResponse.data?.data?.uniqueUCGSourcesByProject && ucgSourcesResponse.data.data.uniqueUCGSourcesByProject.length > 0) {
-                    setUcgSourceList(ucgSourcesResponse.data.data.uniqueUCGSourcesByProject);
-                } else {
-                    showSnackbar('No UCGsource exists for this Project!');
-                }
-            } catch (error) {
-                showSnackbar('Error fetching UCGsource data!');
-                console.error('Error fetching UCG source:', error);
-            } finally {
-                setUcgsourceLoading(false);
-            }
-        }
-    };
-
-    const handleSelectChange = (setter: React.Dispatch<React.SetStateAction<number>>) => (
-        event: SelectChangeEvent<number>) => {
-        setter(event.target.value as number);
-    };
-
-    const handleReset = () => {
-        setSelectedProject(null);
-        setSelectedUCGSource(0);
-        setSelectedFromDate(dayjs().subtract(1, 'month'));
-        setSelectedToDate(dayjs());
-        setResponseData([]);
-    };
-    const handleFetchClick = async () => {
-        setLoading(true);
-        setIsFetched(false);
-        setResponseData([]);
-        const formattedFromDate = dayjs(fromDate).format('YYYY-MM-DD');
-        const formattedToDate = dayjs(toDate).format('YYYY-MM-DD');
-
-        const data = {
-            ucgSourceID: selectedUCGSource,
-            fromDate: formattedFromDate,
-            toDate: formattedToDate
-        };
-        //console.log(data);
-        try {
-            const response = await axios.post(__UCS_GRAPHQL_URL__, {
-                query: GET_DAILY_TRENDS_DATA,
-                variables: data,
-            });
-
-            if (response.data?.data?.dailyTrends && response.data.data.dailyTrends.length > 0) {
-                let data = response.data.data.dailyTrends || [];
-                console.log(data);
-                setResponseData(data);
-            } else {
-                showSnackbar("No Data Found!");
-            }
-            //console.log(response);
-        } catch (error) {
-            showSnackbar("Error While fetching the Data from the Server");
-            console.error('Error fetching data', error);
-        } finally {
-            setLoading(false);
-            setIsFetched(true);
-        }
-    };
-
-    const series = [
-        {
-            dataKey: 'sizeOfFilesKB',
-            label: 'Size of Files (KB)',
-        },
-        {
-            dataKey: 'numberOfFiles',
-            label: 'Number of Files',
-        },
-    ];
-    const isButtonDisabled = () => {
-        return !selectedProject || !selectedUCGSource || !fromDate || !toDate;
-    };
-
-    //const theme = useTheme();
-
-    return (
-
-        <Box sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            //overflow: 'auto',
-            //padding: '1%',
-            boxSizing: 'border-box',
-
-        }}>
-            <Grid container spacing={4} alignItems="flex-end">
-                <Grid item xs={12} sm={6} md>
-                    <Autocomplete
-                        value={selectedProject}
-                        onChange={(e, options) => handleProjectChange(options)}
-                        loading={loading}
-                        disablePortal
-                        options={projectList}
-                        getOptionLabel={(option) => option.name}
-                        renderInput={(params: any) => <TextField {...params} label="Project" placeholder="Project Name" />}
-                    />
-                </Grid>
-                <Grid item xs={12} sm={6} md>
-                    <FormControl variant="outlined" sx={{ width: '100%', height: '100%' }}>
-                        <InputLabel id="select-outlined-label">UCG Source</InputLabel>
-                        <Select
-                            labelId="select-outlined-label"
-                            id="select-outlined"
-                            label="UCG Source"
-                            value={selectedUCGSource}
-                            onChange={(event) => handleSelectChange(setSelectedUCGSource)(event)}
-                        >
-                            {ucgsourceLoading ? (
-                                <MenuItem disabled>
-                                    Loading…
-                                </MenuItem>
-                            ) : (
-                                ucgSourceList?.map((source, i) => (
-                                    <MenuItem
-                                        key={source.id}
-                                        id="dropDown"
-                                        value={source.id}
-                                    >
-                                        {source.name}
-                                    </MenuItem>
-                                ))
-                            )}
-                        </Select>
-                    </FormControl>
-                </Grid>
-                <Grid item xs={12} sm={6} md>
-                    <LocalizationProvider dateAdapter={AdapterDayjs}>
-                        <DatePicker
-                            label="Start Date"
-                            sx={{ width: '100%', height: '100%' }}
-                            value={fromDate}
-                            onChange={(newValue: Dayjs | null) => {
-                                setSelectedFromDate(newValue || dayjs());
-                                // If newValue is after toDate, reset toDate
-                                if (newValue && toDate && newValue.isAfter(toDate)) {
-                                    setSelectedToDate(null);
-                                }
-                            }}
-                        />
-                    </LocalizationProvider>
-                </Grid>
-                <Grid item xs={12} sm={6} md>
-                    <LocalizationProvider dateAdapter={AdapterDayjs}>
-                        <DatePicker
-                            label="End Date"
-                            sx={{ width: '100%', height: '100%' }}
-                            value={toDate}
-                            minDate={fromDate} // Disable dates before fromDate
-                            onChange={(newValue) => setSelectedToDate(newValue)}
-                        />
-                    </LocalizationProvider>
-                </Grid>
-                <Grid item xs={2} sm={2} md={2} sx={{ display: 'flex' }}>
-                    <Button variant="contained" onClick={handleReset} color="primary" sx={{ marginRight: 2 }}>Reset</Button>
-                    <LoadingButton onClick={handleFetchClick} loading={loading} loadingIndicator="Fetching…" variant="contained"
-                        disabled={isButtonDisabled()}>
-                        <span>Fetch</span>
-                    </LoadingButton>
-                </Grid>
-            </Grid>
+CREATE TABLE ucsp_alarm_inventory(
+    id SERIAL PRIMARY KEY,  
+    collection_name VARCHAR(255) NOT NULL UNIQUE,  
+    device_name VARCHAR(255) NOT NULL, 
+    device_ip INET NOT NULL, 
+    ucg_source VARCHAR(255) NOT NULL,  
+    vendor VARCHAR(255) NOT NULL  );
 
 
-            {responseData.length > 0 ? (
-                <Box sx={{ marginTop: 6, height: 450, width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                    <LineChart
-                        // loading
-                        dataset={responseData}
-                        //width={760}
-                        series={series}
-                        xAxis={[
-                            {
-                                dataKey: 'collectionDate',
-                                scaleType: "point",
-                                label: "Collected Date",
-                                tickLabelStyle: {
-                                    angle: -25,
-                                    textAnchor: 'end',
-                                    fontSize: 10,
-                                },
-                                labelStyle: { transform: "translateY(30px)" },
-                                tickPlacement: 'middle', tickLabelPlacement: 'middle'
-                            } as AxisConfig<'point', string, ChartsXAxisProps>,
-                        ]}
-                        margin={{
-                            left: 80,
-                            right: 5,
-                            top: 50,
-                            bottom: 80,
-                        }}
-                        colors={theme.palette.distinctLightPalette}
-                    />
-                </Box>
-            ) : isFetched && (
-                <Box sx={{ marginTop: 6, height: 450, width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                    <LineChart
-                        xAxis={[{ data: last10Dates, scaleType: 'point', }]}
-                        yAxis={[{ min: 0, max: 10 }]}
-                        series={[]}
-                    />
-                </Box>
-            )}
+1. Insert Data into `ucsp_alarm_inventory`:
 
-        </Box>
-    );
-}
 
-export default DailyTrend;
+INSERT INTO ucsp_alarm_inventory (collection_name, device_name, device_ip, ucg_source, vendor)
+VALUES 
+('Collection1', 'DeviceA', '192.168.1.1', 'SNMP', 'VendorX'),
+('Collection2', 'DeviceB', '192.168.1.2', 'WSS', 'VendorY');
+
+
+
+2. Insert Data into `ucsp_alarm_metrics`:
+
+
+INSERT INTO ucsp_alarm_metrics (collection_name, number_of_msgs, size_of_msgs)
+VALUES 
+('Collection1', 1000, 204800),
+('Collection2', 500, 102400);
+
+
+Provide the code based on this tables only 
