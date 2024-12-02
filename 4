@@ -1,398 +1,237 @@
-import React, { useState, useEffect } from 'react';
-import { LineChart } from '@mui/x-charts/LineChart';
-import { Autocomplete, Box, Button, Breadcrumbs, FormControlLabel, Grid, IconButton, Link, Switch, TextField, Typography } from '@mui/material';
-import axios from 'axios';
-import { AxisConfig, ChartsXAxisProps } from '@mui/x-charts';
-import { __UCS_GRAPHQL_URL__ } from '../../api-endpoints';
-import { UNIQUE_NETWORKS_BY_PROTOCOL_QUERY, AVG_NETWORK_BY_COVERAGE_QUERY, UNIQUE_DEVICES_BY_NETWORK_SNMP } from '../../graphQL/graphqlQueries';
-import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import dayjs, { Dayjs } from 'dayjs';
-import { DatePicker } from "@mui/x-date-pickers/DatePicker";
-import LoadingButton from "@mui/lab/LoadingButton";
-import NavigateNextIcon from '@mui/icons-material/NavigateNext';
-import HomeIcon from '@mui/icons-material/Home';
-import { useSnackbar } from '../../utils/SnackbarContext';
-import { useTheme } from '@mui/material/styles';
+Here is the remaining code for implementing the GraphQL-based APIs, including the ScatterPlotDataDTO, service, repository, and other necessary components:
 
-interface DataPoint {
-    date: string;
-    totalCoverage: number;
-    coverageDataList: DetailedDataPoint[];
+1. DTO (Data Transfer Object) - ScatterPlotDataDTO
+
+The ScatterPlotDataDTO class represents the data that will be returned in the GraphQL responses for scatter plot queries.
+
+package com.example.dto;
+
+public class ScatterPlotDataDTO {
+
+    private String collectionName;
+    private String date;
+    private Long yValue;
+
+    // Constructor
+    public ScatterPlotDataDTO(String collectionName, String date, Long yValue) {
+        this.collectionName = collectionName;
+        this.date = date;
+        this.yValue = yValue;
+    }
+
+    // Getters and setters
+    public String getCollectionName() {
+        return collectionName;
+    }
+
+    public void setCollectionName(String collectionName) {
+        this.collectionName = collectionName;
+    }
+
+    public String getDate() {
+        return date;
+    }
+
+    public void setDate(String date) {
+        this.date = date;
+    }
+
+    public Long getyValue() {
+        return yValue;
+    }
+
+    public void setyValue(Long yValue) {
+        this.yValue = yValue;
+    }
 }
 
-interface DetailedDataPoint {
-    time: string;
-    coverage: number;
+2. Service Layer
+
+The service layer is where the business logic is handled. This is responsible for calling the repository methods and processing the data.
+
+package com.example.service;
+
+import com.example.dto.ScatterPlotDataDTO;
+import com.example.repository.UcspRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+@Service
+public class DataService {
+
+    private final UcspRepository ucspRepository;
+
+    @Autowired
+    public DataService(UcspRepository ucspRepository) {
+        this.ucspRepository = ucspRepository;
+    }
+
+    public List<ScatterPlotDataDTO> getScatterPlotData(String protocol, String dataType) {
+        return ucspRepository.getScatterPlotData(protocol, dataType);
+    }
+
+    public List<ScatterPlotDataDTO> filterDataByProtocol(String protocol) {
+        return ucspRepository.filterDataByProtocol(protocol);
+    }
+
+    public List<String> getAvailableProtocols() {
+        return ucspRepository.getAvailableProtocols();
+    }
 }
-const chartHeight = 450;
-const childChartHeight = 410;
-const ParentChart = ({ data, onDrillDown, setIsChildChartDisplayed }: { data: DataPoint[], onDrillDown: (date: string) => void, setIsChildChartDisplayed: (value: boolean) => void }) => {
-    //console.log('ParentChart received data:', data); 
-    const theme = useTheme();
 
-    const transformedData = data.map(item => ({
-        collectionDate: item.date,
-        totalCoverage: item.totalCoverage,
-    }));
+3. Repository Layer
 
-    //console.log('Transformed Data for ParentChart:', transformedData); // Log transformed data
+In the repository layer, the methods interact with the database using JPQL queries to fetch the required data.
 
-    const lineChartParams = {
-        series: [
-            {
-                id: 'totalCoverage',
-                datakey: 'totalCoverage',
-                label: 'Coverage',
-                data: transformedData.map(item => item.totalCoverage),
-            }
-        ],
-        xAxis: [{
-            data: transformedData.map(item => item.collectionDate),
-            id: 'axis1',
-            dataKey: 'collectionDate',
-            scaleType: "point",
-            label: "Collected Date",
-            tickLabelStyle: {
-                angle: -25,
-                textAnchor: 'end',
-                fontSize: 10,
-            },
-            labelStyle: { transform: "translateY(30px)" },
-            tickPlacement: 'middle', tickLabelPlacement: 'middle',
-        } as AxisConfig<'point', string, ChartsXAxisProps>],
-        height: chartHeight,
-        margin: {
-            left: 60,
-            right: 10,
-            top: 20,
-            bottom: 80,
-        },
-        colors: theme.palette.distinctLightPalette
-    };
+package com.example.repository;
 
-    return (
-        <Box width="100%">
-            <LineChart
-                {...lineChartParams}
-                onAxisClick={(event, d) => {
-                    if (d && d.axisValue) {
-                        setIsChildChartDisplayed(true);
-                        onDrillDown(String(d.axisValue));
-                    } else {
-                        console.error('collectionDate not found in data point');
-                    }
-                }}
+import com.example.dto.ScatterPlotDataDTO;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.CrudRepository;
+import org.springframework.stereotype.Repository;
 
-            />
-        </Box>
-    );
-};
+import java.util.List;
 
-const ChildChart = ({ date, data }: { date: string, data: DetailedDataPoint[] }) => {
-    const theme = useTheme();
-    const detailedLineChartsParams = {
-        series: [
-            {
-                id: 'networkcoverage',
-                datakey: 'networkcoverage',
-                label: 'Coverage',
-                data: data.map(item => item.coverage)
-            }
-        ],
-        xAxis: [{
-            data: data.map(item => item.time),
-            id: 'axis2',
-            dataKey: 'time',
-            scaleType: "point",
-            label: "Collected Time on " + date,
-        } as AxisConfig<'point', string, ChartsXAxisProps>],
-        height: childChartHeight,
-        colors: theme.palette.distinctLightPalette
-    };
+@Repository
+public interface UcspRepository extends CrudRepository<UCSPAlarmInventory, Long> {
 
-    return (
-        <Box width="100%">
-            <LineChart {...detailedLineChartsParams} />
-        </Box>
-    );
-};
-const generateLast10Dates = () => {
-    const dates = [];
-    for (let i = 0; i < 10; i++) {
-        dates.push(dayjs().subtract(i, 'day').format('YYYY-MM-DD'));
+    @Query("SELECT new com.example.dto.ScatterPlotDataDTO(c.collectionName, m.date, m.numberOfMsgs) " +
+           "FROM UCSPAlarmInventory c " +
+           "JOIN UCSPAlarmMetrics m ON c.collectionName = m.collectionName " +
+           "WHERE c.ucgSource = :protocol AND m.dataType = :dataType")
+    List<ScatterPlotDataDTO> getScatterPlotData(String protocol, String dataType);
+
+    @Query("SELECT new com.example.dto.ScatterPlotDataDTO(c.collectionName, m.date, m.numberOfMsgs) " +
+           "FROM UCSPAlarmInventory c " +
+           "JOIN UCSPAlarmMetrics m ON c.collectionName = m.collectionName " +
+           "WHERE c.ucgSource = :protocol")
+    List<ScatterPlotDataDTO> filterDataByProtocol(String protocol);
+
+    @Query("SELECT DISTINCT c.ucgSource FROM UCSPAlarmInventory c")
+    List<String> getAvailableProtocols();
+}
+
+4. Controller Layer
+
+The controller layer is where the GraphQL queries are mapped to resolver methods.
+
+package com.example.controller;
+
+import com.example.dto.ScatterPlotDataDTO;
+import com.example.service.DataService;
+import org.springframework.graphql.data.method.annotation.QueryMapping;
+import org.springframework.graphql.data.method.annotation.Argument;
+import org.springframework.stereotype.Controller;
+
+import java.util.List;
+
+@Controller
+public class DataController {
+
+    private final DataService dataService;
+
+    public DataController(DataService dataService) {
+        this.dataService = dataService;
     }
-    //console.log(dates,"dates");
-    //return dates.reverse(); 
-    return dates;
-};
 
-const DrillDownChart = () => {
-    const theme = useTheme();
-    const [viewStack, setViewStack] = useState<string[]>([]);
-    const [parentData, setParentData] = useState<DataPoint[]>([]);
-
-    const [networkList, setNetworkList] = useState<any[]>([]);
-    const [selectedNetwork, setSelectedNetwork] = useState<any>(null);
-    const [deviceList, setDeviceList] = useState<any[]>([]);
-    const [selectedDevice, setSelectedDevice] = useState<any>(null);
-    const [fromDate, setSelectedFromDate] = useState<Dayjs>(dayjs().subtract(2, 'week'));
-    const [toDate, setSelectedToDate] = useState<Dayjs | null>(dayjs());
-
-    const [loading, setLoading] = useState<boolean>(false);
-    const [dataFetched, setDataFetched] = useState<boolean>(false);
-    const [isChildChartDisplayed, setIsChildChartDisplayed] = useState(false);
-    const [isDeviceFieldEnabled, setIsDeviceFieldEnabled] = useState(false);
-    const { showSnackbar } = useSnackbar();
-    const last10Dates = generateLast10Dates();
-
-    useEffect(() => {
-        const fetchNetworkData = async () => {
-            try {
-                const response = await axios.post(__UCS_GRAPHQL_URL__, {
-                    query: UNIQUE_NETWORKS_BY_PROTOCOL_QUERY
-                });
-                setNetworkList(response.data?.data?.uniqueNetworksByProtocol);
-            } catch (error) {
-                showSnackbar('Error fetching network data!');
-                console.error('Error fetching network data', error);
-            }
-        };
-        fetchNetworkData();
-    }, []);
-
-    const isButtonDisabled = () => {
-        if (isDeviceFieldEnabled) {
-            return !selectedNetwork || !fromDate || !toDate || !selectedDevice;
-        }
-        return !selectedNetwork || !fromDate || !toDate;
-    };
-
-    const handleReset = () => {
-        setSelectedNetwork('');
-        setSelectedFromDate(dayjs().subtract(2, 'week'));
-        setSelectedToDate(dayjs());
-        setParentData([]);
-        setDataFetched(false);
-        if (isDeviceFieldEnabled) {
-            setSelectedDevice('');
-        }
-    };
-    const handleNetworkChange = async (newValue: any) => {
-        setSelectedNetwork(newValue);
-        if (isDeviceFieldEnabled) {
-            fetchDeviceData(newValue);
-        }
+    @QueryMapping
+    public List<ScatterPlotDataDTO> getScatterPlotData(@Argument String protocol, @Argument String dataType) {
+        return dataService.getScatterPlotData(protocol, dataType);
     }
-    const fetchDeviceData = async (network: any) => {
-        setDeviceList([]);
-        try {
-            const response = await axios.post(__UCS_GRAPHQL_URL__, {
-                query: UNIQUE_DEVICES_BY_NETWORK_SNMP,
-                variables: { network: network },
-            });
 
-            if (response.data?.data?.uniqueDevicesByNetwork && response.data.data.uniqueDevicesByNetwork.length > 0) {
-                let data = response.data.data.uniqueDevicesByNetwork || [];
-                console.log('Fetched device Data:', data);
-                setDeviceList(data);
-            }
-            console.log('Fetched device Data:', response);
-        } catch (error) {
-            showSnackbar('Error fetching device data!');
-            console.error('Error fetching device data', error);
-        }
-    };
-    const handleFetchClick = async () => {
-        setLoading(true);
-        setParentData([]);
+    @QueryMapping
+    public List<ScatterPlotDataDTO> filterDataByProtocol(@Argument String protocol) {
+        return dataService.filterDataByProtocol(protocol);
+    }
 
-        try {
-            const formattedFromDate = dayjs(fromDate).format('YYYY-MM-DD');
-            const formattedToDate = dayjs(toDate).format('YYYY-MM-DD');
+    @QueryMapping
+    public List<String> getAvailableProtocols() {
+        return dataService.getAvailableProtocols();
+    }
+}
 
-            const data: { [key: string]: any } = {
-                network: selectedNetwork,
-                fromDate: formattedFromDate,
-                toDate: formattedToDate
-            };
-            if (isDeviceFieldEnabled) {
-                data.device = selectedDevice;
-            }
-            //console.log("Data:", data);
-            const response = await axios.post(__UCS_GRAPHQL_URL__, {
-                query: AVG_NETWORK_BY_COVERAGE_QUERY,
-                variables: data,
-            });
+5. Application Properties (application.properties)
 
-            if (response.data?.data?.avgNetworkByCoverage && response.data.data.avgNetworkByCoverage.length > 0) {
-                let data = response.data.data.avgNetworkByCoverage || [];
-                console.log('Fetched Parent Data:', data);
-                setParentData(data);
-            } else {
-                console.warn('No Data Found!');
-                showSnackbar("No Data Found!");
-            }
-            setDataFetched(true);
-        } catch (error) {
-            console.error('Error fetching data', error);
-            showSnackbar("Error While fetching the Data from the Server");
-        } finally {
-            setIsChildChartDisplayed(false);
-            setViewStack([]);
-            setLoading(false);
-        }
-    };
+Ensure that your application is configured to run Spring Boot with the necessary database and GraphQL support.
 
-    const handleToggleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-        setIsDeviceFieldEnabled(event.target.checked);
-    };
-    const handleDrillDown = (date: string) => {
-        setViewStack([...viewStack, date]);
-    };
+# Database configuration
+spring.datasource.url=jdbc:postgresql://localhost:5432/your_database
+spring.datasource.username=your_username
+spring.datasource.password=your_password
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=true
 
-    const handleBreadcrumbClick = (index: number) => {
-        setViewStack(viewStack.slice(0, index + 1));
-    };
+# GraphQL endpoint
+spring.graphql.schema.locations=classpath:graphql/schema.graphqls
 
-    const currentView = viewStack[viewStack.length - 1];
-    const currentData = parentData.find(item => item.date === currentView)?.coverageDataList || [];
+6. GraphQL Schema (schema.graphqls)
 
-    //console.log('Current View:', currentView); 
-    //console.log('Current Data:', currentData); 
-    // console.log('Parent Data:', parentData);
+This is where you define the GraphQL schema, including the queries and their return types.
 
-    return (
+type Query {
+    getScatterPlotData(protocol: String, dataType: String): [ScatterPlotDataDTO]
+    filterDataByProtocol(protocol: String): [ScatterPlotDataDTO]
+    getAvailableProtocols: [String]
+}
 
-        <Box
-            sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                //height: '100vh',
-                //overflow: 'auto',
-                //padding: '1%',
-                boxSizing: 'border-box',
+type ScatterPlotDataDTO {
+    collectionName: String
+    date: String
+    yValue: Long
+}
 
-            }}
-        >
-            {/* Avg Coverage by Network {isDeviceFieldEnabled ? 'and Device' : ''}*/}
-            <Grid container spacing={2} alignItems="flex-end">
-                <Grid item xs={12} sm={6} md="auto">
-                    <FormControlLabel
-                        control={<Switch color="primary" checked={isDeviceFieldEnabled} onChange={handleToggleChange} />}
-                        label={<Typography variant="bodySM">Enable Device Field</Typography>}
-                        //label="Enable Device"
-                        labelPlacement="top"
-                        value="top"
-                        //sx={{ width: '100%', height: '100%' }} 
-                        />
-                </Grid>
-                <Grid item xs={12} sm={6} md>
-                    <Autocomplete
-                        options={networkList}
-                        getOptionLabel={(option) => option}
-                        value={selectedNetwork}
-                        onChange={(event, newValue) => handleNetworkChange(newValue)}
-                        renderInput={(params) => <TextField {...params} label="Network" variant="outlined" />}
-                        sx={{ width: '100%', height: '100%' }}
-                    />
-                </Grid>
-                {isDeviceFieldEnabled && (
-                    <Grid item xs={12} sm={6} md>
-                        <Autocomplete
-                            options={deviceList}
-                            getOptionLabel={(option) => option}
-                            value={selectedDevice}
-                            onChange={(event, newValue) => setSelectedDevice(newValue)}
-                            renderInput={(params) => <TextField {...params} label="Device" variant="outlined" />}
-                            sx={{ width: '100%', height: '100%' }}
-                        />
-                    </Grid>
-                )}
-                <Grid item xs={12} sm={6} md>
-                    <LocalizationProvider dateAdapter={AdapterDayjs}>
-                        <DatePicker
-                            label="Start Date"
-                            sx={{ width: '100%', height: '100%' }}
-                            value={fromDate}
-                            onChange={(newValue: Dayjs | null) => {
-                                setSelectedFromDate(newValue || dayjs());
-                                // If newValue is after toDate, reset toDate
-                                if (newValue && toDate && newValue.isAfter(toDate)) {
-                                    setSelectedToDate(null);
-                                }
-                            }}
-                        />
-                    </LocalizationProvider>
-                </Grid>
-                <Grid item xs={12} sm={6} md>
-                    <LocalizationProvider dateAdapter={AdapterDayjs}>
-                        <DatePicker
-                            label="End Date"
-                            sx={{ width: '100%', height: '100%' }}
-                            value={toDate}
-                            minDate={fromDate} // Disable dates before fromDate
-                            onChange={(newValue) => setSelectedToDate(newValue)}
-                        />
-                    </LocalizationProvider>
-                </Grid>
-                <Grid item xs={2} sm={2} md={2} sx={{ display: 'flex' }}>
-                    <Button variant="contained" onClick={handleReset} color="primary" sx={{ marginRight: 2 }}>Reset</Button>
-                    <LoadingButton onClick={handleFetchClick} loading={loading} loadingIndicator="Fetching…" variant="contained"
-                        disabled={isButtonDisabled()}>
-                        <span>Fetch</span>
-                    </LoadingButton>
-                </Grid>
-            </Grid>
+7. Test GraphQL Queries
+
+To test the queries in your GraphQL client (such as GraphiQL, Postman, or Insomnia), you would use queries like the following:
+
+Get Scatter Plot Data:
+
+query {
+  getScatterPlotData(protocol: "SNMP", dataType: "number_of_msgs") {
+    collectionName
+    date
+    yValue
+  }
+}
+
+Filter Data by Protocol:
+
+query {
+  filterDataByProtocol(protocol: "SNMP") {
+    collectionName
+    date
+    yValue
+  }
+}
+
+Get Available Protocols:
+
+query {
+  getAvailableProtocols
+}
+
+Summary of Files:
+
+1. ScatterPlotDataDTO.java: The DTO class that holds the response data for GraphQL queries.
 
 
-            {dataFetched && !loading && (
-                <Box sx={{ mt: 4, width: '100%', borderRadius: 2, border: '1px solid #e0e0e0', bgcolor: 'white' }}>
-                    {isChildChartDisplayed && parentData.length > 0 && (
+2. DataService.java: The service layer that calls the repository methods to retrieve data.
 
-                        <Breadcrumbs aria-label="breadcrumb" separator={<NavigateNextIcon fontSize="small" />} sx={{ padding: '1%' }}>
-                            <Link underline="hover" sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer', '&:hover': { textDecoration: 'underline !important', color: '#1976d2 !important' } }} color="primary" onClick={() => { setViewStack([]); setIsChildChartDisplayed(false); }} >
-                                <HomeIcon sx={{ mr: 0.4 }} fontSize="inherit" />
-                                Home
-                            </Link>
-                            {viewStack.map((view, index) => (
-                                <Link
-                                    key={view}
-                                    color="inherit"
-                                    sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}
-                                    underline="none"
-                                    onClick={() => handleBreadcrumbClick(index)}
-                                >
-                                    {view}
-                                </Link>
-                            ))}
-                        </Breadcrumbs>
-                    )}
 
-                    <Box mt={1} sx={{ width: '100%' }}>
-                        {parentData.length > 0 ? (
-                            <>
-                                {currentView ? (
-                                    <ChildChart date={currentView} data={currentData} />
-                                ) : (
-                                    <ParentChart data={parentData} onDrillDown={handleDrillDown} setIsChildChartDisplayed={setIsChildChartDisplayed} />
-                                )}
-                            </>
-                        ) : (
-                            <LineChart
-                                height={chartHeight}
-                                xAxis={[{ data: last10Dates, scaleType: 'point', }]}
-                                yAxis={[{ min: 0, max: 10 }]}
-                                series={[]}
-                            />
-                        )
-                        }
-                    </Box>
-                </Box>
-            )}
-        </Box>
-    );
-};
+3. UcspRepository.java: The repository with JPQL queries to interact with the database.
 
-export default DrillDownChart;
+
+4. DataController.java: The controller layer that maps GraphQL queries to service methods.
+
+
+5. application.properties: Configuration for your Spring Boot application.
+
+
+6. schema.graphqls: The GraphQL schema that defines your queries and types.
+
+
+
+This setup should allow you to execute GraphQL queries like getScatterPlotData, filterDataByProtocol, and getAvailableProtocols, with data fetched from your database and returned as part of the response.
+
