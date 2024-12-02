@@ -1,340 +1,463 @@
-import { Box, Button, Card, CardContent, Container, FormControl, Grid, InputLabel, MenuItem, Select, SelectChangeEvent, TextField, Typography } from '@mui/material';
-import { DataGrid, GridColDef, GridToolbar } from '@mui/x-data-grid';
-import axios from 'axios';
-import React, { useEffect, useState } from 'react';
-import { authenticate, getToken } from '../auth';
-import { __UCS_GET_DEVICE_DEATIL_BY_TYPE__, __UCS_GRAPHQL_URL__ } from '../api-endpoints';
-import { UNIQUE_MODELS_QUERY, UNIQUE_VENDORS_QUERY, UNIQUE_NETWORKS_QUERY, GET_DEVICE_DETAILS } from '../graphQL/graphqlQueries';
+package com.verizon.ucs.restapi.controllers;
 
-interface Device {
-    id: number;
-    deviceName: string;
-    model: string;
-    loopback: string;
-    status: string;
-    vendor: string;
-    router_type: string;
-    poller_cluster: string;
-    poll_interval: string;
-    network: string;
-    last_update: string;
-    phys_ip_address: string;
-}
-interface ActualApiResponse {
-    status: number,
-    message: string,
-    data: DeviceResponse[];
-    error: string | null;
-}
-interface DeviceResponse {
-    deviceName: string,
-    name: string,
-    asn: string,
-    subAsn: string,
-    model: string,
-    loopback: string,
-    status: string,
-    hubName: string,
-    vendor: string,
-    routerType: string,
-    usage: string,
-    snmpCommString: string,
-    codeVersion: string,
-    subtechnology: string,
-    pollerCluster: string,
-    pollInterval: string,
-    network: string,
-    maxOids: string,
-    maxPduSize: string,
-    maxRetries: string,
-    maxPduPerSec: string,
-    wugThreads: string,
-    uptime: string,
-    indxType: string,
-    pollerInterval: string,
-    lastUpdate: string,
-    pollerclusterlov: string,
-    pollerclusteralarm: string,
-    physIpAddress: string,
-    locationCode: string,
-    physIp: string,
-    functionalType: string,
-    shelfType: string,
-    telemMngdNetwork: string,
-    domainFlag: string
-}
-interface ApiRequest {
-    deviceName: string;
-    model: string;
-    loopback: string;
-    vendor: string;
-    network: string;
-}
+import com.verizon.ucs.restapi.dto.ApiRequest;
+import com.verizon.ucs.restapi.dto.TrendsRequest;
+import com.verizon.ucs.restapi.model.AvgNetworkCoverageDTO;
+import com.verizon.ucs.restapi.model.AvgNetworkCoverageMap;
+import com.verizon.ucs.restapi.model.Device;
+import com.verizon.ucs.restapi.model.Trends;
+import com.verizon.ucs.restapi.model.TrendsDTO;
+import com.verizon.ucs.restapi.model.UcspProject;
+import com.verizon.ucs.restapi.service.UCSPService;
+import graphql.GraphQLException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataAccessException;
+import org.springframework.graphql.data.method.annotation.Argument;
+import org.springframework.graphql.data.method.annotation.QueryMapping;
+import org.springframework.graphql.data.method.annotation.SchemaMapping;
+import org.springframework.stereotype.Controller;
 
+import java.util.Comparator;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
+/**
+ * Controller interface for UCS Portal Application with JPA
+ */
+@Controller
+public class UCSPController {
+    private static final Logger logger = LoggerFactory.getLogger(UCSPController.class);
 
-const DashboardGridData = () => {
+    @Autowired
+    private UCSPService uCSPService;
 
-    const [selectedDeviceName, setSelectedDeviceName] = useState<string>('');
-    const [selectedDeviceIp, setSelectedDeviceIp] = useState<string>('');
-    const [selectedDeviceModel, setSelectedDeviceModel] = useState<string>('');
-    const [selectedDeviceVendor, setSelectedDeviceVendor] = useState<string>('');
-    const [selectedDeviceNetwork, setSelectedDeviceNetwork] = useState<string>('');
-    const [data, setData] = useState<Device[]>([]);
-    const [loading, setLoading] = useState<boolean>(false);
-    // const [deviceNames, setDeviceNames] = useState<string[]>([]);
-    // const [deviceIps, setDeviceIps] = useState<string[]>([]);
-    const [deviceModels, setDeviceModels] = useState<string[]>([]);
-    const [deviceVendors, setDeviceVendors] = useState<string[]>([]);
-    const [deviceNetworks, setDeviceNetworks] = useState<string[]>([]);
-
-
-    useEffect(() => {
-        const fetchDropDownData = async () => {
-            try {
-                //     const pw = __UCS_API_PW__;
-                //    await authenticate("Eclipse", __UCS_API_PW__);
-                //     const token = getToken();
-                //     const headers = { Authorization: `Bearer ${token}` }
-                const responses = await Promise.all([
-                    await axios.post(__UCS_GRAPHQL_URL__, {
-                        query: UNIQUE_MODELS_QUERY,
-                    }),
-                    await axios.post(__UCS_GRAPHQL_URL__, {
-                        query: UNIQUE_VENDORS_QUERY,
-                    }),
-                    await axios.post(__UCS_GRAPHQL_URL__, {
-                        query: UNIQUE_NETWORKS_QUERY,
-                    }),
-
-                ]);
-
-                setDeviceModels(responses[0].data.data.uniqueModels);
-                setDeviceVendors(responses[1].data.data.uniqueVendors);
-                setDeviceNetworks(responses[2].data.data.uniqueNetworks);
-            } catch (error) {
-                console.error('Error fetching dropdown data', error);
-            }
-        };
-
-        fetchDropDownData();
-
-    }, []);
-
-    const handleSelectChange = (setter: React.Dispatch<React.SetStateAction<string>>, resetOthers: () => void) => (
-        event: SelectChangeEvent<string>) => {
-        resetOthers();
-        setter(event.target.value as string);
-    };
-
-    const handleTextFieldChange = (setter: React.Dispatch<React.SetStateAction<string>>, resetOthers: () => void) => (
-        event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-        resetOthers();
-        setter(event.target.value);
-    };
-
-    const resetSelections = () => {
-        setSelectedDeviceName('');
-        setSelectedDeviceIp('');
-        setSelectedDeviceModel('');
-        setSelectedDeviceVendor('');
-        setSelectedDeviceNetwork('');
+    @QueryMapping(value = "searchDevices")
+    public List<Device> getFilteredDevices(@Argument ApiRequest apiRequest) {
+        return uCSPService.searchDevices(apiRequest);
     }
 
-    const handleSubmit = async () => {
-        setLoading(true);
-        const apiRequest: ApiRequest = {
-            deviceName: selectedDeviceName,
-            model: selectedDeviceModel,
-            loopback: selectedDeviceIp,
-            vendor: selectedDeviceVendor,
-            network: selectedDeviceNetwork,
-        };
+    @QueryMapping(value = "allDevices")
+    public List<Device> getAllDevices() {
+        return uCSPService.getAllDevices();
+    }
+
+    @SchemaMapping(typeName = "Query", value = "uniqueModels")
+    public List<String> getUniqueModels() {
+        return uCSPService.getUniqueValues().get("models");
+    }
+
+    @QueryMapping(value = "uniqueVendors")
+    public List<String> getUniqueVendors() {
+        return uCSPService.getUniqueValues().get("vendors");
+    }
+
+    @QueryMapping(value = "dailyTrends")
+    public List<TrendsDTO> getTrends(@Argument TrendsRequest trendsRequest) {
         try {
-            const token = getToken();
-            const headers = { Authorization: `Bearer ${token}` }
-            if (selectedDeviceName || selectedDeviceIp || selectedDeviceModel || selectedDeviceVendor || selectedDeviceNetwork) {
-                //const response = await axios.get<ActualApiResponse>(__UCS_GET_DEVICE_DEATIL_BY_TYPE__, {params:apiRequest});
-                const query = GET_DEVICE_DETAILS(selectedDeviceName, selectedDeviceModel, selectedDeviceIp, selectedDeviceVendor, selectedDeviceNetwork);
-                const response = await axios.post(__UCS_GRAPHQL_URL__, {
-                    query
-                });
-                const selectedDevices = response.data.data.searchDevices.map((device: DeviceResponse, index: number) => ({
-                    id: index,
-                    deviceName: device.deviceName,
-                    model: device.model,
-                    loopback: device.loopback,
-                    status: device.status,
-                    vendor: device.vendor,
-                    router_type: device.routerType,
-                    poller_cluster: device.pollerCluster,
-                    poll_interval: device.pollerInterval,
-                    network: device.network,
-                    last_update: device.lastUpdate,
-                    phys_ip_address: device.physIp,
-                })
-                );
-                setData(selectedDevices);
-
-            }
-        } catch (error) {
-            console.error('Error fetching data', error);
-        } finally {
-            setLoading(false);
+        	 Map<String, TrendsDTO> trendsDataMap = uCSPService.getDailyTrends(trendsRequest);
+             return trendsDataMap.values().stream()
+            		  .sorted(Comparator.comparing(TrendsDTO::getDate))
+            		 .collect(Collectors.toList());
+        } catch (DataAccessException e) {
+            logger.error("Database error occurred while fetching data", e);
+            throw new GraphQLException("Database error: Unable to fetch data");
+        } catch (RuntimeException e) {
+            logger.error("Runtime error occurred", e);
+            throw new GraphQLException("Runtime error: " + e.getMessage());
+        } catch (Exception e) {
+            logger.error("Unexpected error occurred", e);
+            throw new GraphQLException("Unexpected error: " + e.getMessage());
         }
-    };
+    }
 
-    const columns: GridColDef[] = [
-        { field: 'deviceName', headerName: 'DeviceName', minWidth: 150, flex: 1 },
-        { field: 'model', headerName: 'DeviceModel', minWidth: 150, flex: 1 },
-        { field: 'loopback', headerName: 'Loopback', minWidth: 150, flex: 1 },
-        { field: 'status', headerName: 'Status', minWidth: 150, flex: 1 },
-        { field: 'vendor', headerName: 'Vendor', minWidth: 150, flex: 1 },
-        { field: 'router_type', headerName: 'RouterType', minWidth: 150, flex: 1 },
-        { field: 'poller_cluster', headerName: 'PollerCluster', minWidth: 150, flex: 1 },
-        { field: 'poll_interval', headerName: 'PollInterval', minWidth: 150, flex: 1 },
-        { field: 'network', headerName: 'Network', minWidth: 150, flex: 1 },
-        { field: 'last_update', headerName: 'LastUpdate', minWidth: 150, flex: 1 },
-        { field: 'phys_ip_address', headerName: 'PhysIpAdd', minWidth: 150, flex: 1 },
+    @QueryMapping
+    public List<String> uniqueNetworks() {
+        return uCSPService.getUniqueValues().get("networks");
+    }
 
-    ];
+    @QueryMapping(value = "uniqueUCSPProjects")
+    public List<UcspProject> getUniqueProjects() {
+        List<UcspProject> ucgProjects = uCSPService.getUniqueProjects();
+        return ucgProjects;
+    }
 
-    return (
-        <Container maxWidth={false}>
-            {/* <Typography gutterBottom  variant="titleXL" className="header" fontWeight={"bold"} gap={"100px"} paddingTop={"15px"}>
-                UCS Portal
-            </Typography> */}
-            <Card sx={{ boxShadow: 1, border: 1, }}>
-                <CardContent>
-                    <Grid container spacing={2} alignItems={'flex-end'}>
-                        <Grid item xs={12} sm={6} md>
-                            <TextField
-                                placeholder="Enter Device Name"
-                                fullWidth
-                                variant="outlined"
-                                value={selectedDeviceName}
-                                onChange={(event) => handleTextFieldChange(setSelectedDeviceName, resetSelections)(event)}
-                                label="Device Name"
-                            >
-                            </TextField>
-                        </Grid>
-                        <Grid item xs={12} sm={6} md >
-                            <TextField
-                                placeholder="Enter Device IP"
-                                fullWidth
-                                variant="outlined"
-                                value={selectedDeviceIp}
-                                onChange={(event) => handleTextFieldChange(setSelectedDeviceIp, resetSelections)(event)}
-                                label="Device IP"
-                            >
-                            </TextField>
-                        </Grid>
-                        <Grid item xs={12} sm={6} md>
-                            <FormControl variant="outlined" sx={{ width: '100%', height: '100%' }}>
-                                <InputLabel id="device-model-select-label" shrink={true}>Device Model</InputLabel>
-                                <Select
-                                    labelId="device-model-select-label"
-                                    value={selectedDeviceModel}
-                                    onChange={(event) => handleSelectChange(setSelectedDeviceModel, resetSelections)(event)}
-                                    label="Device Model"
-                                >
-                                    {deviceModels?.map((model, i) => (
-                                        <MenuItem
-                                            key={model}
-                                            id="deviceModel"
-                                            value={model}
-                                        >
-                                            {model}
-                                        </MenuItem>
-                                    ))}
-                                </Select>
-                            </FormControl>
-                        </Grid>
-                        <Grid item xs={12} sm={6} md>
-                            <FormControl variant="outlined" sx={{ width: '100%', height: '100%' }}>
-                                <InputLabel id="device-vendor-select-label">Device Vendor</InputLabel>
-                                <Select
-                                    labelId="device-vendor-select-label"
-                                    value={selectedDeviceVendor}
-                                    onChange={(event) => handleSelectChange(setSelectedDeviceVendor, resetSelections)(event)}
-                                    label="Device Vendor"
-                                >
-                                    {deviceVendors?.map((vendor, i) => (
-                                        <MenuItem
-                                            key={vendor}
-                                            id="deviceVendor"
-                                            value={vendor}
-                                        >
-                                            {vendor}
-                                        </MenuItem>
-                                    ))}
-                                </Select>
-                            </FormControl>
-                        </Grid>
-                        <Grid item xs={12} sm={6} md >
-                            <FormControl variant="outlined" sx={{ width: '100%', height: '100%' }}>
-                                <InputLabel id="device-network-select-label">Device Network</InputLabel>
-                                <Select
-                                    labelId="device-network-select-label"
-                                    value={selectedDeviceNetwork}
-                                    onChange={(event) => handleSelectChange(setSelectedDeviceNetwork, resetSelections)(event)}
-                                    label="Device Network"
-                                >
-                                    {deviceNetworks?.map((network, i) => (
-                                        <MenuItem
-                                            key={network}
-                                            id="deviceNetwork"
-                                            value={network}
-                                        >
-                                            {network}
-                                        </MenuItem>
-                                    ))}
-                                </Select>
-                            </FormControl>
-                        </Grid>
-                        <Grid item xs={12} sm={6} md >
-                            <Button variant="contained" color="primary" onClick={handleSubmit} disabled={!selectedDeviceName && !selectedDeviceIp && !selectedDeviceModel && !selectedDeviceVendor && !selectedDeviceNetwork}>
-                                Submit
-                            </Button>
-                        </Grid>
-                    </Grid>
+    @QueryMapping(value = "uniqueUCGSources")
+    public List<String> getUniqueUCGSources() {
+        List<String> ucgSources = uCSPService.getUniqueUCGSources();
+        return ucgSources;
+    }
 
-                </CardContent>
-            </Card>
-            <Box mt={4} sx={{ width: "100%" }}>
-                <DataGrid rows={data} columns={columns}
-                    initialState={{
-                        pagination: {
-                            paginationModel: {
-                                pageSize: 10,
-                                page: 0
-                            }
-                        }
-                    }}
-                    sx={
-                        {
-                            boxShadow: 1,
-                            border: 1,
-                        }
-                    }
-                    pageSizeOptions={[5, 10, 25]}
-                    pagination
-                    slotProps={{
-                        footer: {
-                            sx: {
-                                justifyContent: "flex-start"
-                            }
-                        }
-                    }}
-                    slots={{
-                        toolbar: GridToolbar,
-                    }}
-                    checkboxSelection
-                    disableRowSelectionOnClick
-                    loading={loading} autoHeight />
-            </Box>
-        </Container>
-    )
+    @QueryMapping(value = "uniqueUCGSourcesByProject")
+    public List<UcspProject> getUniqueUCGSourcesByProject(@Argument Long projectId) {
+        try {
+            return uCSPService.getUniqueUCGSourcesByProject(projectId);
+        } catch (DataAccessException e) {
+            logger.error("Database error occurred while fetching UCG Sources", e);
+            throw new GraphQLException("Database error: Unable to fetch UCG Sources for project ID: " + projectId);
+        } catch (RuntimeException e) {
+            logger.error("Runtime error occurred", e);
+            throw new GraphQLException("Runtime error: " + e.getMessage());
+        } catch (Exception e) {
+            logger.error("Unexpected error occurred", e);
+            throw new GraphQLException("Unexpected error: " + e.getMessage());
+        }
+    }
+    
+    @QueryMapping
+    public List<String> uniqueNetworksByProtocol() {
+        return uCSPService.uniqueNetworksByProtocol().get("snmp");
+    }
+    
+    @QueryMapping
+    public List<String> uniqueDevicesByNetwork(@Argument String network) {
+        return uCSPService.uniqueDevicesByNetwork(network);
+    }
+    
+    @QueryMapping(value = "avgNetworkByCoverage")
+    public List<AvgNetworkCoverageDTO> avgNetworkByCoverage(@Argument String network,
+            @Argument String fromDate, @Argument String toDate, @Argument String device) {
+        try {
+            Map<String, AvgNetworkCoverageDTO> detailedData = uCSPService.avgNetworkByCoverage(network, fromDate, toDate, device);
+            return detailedData.values().stream()
+                    .map(dto -> {
+                        dto.setTotalCoverage(Double.parseDouble(dto.getFormattedTotalCoverage()));
+                        return dto;
+                    })
+                    .sorted(Comparator.comparing(AvgNetworkCoverageDTO::getDate))
+                    .collect(Collectors.toList());
+        } catch (DataAccessException e) {
+            logger.error("Database error occurred while fetching network coverage", e);
+            throw new GraphQLException("Database error: Unable to fetch network coverage for network: " + network);
+        } catch (RuntimeException e) {
+            logger.error("Runtime error occurred", e);
+            throw new GraphQLException("Runtime error: " + e.getMessage());
+        } catch (Exception e) {
+            logger.error("Unexpected error occurred", e);
+            throw new GraphQLException("Unexpected error: " + e.getMessage());
+        }
+    }
 }
 
-export default DashboardGridData
+
+
+
+
+package com.verizon.ucs.restapi.repository;
+
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
+
+import com.verizon.ucs.restapi.model.Trends;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.graphql.data.method.annotation.Argument;
+
+import com.verizon.ucs.restapi.model.AvgNetworkCoverageDTO;
+import com.verizon.ucs.restapi.model.Device;
+
+public interface UCSPRepository extends JpaRepository<Device, String> {
+
+	List<Device> findByDeviceNameIgnoreCase(String deviceName);
+
+	List<Device> findByLoopbackIgnoreCase(String loopback);
+
+	List<Device> findByNetworkIgnoreCase(String network);
+
+	List<Device> findByVendorIgnoreCase(String vendor);
+
+	List<Device> findByModelIgnoreCase(String model);
+
+	@Query("SELECT DISTINCT d.model FROM Device d")
+	List<String> findDistinctModels();
+
+	@Query("SELECT DISTINCT d.vendor FROM Device d")
+	List<String> findDistinctVendors();
+
+	@Query("SELECT DISTINCT d.network FROM Device d")
+	List<String> findDistinctNetworks();
+
+	@Query(nativeQuery=true, value="SELECT DISTINCT u.ucg_source FROM ucsp_ucgsources u")
+	List<String> findDistinctUCGSources();
+	
+	@Query(nativeQuery=true, value="SELECT DISTINCT network FROM proto_gw_ntwk")
+	List<String> uniqueNetworksBySNMPprotocol();
+	
+    @Query(nativeQuery = true, value = "SELECT network, CAST(date_hour AS DATE) as date, TO_CHAR(date_hour, 'HH24:MI') as time, SUM(coverage) as sumOfCoverage " +
+            "FROM avg_network_coverage WHERE network = :network AND CAST(date_hour AS DATE) BETWEEN :fromDate AND :toDate " +
+            " and (:device is null or :device = '' or device_name=:device) "+
+            "GROUP BY network, CAST(date_hour AS DATE), TO_CHAR(date_hour, 'HH24:MI') " +
+            "ORDER BY network, CAST(date_hour AS DATE), TO_CHAR(date_hour, 'HH24:MI')")
+    List<Map<String, Object>> avgNetworkByCoverage(@Param("network") String network,
+    		@Param("fromDate") Date fromDate,@Param("toDate") Date toDate,@Param("device") String device);
+    
+	@Query(nativeQuery=true, value="select distinct device_name from avg_network_coverage anc where network = :network "
+			//+ "and device_name IS NOT NULL AND device_name != '';")
+			+ " order by device_name")
+	List<String> getUniqueDevicesByNetwork(@Param("network") String network);
+	
+	/*List<Device> findByDeviceNameIgnoreCaseOrLoopbackIgnoreCaseOrNetworkIgnoreCaseOrVendorIgnoreCaseOrModelIgnoreCase(
+			String deviceName, String loopback, String network, String vendor, String model);
+
+	List<Device> findByDeviceNameContainingIgnoreCaseOrLoopbackContainingIgnoreCaseOrNetworkContainingIgnoreCaseOrVendorContainingIgnoreCaseOrModelContainingIgnoreCase(
+			String deviceName, String loopback, String network, String vendor, String model);
+
+	 * @Query("SELECT d FROM Device d WHERE " +
+	 * "LOWER(d.name) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
+	 * "LOWER(d.ip) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
+	 * "LOWER(d.network) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
+	 * "LOWER(d.vendor) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
+	 * "LOWER(d.model) LIKE LOWER(CONCAT('%', :searchTerm, '%'))") List<Device>
+	 * search(@Param("searchTerm") String searchTerm);
+	 */
+}
+
+
+
+
+package com.verizon.ucs.restapi.service;
+
+import com.verizon.ucs.restapi.dto.ApiRequest;
+import com.verizon.ucs.restapi.dto.TrendsRequest;
+import com.verizon.ucs.restapi.model.AvgNetworkCovDrillDownData;
+import com.verizon.ucs.restapi.model.AvgNetworkCoverageDTO;
+import com.verizon.ucs.restapi.model.Device;
+import com.verizon.ucs.restapi.model.Trends;
+import com.verizon.ucs.restapi.model.TrendsDTO;
+import com.verizon.ucs.restapi.model.TrendsDrillDownData;
+import com.verizon.ucs.restapi.model.UcspProject;
+import com.verizon.ucs.restapi.repository.UCSPProjectsRepository;
+import com.verizon.ucs.restapi.repository.UCSPRepository;
+import com.verizon.ucs.restapi.repository.UCSPTrendsRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.graphql.data.method.annotation.Argument;
+import org.springframework.stereotype.Service;
+
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+@Service
+public class UCSPService {
+
+	private static final Logger logger = LoggerFactory.getLogger(UCSPService.class);
+
+	@Autowired
+	private UCSPRepository uCSPRepository;
+
+	@Autowired
+	private UCSPTrendsRepository uCSPTrendsRepository;
+
+	@Autowired
+	private UCSPProjectsRepository ucspProjectsRepository;
+	
+	public List<UcspProject> getUniqueUCGSourcesByProject(Long projectId) {
+		try {
+			List<UcspProject> ucgSources = ucspProjectsRepository.findDistinctUCGSourcesByProject(projectId);
+			if (ucgSources == null || ucgSources.isEmpty()) {
+				throw new RuntimeException("No UCG Sources found for the given project ID: " + projectId);
+			}
+			return ucgSources;
+		} catch (Exception e) {
+			logger.error("Error in service method getUniqueUCGSourcesByProject", e);
+			throw e;
+		}
+	}
+
+	public List<Device> searchDevices(ApiRequest params) {
+		if (params.getDeviceName() != null && !params.getDeviceName().isEmpty()) {
+			return uCSPRepository.findByDeviceNameIgnoreCase(params.getDeviceName());
+		}
+		if (params.getLoopback() != null && !params.getLoopback().isEmpty()) {
+			return uCSPRepository.findByLoopbackIgnoreCase(params.getLoopback());
+		}
+		if (params.getNetwork() != null && !params.getNetwork().isEmpty()) {
+			return uCSPRepository.findByNetworkIgnoreCase(params.getNetwork());
+		}
+		if (params.getVendor() != null && !params.getVendor().isEmpty()) {
+			return uCSPRepository.findByVendorIgnoreCase(params.getVendor());
+		}
+		if (params.getModel() != null && !params.getModel().isEmpty()) {
+			return uCSPRepository.findByModelIgnoreCase(params.getModel());
+		}
+		return null;
+	}
+
+	public Map<String, TrendsDTO> getDailyTrends(TrendsRequest params) throws ParseException {
+	    SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+	    List<Map<String, Object>> results = uCSPTrendsRepository.findDailyTrends(params.getUcgSourceID(), params.getFromDate(), params.getToDate());
+
+	    Map<String, TrendsDTO> trendsData = new HashMap<>();
+
+	    for (Map<String, Object> result : results) {
+	        String date = dateFormat.format(result.get("date"));
+	        String time = (String) result.get("time");
+	        double sizeOfFilesBytes = ((Number) result.get("sizeOfFilesBytes")).doubleValue();
+	        int numberOfFiles = ((Number) result.get("numberOfFiles")).intValue();
+
+	        TrendsDrillDownData trendsDataPoint = new TrendsDrillDownData(time, sizeOfFilesBytes, numberOfFiles);
+
+	        trendsData
+	            .computeIfAbsent(date, k -> new TrendsDTO(date))
+	            .addTrendsData(trendsDataPoint);
+	    }
+
+	    logger.debug("trendsData {}", trendsData);
+	    return trendsData;
+	}
+
+
+	public Map<String, List<String>> getUniqueValues() {
+		Map<String, List<String>> uniqueValues = new HashMap<>();
+		uniqueValues.put("models", uCSPRepository.findDistinctModels());
+		uniqueValues.put("vendors", uCSPRepository.findDistinctVendors());
+		uniqueValues.put("networks", uCSPRepository.findDistinctNetworks());
+		return uniqueValues;
+	}
+	public List<String> getUniqueUCGSources(){
+		return uCSPRepository.findDistinctUCGSources();
+	}
+	public List<Device> getAllDevices() {
+		return uCSPRepository.findAll();
+	}
+
+	public List<UcspProject> getUniqueProjects() {
+		return ucspProjectsRepository.findUniqueProjects();
+	}
+	public Map<String, List<String>> uniqueNetworksByProtocol() {
+		Map<String, List<String>> uniqueValues = new HashMap<>();
+		uniqueValues.put("snmp", uCSPRepository.uniqueNetworksBySNMPprotocol());
+		return uniqueValues;
+	}
+	
+	public List<String> uniqueDevicesByNetwork(String network) {
+		return uCSPRepository.getUniqueDevicesByNetwork(network);
+	}
+	
+	public Map<String, AvgNetworkCoverageDTO> avgNetworkByCoverage(String networkName,String fromDate,String toDate,String device) throws ParseException {
+        Map<String, AvgNetworkCoverageDTO> detailedData = new HashMap<>();
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+
+        List<Map<String, Object>> results = uCSPRepository.avgNetworkByCoverage(networkName,dateFormat.parse(fromDate),dateFormat.parse(toDate),device);
+
+        for (Map<String, Object> result : results) {
+            String date = dateFormat.format(result.get("date"));
+            String time = (String) result.get("time");
+            double sumOfCoverage = ((Number) result.get("sumOfCoverage")).doubleValue();
+
+            AvgNetworkCovDrillDownData coverageData = new AvgNetworkCovDrillDownData(time, sumOfCoverage);
+
+            detailedData
+                .computeIfAbsent(date, k -> new AvgNetworkCoverageDTO(date))
+                .addCoverageData(coverageData);
+            /*detaileddata
+                .computeifabsent(date, k -> new avgnetworkcoveragedto(date, 0.0, new arraylist<>()))
+                .getCoveragedatalist().add(coveragedata);
+            detaileddata.get(date).setTotalcoverage(detaileddata.get(date).getTotalcoverage() + sumofcoverage);
+            */
+        }
+        logger.debug("detailedData {}",detailedData);
+        return detailedData;
+    }
+
+}
+
+
+
+
+type Query {
+    allDevices: [Device]
+    searchDevices(apiRequest: ApiRequest): [Device]
+    uniqueModels: [String]
+    uniqueNetworks: [String]
+    dailyTrends(trendsRequest: TrendsRequest): [TrendsDTO]
+    uniqueUCGSources: [String]
+    uniqueUCGSourcesByProject(projectId: ID): [UcspProject]
+    uniqueVendors: [String]
+    uniqueUCSPProjects:[UcspProject]
+    uniqueNetworksByProtocol: [String]
+    avgNetworkByCoverage(network: String,fromDate: String,toDate: String,device: String): [AvgNetworkCoverageDTO]
+	uniqueDevicesByNetwork(network: String): [String]
+}
+type TrendsDrillDownData{
+ 	time: String
+ 	sizeOfFilesBytes: Float
+ 	numberOfFiles: Int
+}
+type TrendsDTO{
+ 	date: String
+ 	totalSizeOfFilesBytes: Float
+ 	totalNumberOfFiles: Int
+ 	trendsDrillDownList: [TrendsDrillDownData]
+}
+type AvgNetworkCovDrillDownData {
+    time: String
+    coverage: Float
+}
+
+type AvgNetworkCoverageDTO {
+    date: String
+    totalCoverage: Float
+    coverageDrillDownList: [AvgNetworkCovDrillDownData]
+}
+
+
+type Device {
+    deviceName: ID!
+    model: String
+    loopback: String
+    status: String
+    vendor: String
+    routerType: String
+    pollerCluster: String
+    pollerInterval: Int
+    network: String
+    lastUpdate: String
+    physIp: String
+}
+type UcspProject{
+    id:ID!
+    name:String!
+}
+
+
+input TrendsRequest {
+    ucgSourceID: Int
+    fromDate: String
+    toDate: String
+}
+
+type Trends {
+    id: ID!
+    ucgSourceID: Int
+    collectionDate: String
+    sizeOfFilesKB: Int
+    numberOfFiles: Int
+}
+
+input ApiRequest {
+    deviceName: String
+    model: String
+    loopback: String
+    vendor: String
+    network: String
+}
+
+
+
+
+
+
+
+These are the details of the project according to this develop the above API's.
