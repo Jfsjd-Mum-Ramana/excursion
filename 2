@@ -1,561 +1,238 @@
+To implement the GraphQL API with a Spring Boot backend for the repository you've shared, we will create the necessary service and controller layers. The service will interact with the repository to fetch data, and the controller will expose the GraphQL endpoints using Spring's GraphQL support.
+
+Here is a step-by-step implementation for the ScatterPlotData GraphQL API.
+
+1. Dependencies
+
+Make sure you have the necessary GraphQL dependencies in your pom.xml:
+
+<dependency>
+    <groupId>com.graphql-java</groupId>
+    <artifactId>graphql-java</artifactId>
+    <version>18.0</version>
+</dependency>
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-graphql</artifactId>
+</dependency>
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-data-jpa</artifactId>
+</dependency>
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-jdbc</artifactId>
+</dependency>
+
+2. Service Layer
+
+We’ll define a ScatterPlotService to fetch data from the AlarmRepository.
+
 package com.verizon.ucs.restapi.service;
 
-import com.verizon.ucs.restapi.dto.ApiRequest;
-import com.verizon.ucs.restapi.dto.TrendsRequest;
-import com.verizon.ucs.restapi.model.*;
-import com.verizon.ucs.restapi.repository.UCSPAlarmRepository;
-import com.verizon.ucs.restapi.repository.UCSPProjectsRepository;
-import com.verizon.ucs.restapi.repository.UCSPRepository;
-import com.verizon.ucs.restapi.repository.UCSPTrendsRepository;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.graphql.data.method.annotation.Argument;
+import com.verizon.ucs.restapi.model.ScatterPlotData;
+import com.verizon.ucs.restapi.repository.AlarmRepository;
 import org.springframework.stereotype.Service;
-import com.verizon.ucs.restapi.graphql.ScatterPlotDataResolver;
-import java.time.LocalDateTime;
 
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 @Service
-public class UCSPService {
+public class ScatterPlotService {
 
-	private static final Logger logger = LoggerFactory.getLogger(UCSPService.class);
+    private final AlarmRepository alarmRepository;
 
-	@Autowired
-	private UCSPRepository uCSPRepository;
-
-	@Autowired
-	private UCSPTrendsRepository uCSPTrendsRepository;
-
-	@Autowired
-	private UCSPProjectsRepository ucspProjectsRepository;
-
-	@Autowired
-	private UCSPAlarmRepository ucspAlarmRepository;
-	
-	public List<UcspProject> getUniqueUCGSourcesByProject(Long projectId) {
-		try {
-			List<UcspProject> ucgSources = ucspProjectsRepository.findDistinctUCGSourcesByProject(projectId);
-			if (ucgSources == null || ucgSources.isEmpty()) {
-				throw new RuntimeException("No UCG Sources found for the given project ID: " + projectId);
-			}
-			return ucgSources;
-		} catch (Exception e) {
-			logger.error("Error in service method getUniqueUCGSourcesByProject", e);
-			throw e;
-		}
-	}
-
-	public List<Device> searchDevices(ApiRequest params) {
-		if (params.getDeviceName() != null && !params.getDeviceName().isEmpty()) {
-			return uCSPRepository.findByDeviceNameIgnoreCase(params.getDeviceName());
-		}
-		if (params.getLoopback() != null && !params.getLoopback().isEmpty()) {
-			return uCSPRepository.findByLoopbackIgnoreCase(params.getLoopback());
-		}
-		if (params.getNetwork() != null && !params.getNetwork().isEmpty()) {
-			return uCSPRepository.findByNetworkIgnoreCase(params.getNetwork());
-		}
-		if (params.getVendor() != null && !params.getVendor().isEmpty()) {
-			return uCSPRepository.findByVendorIgnoreCase(params.getVendor());
-		}
-		if (params.getModel() != null && !params.getModel().isEmpty()) {
-			return uCSPRepository.findByModelIgnoreCase(params.getModel());
-		}
-		return null;
-	}
-
-	public Map<String, TrendsDTO> getDailyTrends(TrendsRequest params) throws ParseException {
-	    SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
-	    List<Map<String, Object>> results = uCSPTrendsRepository.findDailyTrends(params.getUcgSourceID(), params.getFromDate(), params.getToDate());
-
-	    Map<String, TrendsDTO> trendsData = new HashMap<>();
-
-	    for (Map<String, Object> result : results) {
-	        String date = dateFormat.format(result.get("date"));
-	        String time = (String) result.get("time");
-	        double sizeOfFilesBytes = ((Number) result.get("sizeOfFilesBytes")).doubleValue();
-	        int numberOfFiles = ((Number) result.get("numberOfFiles")).intValue();
-
-	        TrendsDrillDownData trendsDataPoint = new TrendsDrillDownData(time, sizeOfFilesBytes, numberOfFiles);
-
-	        trendsData
-	            .computeIfAbsent(date, k -> new TrendsDTO(date))
-	            .addTrendsData(trendsDataPoint);
-	    }
-
-	    logger.debug("trendsData {}", trendsData);
-	    return trendsData;
-	}
-
-
-	public Map<String, List<String>> getUniqueValues() {
-		Map<String, List<String>> uniqueValues = new HashMap<>();
-		uniqueValues.put("models", uCSPRepository.findDistinctModels());
-		uniqueValues.put("vendors", uCSPRepository.findDistinctVendors());
-		uniqueValues.put("networks", uCSPRepository.findDistinctNetworks());
-		return uniqueValues;
-	}
-	public List<String> getUniqueUCGSources(){
-		return uCSPRepository.findDistinctUCGSources();
-	}
-	public List<Device> getAllDevices() {
-		return uCSPRepository.findAll();
-	}
-
-	public List<UcspProject> getUniqueProjects() {
-		return ucspProjectsRepository.findUniqueProjects();
-	}
-	public Map<String, List<String>> uniqueNetworksByProtocol() {
-		Map<String, List<String>> uniqueValues = new HashMap<>();
-		uniqueValues.put("snmp", uCSPRepository.uniqueNetworksBySNMPprotocol());
-		return uniqueValues;
-	}
-	
-	public List<String> uniqueDevicesByNetwork(String network) {
-		return uCSPRepository.getUniqueDevicesByNetwork(network);
-	}
-	
-	public Map<String, AvgNetworkCoverageDTO> avgNetworkByCoverage(String networkName,String fromDate,String toDate,String device) throws ParseException {
-        Map<String, AvgNetworkCoverageDTO> detailedData = new HashMap<>();
-        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
-
-        List<Map<String, Object>> results = uCSPRepository.avgNetworkByCoverage(networkName,dateFormat.parse(fromDate),dateFormat.parse(toDate),device);
-
-        for (Map<String, Object> result : results) {
-            String date = dateFormat.format(result.get("date"));
-            String time = (String) result.get("time");
-            double sumOfCoverage = ((Number) result.get("sumOfCoverage")).doubleValue();
-
-            AvgNetworkCovDrillDownData coverageData = new AvgNetworkCovDrillDownData(time, sumOfCoverage);
-
-            detailedData
-                .computeIfAbsent(date, k -> new AvgNetworkCoverageDTO(date))
-                .addCoverageData(coverageData);
-            /*detaileddata
-                .computeifabsent(date, k -> new avgnetworkcoveragedto(date, 0.0, new arraylist<>()))
-                .getCoveragedatalist().add(coveragedata);
-            detaileddata.get(date).setTotalcoverage(detaileddata.get(date).getTotalcoverage() + sumofcoverage);
-            */
-        }
-        logger.debug("detailedData {}",detailedData);
-        return detailedData;
+    public ScatterPlotService(AlarmRepository alarmRepository) {
+        this.alarmRepository = alarmRepository;
     }
 
-	// Method to get scatter plot data based on protocol and date range
-	public List<ScatterPlotData> getScatterPlotData(String protocol, LocalDateTime startDate, LocalDateTime endDate) {
-		return ucspAlarmRepository.findByProtocolAndDateRange(protocol, startDate, endDate);
-	}
-
-	// Method to get available protocols
-	public List<String> getAvailableProtocols() {
-		return ucspAlarmRepository.findAllProtocols();
-	}
-}
-
-
-package com.verizon.ucs.restapi.controllers;
-
-import com.verizon.ucs.restapi.dto.ApiRequest;
-import com.verizon.ucs.restapi.dto.TrendsRequest;
-import com.verizon.ucs.restapi.graphql.AvailableProtocolsResolver;
-import com.verizon.ucs.restapi.graphql.FilterDataByProtocolResolver;
-import com.verizon.ucs.restapi.graphql.ScatterPlotDataResolver;
-import com.verizon.ucs.restapi.model.*;
-import com.verizon.ucs.restapi.repository.UCSPAlarmRepository;
-import com.verizon.ucs.restapi.service.UCSPService;
-import graphql.GraphQLException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.dao.DataAccessException;
-import org.springframework.graphql.data.method.annotation.Argument;
-import org.springframework.graphql.data.method.annotation.MutationMapping;
-import org.springframework.graphql.data.method.annotation.QueryMapping;
-import org.springframework.graphql.data.method.annotation.SchemaMapping;
-import org.springframework.stereotype.Controller;
-
-import java.time.LocalDateTime;
-import java.util.Comparator;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
-
-/**
- * Controller interface for UCS Portal Application with JPA
- */
-@Controller
-public class UCSPController {
-    private static final Logger logger = LoggerFactory.getLogger(UCSPController.class);
-
-    @Autowired
-    private UCSPService uCSPService;
-    @Autowired
-    private UCSPAlarmRepository ucspAlarmRepository;
-
-    @QueryMapping(value = "searchDevices")
-    public List<Device> getFilteredDevices(@Argument ApiRequest apiRequest) {
-        return uCSPService.searchDevices(apiRequest);
+    public List<ScatterPlotData> getScatterPlotData(String protocol, String dataType) {
+        return alarmRepository.findScatterPlotData(protocol, dataType);
     }
 
-    @QueryMapping(value = "allDevices")
-    public List<Device> getAllDevices() {
-        return uCSPService.getAllDevices();
-    }
-
-    @SchemaMapping(typeName = "Query", value = "uniqueModels")
-    public List<String> getUniqueModels() {
-        return uCSPService.getUniqueValues().get("models");
-    }
-
-    @QueryMapping(value = "uniqueVendors")
-    public List<String> getUniqueVendors() {
-        return uCSPService.getUniqueValues().get("vendors");
-    }
-
-    @QueryMapping(value = "dailyTrends")
-    public List<TrendsDTO> getTrends(@Argument TrendsRequest trendsRequest) {
-        try {
-        	 Map<String, TrendsDTO> trendsDataMap = uCSPService.getDailyTrends(trendsRequest);
-             return trendsDataMap.values().stream()
-            		  .sorted(Comparator.comparing(TrendsDTO::getDate))
-            		 .collect(Collectors.toList());
-        } catch (DataAccessException e) {
-            logger.error("Database error occurred while fetching data", e);
-            throw new GraphQLException("Database error: Unable to fetch data");
-        } catch (RuntimeException e) {
-            logger.error("Runtime error occurred", e);
-            throw new GraphQLException("Runtime error: " + e.getMessage());
-        } catch (Exception e) {
-            logger.error("Unexpected error occurred", e);
-            throw new GraphQLException("Unexpected error: " + e.getMessage());
-        }
-    }
-
-    @QueryMapping
-    public List<String> uniqueNetworks() {
-        return uCSPService.getUniqueValues().get("networks");
-    }
-
-    @QueryMapping(value = "uniqueUCSPProjects")
-    public List<UcspProject> getUniqueProjects() {
-        List<UcspProject> ucgProjects = uCSPService.getUniqueProjects();
-        return ucgProjects;
-    }
-
-    @QueryMapping(value = "uniqueUCGSources")
-    public List<String> getUniqueUCGSources() {
-        List<String> ucgSources = uCSPService.getUniqueUCGSources();
-        return ucgSources;
-    }
-
-    @QueryMapping(value = "uniqueUCGSourcesByProject")
-    public List<UcspProject> getUniqueUCGSourcesByProject(@Argument Long projectId) {
-        try {
-            return uCSPService.getUniqueUCGSourcesByProject(projectId);
-        } catch (DataAccessException e) {
-            logger.error("Database error occurred while fetching UCG Sources", e);
-            throw new GraphQLException("Database error: Unable to fetch UCG Sources for project ID: " + projectId);
-        } catch (RuntimeException e) {
-            logger.error("Runtime error occurred", e);
-            throw new GraphQLException("Runtime error: " + e.getMessage());
-        } catch (Exception e) {
-            logger.error("Unexpected error occurred", e);
-            throw new GraphQLException("Unexpected error: " + e.getMessage());
-        }
-    }
-    
-    @QueryMapping
-    public List<String> uniqueNetworksByProtocol() {
-        return uCSPService.uniqueNetworksByProtocol().get("snmp");
-    }
-    
-    @QueryMapping
-    public List<String> uniqueDevicesByNetwork(@Argument String network) {
-        return uCSPService.uniqueDevicesByNetwork(network);
-    }
-    
-    @QueryMapping(value = "avgNetworkByCoverage")
-    public List<AvgNetworkCoverageDTO> avgNetworkByCoverage(@Argument String network,
-            @Argument String fromDate, @Argument String toDate, @Argument String device) {
-        try {
-            Map<String, AvgNetworkCoverageDTO> detailedData = uCSPService.avgNetworkByCoverage(network, fromDate, toDate, device);
-            return detailedData.values().stream()
-                    .map(dto -> {
-                        dto.setTotalCoverage(Double.parseDouble(dto.getFormattedTotalCoverage()));
-                        return dto;
-                    })
-                    .sorted(Comparator.comparing(AvgNetworkCoverageDTO::getDate))
-                    .collect(Collectors.toList());
-        } catch (DataAccessException e) {
-            logger.error("Database error occurred while fetching network coverage", e);
-            throw new GraphQLException("Database error: Unable to fetch network coverage for network: " + network);
-        } catch (RuntimeException e) {
-            logger.error("Runtime error occurred", e);
-            throw new GraphQLException("Runtime error: " + e.getMessage());
-        } catch (Exception e) {
-            logger.error("Unexpected error occurred", e);
-            throw new GraphQLException("Unexpected error: " + e.getMessage());
-        }
-    }
-    @QueryMapping
-    public List<ScatterPlotData> getScatterPlotData(
-            @Argument String protocol,
-            @Argument String startDate,
-            @Argument String endDate) {
-        try {
-            LocalDateTime start = LocalDateTime.parse(startDate);
-            LocalDateTime end = LocalDateTime.parse(endDate);
-            return uCSPService.getScatterPlotData(protocol, start, end);
-        } catch (Exception e) {
-            throw new GraphQLException("Error while fetching scatter plot data: " + e.getMessage());
-        }
-    }
-
-    // Query for fetching all available protocols
-    @QueryMapping
-    public List<String> getAllProtocols() {
-        return uCSPService.getAvailableProtocols();
+    public List<ScatterPlotData> getDataByProtocol(String protocol) {
+        return alarmRepository.findDataByProtocol(protocol);
     }
 }
 
-package com.verizon.ucs.restapi.model;
+3. GraphQL Controller
 
-import lombok.Getter;
+Now, let’s create the controller class to define GraphQL queries and mutations.
 
-import javax.persistence.*;
-import java.time.LocalDateTime;
-
-@Getter
-@Entity
-@Table(name = "scatter_plot_data")
-public class ScatterPlotData {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(name = "protocol", nullable = false)
-    private String protocol;
-
-    @Column(name = "collection_date", nullable = false)
-    private LocalDateTime collectionDate;
-
-    @Column(name = "y_value", nullable = false)
-    private Long yValue;
-
-    // Getters and Setters
-
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public void setProtocol(String protocol) {
-        this.protocol = protocol;
-    }
-
-    public void setCollectionDate(LocalDateTime collectionDate) {
-        this.collectionDate = collectionDate;
-    }
-
-    public void setyValue(Long yValue) {
-        this.yValue = yValue;
-    }
-}
-
-package com.verizon.ucs.restapi.model;
-
-import javax.persistence.*;
-import java.time.LocalDateTime;
-
-@Entity
-@Table(name = "ucsp_alarm_metrics")
-public class UCSPAlarmMetrics {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @ManyToOne
-    @JoinColumn(name = "collection_name", referencedColumnName = "collection_name", nullable = false)
-    private UCSPAlarmInventory ucspAlarmInventory;
-
-    @Column(name = "last_updated")
-    private LocalDateTime lastUpdated;
-
-    @Column(name = "number_of_msgs", nullable = false)
-    private Long numberOfMsgs;
-
-    @Column(name = "size_of_msgs", nullable = false)
-    private Long sizeOfMsgs;
-
-    // Getters and Setters
-
-    public Long getId() {
-        return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public UCSPAlarmInventory getUcspAlarmInventory() {
-        return ucspAlarmInventory;
-    }
-
-    public void setUcspAlarmInventory(UCSPAlarmInventory ucspAlarmInventory) {
-        this.ucspAlarmInventory = ucspAlarmInventory;
-    }
-
-    public LocalDateTime getLastUpdated() {
-        return lastUpdated;
-    }
-
-    public void setLastUpdated(LocalDateTime lastUpdated) {
-        this.lastUpdated = lastUpdated;
-    }
-
-    public Long getNumberOfMsgs() {
-        return numberOfMsgs;
-    }
-
-    public void setNumberOfMsgs(Long numberOfMsgs) {
-        this.numberOfMsgs = numberOfMsgs;
-    }
-
-    public Long getSizeOfMsgs() {
-        return sizeOfMsgs;
-    }
-
-    public void setSizeOfMsgs(Long sizeOfMsgs) {
-        this.sizeOfMsgs = sizeOfMsgs;
-    }
-}
-
-package com.verizon.ucs.restapi.model;
-
-import javax.persistence.*;
-import java.net.InetAddress;
-import java.util.Objects;
-
-@Entity
-@Table(name = "ucsp_alarm_inventory")
-public class UCSPAlarmInventory {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(name = "collection_name", nullable = false, unique = true)
-    private String collectionName;
-
-    @Column(name = "device_name", nullable = false)
-    private String deviceName;
-
-    @Column(name = "device_ip", nullable = false)
-    private InetAddress deviceIp;
-
-    @Column(name = "ucg_source", nullable = false)
-    private String ucgSource;
-
-    @Column(name = "vendor", nullable = false)
-    private String vendor;
-
-    // Getters and Setters
-
-    public Long getId() {
-        return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public String getCollectionName() {
-        return collectionName;
-    }
-
-    public void setCollectionName(String collectionName) {
-        this.collectionName = collectionName;
-    }
-
-    public String getDeviceName() {
-        return deviceName;
-    }
-
-    public void setDeviceName(String deviceName) {
-        this.deviceName = deviceName;
-    }
-
-    public InetAddress getDeviceIp() {
-        return deviceIp;
-    }
-
-    public void setDeviceIp(InetAddress deviceIp) {
-        this.deviceIp = deviceIp;
-    }
-
-    public String getUcgSource() {
-        return ucgSource;
-    }
-
-    public void setUcgSource(String ucgSource) {
-        this.ucgSource = ucgSource;
-    }
-
-    public String getVendor() {
-        return vendor;
-    }
-
-    public void setVendor(String vendor) {
-        this.vendor = vendor;
-    }
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        UCSPAlarmInventory that = (UCSPAlarmInventory) o;
-        return Objects.equals(id, that.id) &&
-                Objects.equals(collectionName, that.collectionName);
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(id, collectionName);
-    }
-}
-
-
-package com.verizon.ucs.restapi.repository;
+package com.verizon.ucs.restapi.controller;
 
 import com.verizon.ucs.restapi.model.ScatterPlotData;
-import com.verizon.ucs.restapi.model.UCSPAlarmMetrics;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.stereotype.Repository;
+import com.verizon.ucs.restapi.service.ScatterPlotService;
+import org.springframework.graphql.data.method.annotation.QueryMapping;
+import org.springframework.graphql.data.method.annotation.Parameter;
+import org.springframework.stereotype.Controller;
 
-import java.time.LocalDateTime;
 import java.util.List;
+
+@Controller
+public class ScatterPlotController {
+
+    private final ScatterPlotService scatterPlotService;
+
+    public ScatterPlotController(ScatterPlotService scatterPlotService) {
+        this.scatterPlotService = scatterPlotService;
+    }
+
+    @QueryMapping
+    public List<ScatterPlotData> getScatterPlotData(
+        @Parameter String protocol,
+        @Parameter String dataType
+    ) {
+        return scatterPlotService.getScatterPlotData(protocol, dataType);
+    }
+
+    @QueryMapping
+    public List<ScatterPlotData> getDataByProtocol(@Parameter String protocol) {
+        return scatterPlotService.getDataByProtocol(protocol);
+    }
+}
+
+4. GraphQL Schema (schema.graphqls)
+
+Define the GraphQL schema that will be used by the Spring GraphQL integration. You can create a file src/main/resources/schema.graphqls and define the types and queries like below:
+
+type ScatterPlotData {
+    collectionName: String
+    date: String
+    yValue: Int
+}
+
+type Query {
+    getScatterPlotData(protocol: String, dataType: String): [ScatterPlotData]
+    getDataByProtocol(protocol: String): [ScatterPlotData]
+}
+
+This schema defines:
+
+A ScatterPlotData type with collectionName, date, and yValue.
+
+A Query type with two queries:
+
+getScatterPlotData for fetching data by protocol and data type.
+
+getDataByProtocol for fetching data by protocol.
+
+
+
+5. GraphQL Configuration
+
+In some cases, you may need to configure the GraphQL engine (optional as Spring Boot auto-configures GraphQL). Here’s a basic setup that can be added to your application:
+
+package com.verizon.ucs.restapi.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.graphql.GraphQlSource;
+import org.springframework.graphql.GraphQlSourceBuilder;
+
+@Configuration
+public class GraphQLConfig {
+
+    @Bean
+    public GraphQlSource graphQlSource() {
+        return GraphQlSourceBuilder.newInstance().build();
+    }
+}
+
+6. Running the Application
+
+Once you have the controller, service, and GraphQL schema set up, you can run the Spring Boot application.
+
+You can test the GraphQL API through any GraphQL client (like GraphiQL, Postman, or Insomnia) with the following queries:
+
+Example Query 1: getScatterPlotData
+
+query {
+  getScatterPlotData(protocol: "SNMP", dataType: "number_of_msgs") {
+    collectionName
+    date
+    yValue
+  }
+}
+
+Example Query 2: getDataByProtocol
+
+query {
+  getDataByProtocol(protocol: "SNMP") {
+    collectionName
+    date
+    yValue
+  }
+}
+
+7. Summary
+
+This implementation uses Spring Boot and GraphQL to expose the data for scatter plots. You have:
+
+A service layer (ScatterPlotService) to handle the business logic.
+
+A controller (ScatterPlotController) that exposes the GraphQL endpoints.
+
+A GraphQL schema that defines the queries.
+
+Spring's auto-configuration for GraphQL to integrate it with your application.
+
+
+With this setup, the ScatterPlotController provides the data from the AlarmRepository through GraphQL queries that users can access for their visualization needs.
+
+
 
 
 @Repository
-public interface UCSPAlarmRepository extends JpaRepository<ScatterPlotData, Long> {
+public class AlarmRepository {
 
-    // Fetch scatter plot data based on protocol and date range
-    @Query("SELECT s FROM ScatterPlotData s WHERE s.protocol = :protocol AND s.collectionDate BETWEEN :startDate AND :endDate")
-    List<ScatterPlotData> findByProtocolAndDateRange(String protocol, LocalDateTime startDate, LocalDateTime endDate);
+    private final JdbcTemplate jdbcTemplate;
 
-    // Fetch all available protocols
-    @Query("SELECT DISTINCT s.protocol FROM ScatterPlotData s")
-    List<String> findAllProtocols();
+    public AlarmRepository(JdbcTemplate jdbcTemplate) {
+        this.jdbcTemplate = jdbcTemplate;
+    }
+
+    public List<ScatterPlotData> findScatterPlotData(String protocol, String dataType) {
+        String query = """
+            SELECT i.collection_name AS collectionName, 
+                   m.last_updated AS date, 
+                   CASE 
+                       WHEN :dataType = 'number_of_msgs' THEN m.number_of_msgs
+                       WHEN :dataType = 'size_of_msgs' THEN m.size_of_msgs
+                       ELSE 0
+                   END AS yValue
+            FROM ucsp_alarm_inventory i
+            JOIN ucsp_alarm_metrics m ON i.collection_name = m.collection_name
+            WHERE i.ucg_source = :protocol
+        """;
+
+        MapSqlParameterSource params = new MapSqlParameterSource()
+            .addValue("protocol", protocol)
+            .addValue("dataType", dataType);
+
+        return jdbcTemplate.query(query, params, (rs, rowNum) -> new ScatterPlotData(
+            rs.getString("collectionName"),
+            rs.getTimestamp("date").toInstant().toString(),
+            rs.getInt("yValue")
+        ));
+    }
+
+    public List<ScatterPlotData> findDataByProtocol(String protocol) {
+        String query = """
+            SELECT i.collection_name AS collectionName, 
+                   m.last_updated AS date, 
+                   m.number_of_msgs AS yValue
+            FROM ucsp_alarm_inventory i
+            JOIN ucsp_alarm_metrics m ON i.collection_name = m.collection_name
+            WHERE i.ucg_source = :protocol
+        """;
+
+        MapSqlParameterSource params = new MapSqlParameterSource()
+            .addValue("protocol", protocol);
+
+        return jdbcTemplate.query(query, params, (rs, rowNum) -> new ScatterPlotData(
+            rs.getString("collectionName"),
+            rs.getTimestamp("date").toInstant().toString(),
+            rs.getInt("yValue")
+        ));
+    }
 }
-
