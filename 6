@@ -1,316 +1,156 @@
-Here’s a full implementation of the GraphQL APIs, including changes to the model, repository, controller (resolvers in the GraphQL context), and other necessary components.
+To check and test your GraphQL API, you can use the following steps:
 
+1. Access GraphQL Endpoint
 
----
+Once your Spring Boot application is running, the default GraphQL endpoint is typically exposed at /graphql. You can test it using the following methods:
 
-Database Table Schema
+GraphiQL Interface: If you're using Spring Boot with the GraphQL starter, you can access the built-in GraphiQL UI (a web-based GraphQL IDE) by navigating to:
 
-Ensure the following table exists in your PostgreSQL database for scatterplotdata.
+http://localhost:8080/graphiql
 
-CREATE TABLE scatterplotdata (
-    id SERIAL PRIMARY KEY,
-    collection_name VARCHAR(255) NOT NULL,
-    collection_date TIMESTAMP NOT NULL,
-    protocol VARCHAR(50) NOT NULL,
-    number_of_msgs INT NOT NULL,
-    size_of_msgs BIGINT NOT NULL
-);
+This is a powerful tool that allows you to write, test, and explore GraphQL queries directly in the browser.
 
+Postman: You can also use Postman to send GraphQL queries if you prefer working with HTTP requests.
 
----
 
-Model Class
+2. Test the GraphQL Queries
 
-package com.example.project.model;
+a. Test the getScatterPlotData Query
 
-import jakarta.persistence.*;
-import java.time.LocalDateTime;
+To retrieve the scatter plot data, use the following query:
 
-@Entity
-@Table(name = "scatterplotdata")
-public class ScatterPlotData {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(name = "collection_name", nullable = false)
-    private String collectionName;
-
-    @Column(name = "collection_date", nullable = false)
-    private LocalDateTime collectionDate;
-
-    @Column(name = "protocol", nullable = false)
-    private String protocol;
-
-    @Column(name = "number_of_msgs", nullable = false)
-    private int numberOfMsgs;
-
-    @Column(name = "size_of_msgs", nullable = false)
-    private long sizeOfMsgs;
-
-    // Getters and Setters
-    public Long getId() {
-        return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public String getCollectionName() {
-        return collectionName;
-    }
-
-    public void setCollectionName(String collectionName) {
-        this.collectionName = collectionName;
-    }
-
-    public LocalDateTime getCollectionDate() {
-        return collectionDate;
-    }
-
-    public void setCollectionDate(LocalDateTime collectionDate) {
-        this.collectionDate = collectionDate;
-    }
-
-    public String getProtocol() {
-        return protocol;
-    }
-
-    public void setProtocol(String protocol) {
-        this.protocol = protocol;
-    }
-
-    public int getNumberOfMsgs() {
-        return numberOfMsgs;
-    }
-
-    public void setNumberOfMsgs(int numberOfMsgs) {
-        this.numberOfMsgs = numberOfMsgs;
-    }
-
-    public long getSizeOfMsgs() {
-        return sizeOfMsgs;
-    }
-
-    public void setSizeOfMsgs(long sizeOfMsgs) {
-        this.sizeOfMsgs = sizeOfMsgs;
-    }
-}
-
-
----
-
-Repository
-
-package com.example.project.repository;
-
-import com.example.project.model.ScatterPlotData;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.stereotype.Repository;
-
-import java.time.LocalDateTime;
-import java.util.List;
-
-@Repository
-public interface ScatterPlotDataRepository extends JpaRepository<ScatterPlotData, Long> {
-
-    @Query("SELECT s FROM ScatterPlotData s WHERE s.protocol = :protocol AND s.collectionDate BETWEEN :startDate AND :endDate")
-    List<ScatterPlotData> findByProtocolAndDateRange(String protocol, LocalDateTime startDate, LocalDateTime endDate);
-
-    @Query("SELECT DISTINCT s.protocol FROM ScatterPlotData s")
-    List<String> findAllProtocols();
-
-    List<ScatterPlotData> findByProtocol(String protocol);
-}
-
-
----
-
-Service
-
-package com.example.project.service;
-
-import com.example.project.model.ScatterPlotData;
-import com.example.project.repository.ScatterPlotDataRepository;
-import org.springframework.stereotype.Service;
-
-import java.time.LocalDateTime;
-import java.util.List;
-
-@Service
-public class ScatterPlotDataService {
-
-    private final ScatterPlotDataRepository repository;
-
-    public ScatterPlotDataService(ScatterPlotDataRepository repository) {
-        this.repository = repository;
-    }
-
-    public List<ScatterPlotData> getScatterPlotData(String protocol, LocalDateTime startDate, LocalDateTime endDate) {
-        return repository.findByProtocolAndDateRange(protocol, startDate, endDate);
-    }
-
-    public List<String> getAvailableProtocols() {
-        return repository.findAllProtocols();
-    }
-
-    public List<ScatterPlotData> getDataByProtocol(String protocol) {
-        return repository.findByProtocol(protocol);
-    }
-}
-
-
----
-
-GraphQL Resolvers
-
-1. Scatter Plot Data Resolver
-
-package com.example.project.graphql;
-
-import com.example.project.model.ScatterPlotData;
-import com.example.project.service.ScatterPlotDataService;
-import org.springframework.stereotype.Component;
-
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.List;
-
-@Component
-public class ScatterPlotDataResolver {
-
-    private final ScatterPlotDataService service;
-
-    public ScatterPlotDataResolver(ScatterPlotDataService service) {
-        this.service = service;
-    }
-
-    public List<ScatterPlotData> scatterPlotData(String protocol, String startDate, String endDate) {
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
-        LocalDateTime start = LocalDateTime.parse(startDate, formatter);
-        LocalDateTime end = LocalDateTime.parse(endDate, formatter);
-
-        return service.getScatterPlotData(protocol, start, end);
-    }
-}
-
-2. Available Protocols Resolver
-
-package com.example.project.graphql;
-
-import com.example.project.service.ScatterPlotDataService;
-import org.springframework.stereotype.Component;
-
-import java.util.List;
-
-@Component
-public class AvailableProtocolsResolver {
-
-    private final ScatterPlotDataService service;
-
-    public AvailableProtocolsResolver(ScatterPlotDataService service) {
-        this.service = service;
-    }
-
-    public List<String> availableProtocols() {
-        return service.getAvailableProtocols();
-    }
-}
-
-3. Filter Data by Protocol Resolver
-
-package com.example.project.graphql;
-
-import com.example.project.model.ScatterPlotData;
-import com.example.project.service.ScatterPlotDataService;
-import org.springframework.stereotype.Component;
-
-import java.util.List;
-
-@Component
-public class FilterDataByProtocolResolver {
-
-    private final ScatterPlotDataService service;
-
-    public FilterDataByProtocolResolver(ScatterPlotDataService service) {
-        this.service = service;
-    }
-
-    public List<ScatterPlotData> filterDataByProtocol(String protocol) {
-        return service.getDataByProtocol(protocol);
-    }
-}
-
-
----
-
-GraphQL Schema
-
-type Query {
-    scatterPlotData(protocol: String!, startDate: String!, endDate: String!): [ScatterPlotData!]!
-    availableProtocols: [String!]!
-    filterDataByProtocol(protocol: String!): [ScatterPlotData!]!
-}
-
-type ScatterPlotData {
-    id: ID!
-    collectionName: String!
-    collectionDate: String!
-    protocol: String!
-    numberOfMsgs: Int!
-    sizeOfMsgs: Long!
-}
-
-
----
-
-GraphQL Queries
-
-1. Fetch Scatter Plot Data
+GraphQL Query Example:
 
 query {
-    scatterPlotData(protocol: "SNMP", startDate: "2024-01-01T00:00:00", endDate: "2024-01-31T23:59:59") {
-        collectionName
-        collectionDate
-        numberOfMsgs
-        sizeOfMsgs
-    }
+  getScatterPlotData(protocol: "SNMP", startDate: "2024-11-01T00:00:00", endDate: "2024-11-30T23:59:59") {
+    id
+    protocol
+    collectionDate
+    yValue
+  }
 }
 
+This query requests scatter plot data for the protocol "SNMP" and within a specified date range (startDate and endDate).
 
-2. Fetch Available Protocols
+Expected Response:
+
+{
+  "data": {
+    "getScatterPlotData": [
+      {
+        "id": "1",
+        "protocol": "SNMP",
+        "collectionDate": "2024-11-05T10:00:00",
+        "yValue": 204800
+      },
+      {
+        "id": "2",
+        "protocol": "SNMP",
+        "collectionDate": "2024-11-10T14:00:00",
+        "yValue": 300000
+      }
+    ]
+  }
+}
+
+b. Test the getAllProtocols Query
+
+To get the list of all available protocols, use the following query:
+
+GraphQL Query Example:
 
 query {
-    availableProtocols
+  getAllProtocols
 }
 
+Expected Response:
 
-3. Filter Data by Protocol
+{
+  "data": {
+    "getAllProtocols": ["SNMP", "WSS", "gRPC", "TL1", "syslog"]
+  }
+}
+
+3. Using GraphiQL Interface
+
+When using the GraphiQL interface at http://localhost:8080/graphiql, follow these steps:
+
+1. Start the Spring Boot application if it's not already running (mvn spring-boot:run or ./mvnw spring-boot:run).
+
+
+2. Open the browser and navigate to:
+
+http://localhost:8080/graphiql
+
+This should open the GraphiQL interface.
+
+
+3. In the left pane (where you type your GraphQL query), paste the queries mentioned above.
+
+
+4. Click the "Play" button (a triangular button on the top left) to execute the query.
+
+
+5. The results will be shown on the right pane (the response).
+
+
+
+4. Using Postman
+
+If you're using Postman to test the API, follow these steps:
+
+1. Open Postman and create a new POST request.
+
+
+2. Set the request URL to:
+
+http://localhost:8080/graphql
+
+
+3. Under the Body tab, select GraphQL.
+
+
+4. In the Query field, input the following GraphQL query (as an example):
 
 query {
-    filterDataByProtocol(protocol: "SNMP") {
-        collectionName
-        collectionDate
-        numberOfMsgs
-        sizeOfMsgs
-    }
+  getScatterPlotData(protocol: "SNMP", startDate: "2024-11-01T00:00:00", endDate: "2024-11-30T23:59:59") {
+    id
+    protocol
+    collectionDate
+    yValue
+  }
 }
 
 
+5. Click Send.
 
 
----
+6. The response will appear below, showing the queried data.
 
-Test Data Insertion
 
-INSERT INTO scatterplotdata (collection_name, collection_date, protocol, number_of_msgs, size_of_msgs)
-VALUES 
-('Collection1', '2024-01-15 10:00:00', 'SNMP', 500, 10240),
-('Collection2', '2024-01-16 11:30:00', 'gRPC', 700, 20480),
-('Collection3', '2024-01-17 14:45:00', 'WSS', 300, 5120);
 
-This provides a complete implementation of the three APIs. Let me know if you need any modifications!
+5. Handling Errors
+
+If your query fails, you will see an error response. Make sure the following:
+
+The date format is correct (i.e., yyyy-MM-dd'T'HH:mm:ss).
+
+The protocol you specify exists in your database.
+
+
+For instance, if the protocol "SNMP" is invalid or if no data is found for the given date range, the response might look like:
+
+{
+  "errors": [
+    {
+      "message": "No data found for the given protocol and date range.",
+      "locations": [{ "line": 2, "column": 3 }],
+      "path": ["getScatterPlotData"]
+    }
+  ]
+}
+
+Conclusion
+
+By using GraphiQL or Postman, you can test the queries and get the scatter plot data or available protocols. The built-in tools will help you validate your GraphQL endpoint and ensure everything works as expected.
 
