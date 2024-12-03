@@ -1,46 +1,225 @@
+Here’s a complete solution, including the GraphQL Controller, Service Class, and Repository with the exact table names as you provided: ucsp_alarm_inventory, ucsp_alarm_metrics, and scatter_plot_data.
+
+1. Repository Layer (with Correct Tables and Queries)
+
 package com.verizon.ucs.restapi.repository;
 
+import com.verizon.ucs.restapi.model.ScatterPlotData;
+import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
-import org.springframework.data.repository.CrudRepository;
 
-import java.util.List;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Repository
-public interface UCSPAlarmRepository extends CrudRepository<Object[], Long> {
+public interface UCSPAlarmRepository extends JpaRepository<ScatterPlotData, Long> {
 
-    // Query to get scatter plot data based on protocol and date range
-    @Query(value = """
-        SELECT 
-            m.collection_name, 
-            m.last_updated AS date, 
-            CASE 
-                WHEN :dataType = 'number_of_msgs' THEN m.number_of_msgs 
-                WHEN :dataType = 'size_of_msgs' THEN m.size_of_msgs 
-                ELSE NULL 
-            END AS y_value
-        FROM ucsp_alarm_metrics m
-        JOIN ucsp_alarm_inventory i ON m.collection_name = i.collection_name
-        WHERE i.ucg_source = :protocol
-          AND m.last_updated BETWEEN :startDate AND :endDate
-        """, nativeQuery = true)
-    List<Object[]> findScatterPlotData(String protocol, String dataType, LocalDateTime startDate, LocalDateTime endDate);
+    // Fetch scatter plot data based on protocol and date range
+    @Query("SELECT s FROM ScatterPlotData s " +
+           "JOIN ucsp_alarm_metrics m ON m.collection_name = s.collection_name " +
+           "JOIN ucsp_alarm_inventory i ON i.collection_name = m.collection_name " +
+           "WHERE s.protocol = :protocol " +
+           "AND s.collection_date BETWEEN :startDate AND :endDate")
+    List<ScatterPlotData> findByProtocolAndDateRange(String protocol, LocalDateTime startDate, LocalDateTime endDate);
 
-    // Query to filter data by protocol
-    @Query(value = """
-        SELECT 
-            m.collection_name, 
-            m.last_updated AS date, 
-            m.number_of_msgs, 
-            m.size_of_msgs
-        FROM ucsp_alarm_metrics m
-        JOIN ucsp_alarm_inventory i ON m.collection_name = i.collection_name
-        WHERE i.ucg_source = :protocol
-        """, nativeQuery = true)
-    List<Object[]> findByProtocol(String protocol);
+    // Fetch scatter plot data filtered by protocol
+    @Query("SELECT s FROM ScatterPlotData s " +
+           "JOIN ucsp_alarm_metrics m ON m.collection_name = s.collection_name " +
+           "JOIN ucsp_alarm_inventory i ON i.collection_name = m.collection_name " +
+           "WHERE s.protocol = :protocol")
+    List<ScatterPlotData> findByProtocol(String protocol);
 
-    // Query to get all available protocols
-    @Query(value = "SELECT DISTINCT ucg_source FROM ucsp_alarm_inventory", nativeQuery = true)
+    // Fetch all available protocols
+    @Query("SELECT DISTINCT s.protocol FROM ScatterPlotData s")
     List<String> findAllProtocols();
 }
+
+2. Service Layer (with Methods for Each API)
+
+package com.verizon.ucs.restapi.service;
+
+import com.verizon.ucs.restapi.model.ScatterPlotData;
+import com.verizon.ucs.restapi.repository.UCSPAlarmRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+import java.util.List;
+
+@Service
+public class UCSPAlarmService {
+
+    @Autowired
+    private UCSPAlarmRepository alarmRepository;
+
+    // API 1: Get scatter plot data by protocol and date range
+    public List<ScatterPlotData> getScatterPlotDataByProtocolAndDateRange(String protocol, LocalDateTime startDate, LocalDateTime endDate) {
+        return alarmRepository.findByProtocolAndDateRange(protocol, startDate, endDate);
+    }
+
+    // API 2: Get scatter plot data by protocol
+    public List<ScatterPlotData> getScatterPlotDataByProtocol(String protocol) {
+        return alarmRepository.findByProtocol(protocol);
+    }
+
+    // API 3: Get available protocols
+    public List<String> getAvailableProtocols() {
+        return alarmRepository.findAllProtocols();
+    }
+}
+
+3. GraphQL Controller Layer
+
+package com.verizon.ucs.restapi.controller;
+
+import com.verizon.ucs.restapi.model.ScatterPlotData;
+import com.verizon.ucs.restapi.service.UCSPAlarmService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.graphql.data.method.annotation.QueryMapping;
+import org.springframework.graphql.data.method.annotation.Argument;
+import org.springframework.stereotype.Controller;
+
+import java.time.LocalDateTime;
+import java.util.List;
+
+@Controller
+public class UCSPAlarmController {
+
+    @Autowired
+    private UCSPAlarmService alarmService;
+
+    // API 1: GraphQL Query for getting scatter plot data by protocol and date range
+    @QueryMapping
+    public List<ScatterPlotData> getScatterPlotDataByProtocolAndDateRange(
+        @Argument String protocol, 
+        @Argument String startDate, 
+        @Argument String endDate) {
+        
+        LocalDateTime start = LocalDateTime.parse(startDate);
+        LocalDateTime end = LocalDateTime.parse(endDate);
+        
+        return alarmService.getScatterPlotDataByProtocolAndDateRange(protocol, start, end);
+    }
+
+    // API 2: GraphQL Query for getting scatter plot data by protocol
+    @QueryMapping
+    public List<ScatterPlotData> getScatterPlotDataByProtocol(@Argument String protocol) {
+        return alarmService.getScatterPlotDataByProtocol(protocol);
+    }
+
+    // API 3: GraphQL Query for getting available protocols
+    @QueryMapping
+    public List<String> getAvailableProtocols() {
+        return alarmService.getAvailableProtocols();
+    }
+}
+
+4. Model for ScatterPlotData (for reference)
+
+package com.verizon.ucs.restapi.model;
+
+import javax.persistence.Entity;
+import javax.persistence.Id;
+import java.time.LocalDateTime;
+
+@Entity
+public class ScatterPlotData {
+
+    @Id
+    private Long id;
+
+    private String collectionName;
+    private String protocol;
+    private LocalDateTime collectionDate;
+    private Long yValue;
+
+    // Getters and Setters
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public String getCollectionName() {
+        return collectionName;
+    }
+
+    public void setCollectionName(String collectionName) {
+        this.collectionName = collectionName;
+    }
+
+    public String getProtocol() {
+        return protocol;
+    }
+
+    public void setProtocol(String protocol) {
+        this.protocol = protocol;
+    }
+
+    public LocalDateTime getCollectionDate() {
+        return collectionDate;
+    }
+
+    public void setCollectionDate(LocalDateTime collectionDate) {
+        this.collectionDate = collectionDate;
+    }
+
+    public Long getyValue() {
+        return yValue;
+    }
+
+    public void setyValue(Long yValue) {
+        this.yValue = yValue;
+    }
+}
+
+GraphQL Queries Example:
+
+Now, in your GraphQL schema (or IDE like GraphiQL or Postman), you can query the three APIs as follows:
+
+1. Get Scatter Plot Data by Protocol and Date Range:
+
+query {
+  getScatterPlotDataByProtocolAndDateRange(
+    protocol: "SNMP", 
+    startDate: "2024-11-01T00:00:00", 
+    endDate: "2024-12-01T23:59:59") {
+    collectionName
+    protocol
+    collectionDate
+    yValue
+  }
+}
+
+2. Get Scatter Plot Data by Protocol:
+
+query {
+  getScatterPlotDataByProtocol(protocol: "SNMP") {
+    collectionName
+    protocol
+    collectionDate
+    yValue
+  }
+}
+
+3. Get Available Protocols:
+
+query {
+  getAvailableProtocols
+}
+
+Summary of the Workflow:
+
+Repository: Handles the actual data queries using @Query annotations, querying the ucsp_alarm_inventory, ucsp_alarm_metrics, and scatter_plot_data tables.
+
+Service: Contains the business logic, calling the repository methods and handling data.
+
+Controller: Exposes the GraphQL API, allowing clients to query data with the provided GraphQL queries.
+
+
+This setup ensures you use GraphQL for querying, and you fetch data from the correct tables (ucsp_alarm_inventory, ucsp_alarm_metrics, and scatter_plot_data) as per your requirements. Let me know if you need further adjustments!
+
