@@ -1,6 +1,160 @@
-@Query("SELECT new com.verizon.ucs.restapi.model.ScatterPlotData(ai.collectionName, am.lastUpdated, am.numberOfMsgs) " +
-        "FROM UCSPAlarmInventory ai " +
-        "INNER JOIN UCSPAlarmMetrics am ON ai.collectionName = am.ucspAlarmInventory.collectionName " +
-        "WHERE ai.ucgSource = :protocol AND :dataType = 'number_of_msgs' " +
-        "AND am.numberOfMsgs > 0") // Filter out entries with zero messages
-List<ScatterPlotData> fetchScatterPlotData(String protocol, String dataType);
+To implement the ScatterPlotData functionality with the given classes, I will focus on modifying or extending the UCSPService, UCSPAlarmRepository, UCSPController, and ScatterPlotData model. Here's how the classes will be updated:
+
+
+---
+
+Updates to the UCSPService Class
+
+@Service
+public class UCSPService {
+    
+    @Autowired
+    private UCSPAlarmRepository ucspAlarmRepository;
+
+    // Fetch scatter plot data based on protocol and data type
+    public List<ScatterPlotData> getScatterPlotData(String protocol, String dataType) {
+        return ucspAlarmRepository.fetchScatterPlotData(protocol, dataType);
+    }
+
+    // Fetch scatter plot data by protocol
+    public List<ScatterPlotData> getScatterPlotDataByProtocol(String protocol) {
+        return ucspAlarmRepository.fetchScatterPlotDataByProtocol(protocol);
+    }
+
+    // Fetch all available protocols
+    public List<String> getAvailableProtocols() {
+        return ucspAlarmRepository.fetchAvailableProtocols();
+    }
+}
+
+
+---
+
+Updates to the UCSPAlarmRepository Interface
+
+@Repository
+public interface UCSPAlarmRepository extends JpaRepository<UCSPAlarmMetrics, Long> {
+
+    // Fetch scatter plot data based on protocol and data type
+    @Query("SELECT new com.verizon.ucs.restapi.model.ScatterPlotData(ai.collectionName, am.lastUpdated, " +
+            "CASE :dataType WHEN 'number_of_msgs' THEN am.numberOfMsgs ELSE am.sizeOfMsgs END) " +
+            "FROM UCSPAlarmInventory ai " +
+            "JOIN UCSPAlarmMetrics am ON ai.collectionName = am.ucspAlarmInventory.collectionName " +
+            "WHERE ai.ucgSource = :protocol")
+    List<ScatterPlotData> fetchScatterPlotData(String protocol, String dataType);
+
+    // Fetch scatter plot data by protocol
+    @Query("SELECT new com.verizon.ucs.restapi.model.ScatterPlotData(ai.collectionName, am.lastUpdated, am.numberOfMsgs) " +
+            "FROM UCSPAlarmInventory ai " +
+            "JOIN UCSPAlarmMetrics am ON ai.collectionName = am.ucspAlarmInventory.collectionName " +
+            "WHERE ai.ucgSource = :protocol")
+    List<ScatterPlotData> fetchScatterPlotDataByProtocol(String protocol);
+
+    // Fetch all available protocols
+    @Query("SELECT DISTINCT ai.ucgSource FROM UCSPAlarmInventory ai")
+    List<String> fetchAvailableProtocols();
+}
+
+
+---
+
+Updates to the UCSPController Class
+
+@Controller
+public class UCSPController {
+
+    @Autowired
+    private UCSPService uCSPService;
+
+    // Fetch scatter plot data by protocol and data type
+    @QueryMapping(value = "scatterPlotData")
+    public List<ScatterPlotData> getScatterPlotData(@Argument String protocol, @Argument String dataType) {
+        return uCSPService.getScatterPlotData(protocol, dataType);
+    }
+
+    // Fetch scatter plot data by protocol only
+    @QueryMapping(value = "scatterPlotDataByProtocol")
+    public List<ScatterPlotData> getScatterPlotDataByProtocol(@Argument String protocol) {
+        return uCSPService.getScatterPlotDataByProtocol(protocol);
+    }
+
+    // Fetch all available protocols
+    @QueryMapping(value = "availableProtocols")
+    public List<String> getAvailableProtocols() {
+        return uCSPService.getAvailableProtocols();
+    }
+}
+
+
+---
+
+Updates to the ScatterPlotData Class
+
+package com.verizon.ucs.restapi.model;
+
+import lombok.Getter;
+
+import java.time.LocalDateTime;
+
+@Getter
+public class ScatterPlotData {
+
+    private String collectionName;
+    private LocalDateTime date;
+    private Long yValue;
+
+    public ScatterPlotData(String collectionName, LocalDateTime date, Long yValue) {
+        this.collectionName = collectionName;
+        this.date = date;
+        this.yValue = yValue;
+    }
+
+    public void setCollectionName(String collectionName) {
+        this.collectionName = collectionName;
+    }
+
+    public void setDate(LocalDateTime date) {
+        this.date = date;
+    }
+
+    public void setYValue(Long yValue) {
+        this.yValue = yValue;
+    }
+}
+
+
+---
+
+GraphQL Queries (Example)
+
+Query 1: Fetch Scatter Plot Data
+
+query {
+  scatterPlotData(protocol: "SNMP", dataType: "number_of_msgs") {
+    collectionName
+    date
+    yValue
+  }
+}
+
+Query 2: Fetch Data by Protocol
+
+query {
+  scatterPlotDataByProtocol(protocol: "SNMP") {
+    collectionName
+    date
+    yValue
+  }
+}
+
+Query 3: Fetch Available Protocols
+
+query {
+  availableProtocols
+}
+
+
+---
+
+This approach ensures minimal disruption to existing functionality and focuses on the changes required for scatter plot data retrieval.
+
