@@ -1,27 +1,71 @@
-package com.verizon.ucs.restapi.repository;
+package com.example.project.controller;
 
-import com.verizon.ucs.restapi.model.Trends;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
+import com.example.project.model.ScatterPlotData;
+import com.example.project.service.ScatterPlotDataService;
+import graphql.GraphQL;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.graphql.data.method.annotation.QueryMapping;
+import org.springframework.graphql.data.method.annotation.MutationMapping;
+import org.springframework.graphql.data.method.annotation.Argument;
+import org.springframework.stereotype.Controller;
 
-import java.util.Date;
+import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
 
+@Controller
+public class ScatterPlotDataController {
 
-public interface UCSPTrendsRepository extends JpaRepository<Trends, Long> {
+    private final ScatterPlotDataService scatterPlotDataService;
+    private final GraphQL graphQL;
 
-//    @Query("SELECT t FROM Trends t WHERE t.ucgSourceID = ?1 AND t.collectionDate BETWEEN ?2 AND ?3")
-//    List<Trends> findDailyTrends( int ucgSourceId,  Date fromDate,  Date toDate);
-	
-	  @Query(nativeQuery = true, value = "SELECT CAST(collection_timestamp AS DATE) as date, TO_CHAR(collection_timestamp, 'HH24:MI') as time, " +
-	            "SUM(size_of_files_bytes) as sizeOfFilesBytes, SUM(number_of_files) as numberOfFiles " +
-	            "FROM ucsp_trends_raw " +
-	            "WHERE ucg_source_id = :ucgSourceId AND CAST(collection_timestamp AS DATE) BETWEEN :fromDate AND :toDate " +
-	            "GROUP BY CAST(collection_timestamp AS DATE), TO_CHAR(collection_timestamp, 'HH24:MI') " +
-	            "ORDER BY CAST(collection_timestamp AS DATE), TO_CHAR(collection_timestamp, 'HH24:MI')")
-	    List<Map<String, Object>> findDailyTrends(@Param("ucgSourceId") int ucgSourceId, @Param("fromDate") Date fromDate, @Param("toDate") Date toDate);
+    @Autowired
+    public ScatterPlotDataController(ScatterPlotDataService scatterPlotDataService, GraphQL graphQL) {
+        this.scatterPlotDataService = scatterPlotDataService;
+        this.graphQL = graphQL;
+    }
 
+    /**
+     * GraphQL Query: Fetch scatter plot data based on protocol and date range.
+     *
+     * @param protocol  The protocol to filter by (e.g., SNMP, WSS).
+     * @param startDate The start date for the range.
+     * @param endDate   The end date for the range.
+     * @return A list of ScatterPlotData entries matching the criteria.
+     */
+    @QueryMapping
+    public List<ScatterPlotData> getScatterPlotData(
+            @Argument String protocol,
+            @Argument String startDate,
+            @Argument String endDate) {
+        LocalDateTime start = LocalDateTime.parse(startDate);
+        LocalDateTime end = LocalDateTime.parse(endDate);
+        return scatterPlotDataService.getScatterPlotData(protocol, start, end);
+    }
+
+    /**
+     * GraphQL Query: Fetch a list of all available protocols.
+     *
+     * @return A list of distinct protocol names.
+     */
+    @QueryMapping
+    public List<String> getAllProtocols() {
+        return scatterPlotDataService.getAllProtocols();
+    }
+
+    /**
+     * GraphQL Mutation: Insert a new scatter plot data entry.
+     *
+     * @param protocol      The protocol (e.g., SNMP, WSS).
+     * @param collectionDate The date of the collection.
+     * @param yValue        The Y-value (e.g., number of messages or size of messages).
+     * @return The newly created ScatterPlotData entry.
+     */
+    @MutationMapping
+    public ScatterPlotData addScatterPlotData(
+            @Argument String protocol,
+            @Argument String collectionDate,
+            @Argument Double yValue) {
+        LocalDateTime collectionTimestamp = LocalDateTime.parse(collectionDate);
+        return scatterPlotDataService.addScatterPlotData(protocol, collectionTimestamp, yValue);
+    }
 }
