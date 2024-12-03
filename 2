@@ -1,92 +1,3 @@
-type Query {
-    allDevices: [Device]
-    searchDevices(apiRequest: ApiRequest): [Device]
-    uniqueModels: [String]
-    uniqueNetworks: [String]
-    dailyTrends(trendsRequest: TrendsRequest): [TrendsDTO]
-    uniqueUCGSources: [String]
-    uniqueUCGSourcesByProject(projectId: ID): [UcspProject]
-    uniqueVendors: [String]
-    uniqueUCSPProjects:[UcspProject]
-    uniqueNetworksByProtocol: [String]
-    avgNetworkByCoverage(network: String,fromDate: String,toDate: String,device: String): [AvgNetworkCoverageDTO]
-	uniqueDevicesByNetwork(network: String): [String]
-    scatterPlotData(protocol: String!, dataType: String!): [ScatterPlotData]
-    scatterPlotDataByProtocol(protocol: String!): [ScatterPlotData]
-    availableProtocols: [String]
-}
-
-type ScatterPlotData {
-    collectionName: String
-    date: String
-    yValue: Int
-}
-type TrendsDrillDownData{
- 	time: String
- 	sizeOfFilesBytes: Float
- 	numberOfFiles: Int
-}
-type TrendsDTO{
- 	date: String
- 	totalSizeOfFilesBytes: Float
- 	totalNumberOfFiles: Int
- 	trendsDrillDownList: [TrendsDrillDownData]
-}
-type AvgNetworkCovDrillDownData {
-    time: String
-    coverage: Float
-}
-
-type AvgNetworkCoverageDTO {
-    date: String
-    totalCoverage: Float
-    coverageDrillDownList: [AvgNetworkCovDrillDownData]
-}
-
-
-type Device {
-    deviceName: ID!
-    model: String
-    loopback: String
-    status: String
-    vendor: String
-    routerType: String
-    pollerCluster: String
-    pollerInterval: Int
-    network: String
-    lastUpdate: String
-    physIp: String
-}
-type UcspProject{
-    id:ID!
-    name:String!
-}
-
-
-input TrendsRequest {
-    ucgSourceID: Int
-    fromDate: String
-    toDate: String
-}
-
-type Trends {
-    id: ID!
-    ucgSourceID: Int
-    collectionDate: String
-    sizeOfFilesKB: Int
-    numberOfFiles: Int
-}
-
-input ApiRequest {
-    deviceName: String
-    model: String
-    loopback: String
-    vendor: String
-    network: String
-}
-
-
-
 package com.verizon.ucs.restapi.service;
 
 import com.verizon.ucs.restapi.dto.ApiRequest;
@@ -251,6 +162,7 @@ public class UCSPService {
 	}
 }
 
+
 package com.verizon.ucs.restapi.repository;
 
 import com.verizon.ucs.restapi.model.ScatterPlotData;
@@ -268,14 +180,14 @@ public interface UCSPAlarmRepository extends JpaRepository<UCSPAlarmMetrics, Lon
     // Fetch scatter plot data based on protocol and data type
     @Query("SELECT new com.verizon.ucs.restapi.model.ScatterPlotData(ai.collectionName, am.lastUpdated, am.numberOfMsgs) " +
             "FROM UCSPAlarmInventory ai " +
-            "JOIN UCSPAlarmMetrics am ON ai.collectionName = am.ucspAlarmInventory.collectionName " +
+            "JOIN UCSPAlarmMetrics am ON ai.collectionName = am.UCSPAlarmInventory.collectionName " +
             "WHERE ai.ucgSource = :protocol AND :dataType = 'number_of_msgs'")
     List<ScatterPlotData> fetchScatterPlotData(String protocol, String dataType);
 
     // Fetch scatter plot data by protocol
     @Query("SELECT new com.verizon.ucs.restapi.model.ScatterPlotData(ai.collectionName, am.lastUpdated, am.numberOfMsgs) " +
             "FROM UCSPAlarmInventory ai " +
-            "JOIN UCSPAlarmMetrics am ON ai.collectionName = am.ucspAlarmInventory.collectionName " +
+            "JOIN UCSPAlarmMetrics am ON ai.collectionName = am.UCSPAlarmInventory.collectionName " +
             "WHERE ai.ucgSource = :protocol")
     List<ScatterPlotData> fetchScatterPlotDataByProtocol(String protocol);
 
@@ -285,74 +197,40 @@ public interface UCSPAlarmRepository extends JpaRepository<UCSPAlarmMetrics, Lon
 }
 
 
+
 package com.verizon.ucs.restapi.model;
 
-import javax.persistence.*;
+import lombok.Getter;
+
 import java.time.LocalDateTime;
 
-@Entity
-@Table(name = "ucsp_alarm_metrics")
-public class UCSPAlarmMetrics {
+@Getter
+public class ScatterPlotData {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    private String collectionName;
+    private LocalDateTime date;
+    private Long yValue;
 
-    @ManyToOne
-    @JoinColumn(name = "collection_name", referencedColumnName = "collection_name", nullable = false)
-    private UCSPAlarmInventory ucspAlarmInventory;
-
-    @Column(name = "last_updated")
-    private LocalDateTime lastUpdated;
-
-    @Column(name = "number_of_msgs", nullable = false)
-    private Long numberOfMsgs;
-
-    @Column(name = "size_of_msgs", nullable = false)
-    private Long sizeOfMsgs;
-
-    // Getters and Setters
-
-    public Long getId() {
-        return id;
+    public ScatterPlotData(String collectionName, LocalDateTime date, Long yValue) {
+        this.collectionName = collectionName;
+        this.date = date;
+        this.yValue = yValue;
     }
 
-    public void setId(Long id) {
-        this.id = id;
+
+    public void setCollectionName(String collectionName) {
+        this.collectionName = collectionName;
     }
 
-    public UCSPAlarmInventory getUcspAlarmInventory() {
-        return ucspAlarmInventory;
+    public void setDate(LocalDateTime date) {
+        this.date = date;
     }
 
-    public void setUcspAlarmInventory(UCSPAlarmInventory ucspAlarmInventory) {
-        this.ucspAlarmInventory = ucspAlarmInventory;
-    }
-
-    public LocalDateTime getLastUpdated() {
-        return lastUpdated;
-    }
-
-    public void setLastUpdated(LocalDateTime lastUpdated) {
-        this.lastUpdated = lastUpdated;
-    }
-
-    public Long getNumberOfMsgs() {
-        return numberOfMsgs;
-    }
-
-    public void setNumberOfMsgs(Long numberOfMsgs) {
-        this.numberOfMsgs = numberOfMsgs;
-    }
-
-    public Long getSizeOfMsgs() {
-        return sizeOfMsgs;
-    }
-
-    public void setSizeOfMsgs(Long sizeOfMsgs) {
-        this.sizeOfMsgs = sizeOfMsgs;
+    public void setyValue(Long yValue) {
+        this.yValue = yValue;
     }
 }
+
 
 package com.verizon.ucs.restapi.model;
 
@@ -447,47 +325,72 @@ public class UCSPAlarmInventory {
         return Objects.hash(id, collectionName);
     }
 }
-
-
 package com.verizon.ucs.restapi.model;
 
+import javax.persistence.*;
 import java.time.LocalDateTime;
 
-public class ScatterPlotData {
+@Entity
+@Table(name = "ucsp_alarm_metrics")
+public class UCSPAlarmMetrics {
 
-    private String collectionName;
-    private LocalDateTime date;
-    private Long yValue;
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
-    public ScatterPlotData(String collectionName, LocalDateTime date, Long yValue) {
-        this.collectionName = collectionName;
-        this.date = date;
-        this.yValue = yValue;
+    @ManyToOne
+    @JoinColumn(name = "collection_name", referencedColumnName = "collection_name", nullable = false)
+    private UCSPAlarmInventory ucspAlarmInventory;
+
+    @Column(name = "last_updated")
+    private LocalDateTime lastUpdated;
+
+    @Column(name = "number_of_msgs", nullable = false)
+    private Long numberOfMsgs;
+
+    @Column(name = "size_of_msgs", nullable = false)
+    private Long sizeOfMsgs;
+
+    // Getters and Setters
+
+    public Long getId() {
+        return id;
     }
 
-
-    public String getCollectionName() {
-        return collectionName;
+    public void setId(Long id) {
+        this.id = id;
     }
 
-    public void setCollectionName(String collectionName) {
-        this.collectionName = collectionName;
+    public UCSPAlarmInventory getUcspAlarmInventory() {
+        return ucspAlarmInventory;
     }
 
-    public LocalDateTime getDate() {
-        return date;
+    public void setUcspAlarmInventory(UCSPAlarmInventory ucspAlarmInventory) {
+        this.ucspAlarmInventory = ucspAlarmInventory;
     }
 
-    public void setDate(LocalDateTime date) {
-        this.date = date;
+    public LocalDateTime getLastUpdated() {
+        return lastUpdated;
     }
 
-    public Long getyValue() {
-        return yValue;
+    public void setLastUpdated(LocalDateTime lastUpdated) {
+        this.lastUpdated = lastUpdated;
     }
 
-    public void setyValue(Long yValue) {
-        this.yValue = yValue;
+    public Long getNumberOfMsgs() {
+        return numberOfMsgs;
+    }
+
+    public void setNumberOfMsgs(Long numberOfMsgs) {
+        this.numberOfMsgs = numberOfMsgs;
+    }
+
+    public Long getSizeOfMsgs() {
+        return sizeOfMsgs;
+    }
+
+    public void setSizeOfMsgs(Long sizeOfMsgs) {
+        this.sizeOfMsgs = sizeOfMsgs;
     }
 }
 
@@ -646,53 +549,3 @@ public class UCSPController {
         return uCSPService.getAvailableProtocols();
     }
 }
-
-In the above code the API of controller the below two API's are showing null data please resolve 
-   @QueryMapping
-    public List<ScatterPlotData> scatterPlotData(String protocol, String dataType) {
-        return uCSPService.getScatterPlotData(protocol, dataType);
-    }
-
-    // GraphQL Query Mapping for scatter plot data (fetch by protocol)
-    @QueryMapping
-    public List<ScatterPlotData> scatterPlotDataByProtocol(String protocol) {
-        return uCSPService.getScatterPlotDataByProtocol(protocol);
-    }
-
-
-Here is the table structure:
-
-1. `ucsp_alarm_inventory` Table
-Purpose:
-This table stores metadata about each collection, including details about the devices involved and the source of the data.
-
-
-CREATE TABLE ucsp_alarm_inventory(
-    id SERIAL PRIMARY KEY,  
-    collection_name VARCHAR(255) NOT NULL UNIQUE,  
-    device_name VARCHAR(255) NOT NULL, 
-    device_ip INET NOT NULL, 
-    ucg_source VARCHAR(255) NOT NULL,  
-    vendor VARCHAR(255) NOT NULL  );
-
-
-Explanation:
-- id: The `id` column is defined as SERIAL, which auto-increments in PostgreSQL. This means that a new value is automatically generated for each new row.
-- collection_name: This is the name of the collection. It's marked NOT NULL and has a UNIQUE constraint to ensure that no two collections have the same name.
-- device_ip: The `INET` type is used for the `device_ip` column to ensure that only valid IP addresses (IPv4/IPv6) are stored.
-  
-2. `ucsp_alarm_metrics` Table
-Purpose:
-This table stores the metrics related to each collection, with a foreign key linking to the `ucsp_alarm_inventory` table based on `collection_name`.
-
-
-
-CREATE TABLE ucsp_alarm_metrics(
-    id SERIAL PRIMARY KEY,  
-    collection_name VARCHAR(255) NOT NULL,
-    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  
-    number_of_msgs INT NOT NULL, 
-    size_of_msgs BIGINT NOT NULL,     
-    CONSTRAINT fk_collection_name FOREIGN KEY (collection_name) REFERENCES     ucsp_alarm_inventory(collection_name) ON DELETE CASCADE,
-    CONSTRAINT unique_collection_metric UNIQUE (collection_name)
-);
