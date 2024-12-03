@@ -1,71 +1,59 @@
-package com.example.project.controller;
+1. Get Scatter Plot Data API
 
-import com.example.project.model.ScatterPlotData;
-import com.example.project.service.ScatterPlotDataService;
-import graphql.GraphQL;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.graphql.data.method.annotation.QueryMapping;
-import org.springframework.graphql.data.method.annotation.MutationMapping;
-import org.springframework.graphql.data.method.annotation.Argument;
-import org.springframework.stereotype.Controller;
+Purpose:
+Retrieves both collection and metric data based on selected protocol and data type (e.g., number of messages or size of messages) to populate the scatter plot.
 
-import java.time.LocalDateTime;
-import java.util.List;
+Endpoint:
 
-@Controller
-public class ScatterPlotDataController {
+GET /api/alarms/scatter-plot-data
 
-    private final ScatterPlotDataService scatterPlotDataService;
-    private final GraphQL graphQL;
 
-    @Autowired
-    public ScatterPlotDataController(ScatterPlotDataService scatterPlotDataService, GraphQL graphQL) {
-        this.scatterPlotDataService = scatterPlotDataService;
-        this.graphQL = graphQL;
+Request Parameters:
+ `protocol`: (SNMP, WSS, etc.)
+ `data_type`: (e.g., "number_of_msgs", "size_of_msgs")
+
+Response:
+
+
+{
+  "scatter_plot_data": [
+    {
+      "collection_name": "Collection1" // Represents protocal names
+      "date": "2024-11-20T10:30:00Z",  // Represents last updated
+      "y_value": 204800 // Represents size of messages OR number of messages
     }
+  ]
+}
 
-    /**
-     * GraphQL Query: Fetch scatter plot data based on protocol and date range.
-     *
-     * @param protocol  The protocol to filter by (e.g., SNMP, WSS).
-     * @param startDate The start date for the range.
-     * @param endDate   The end date for the range.
-     * @return A list of ScatterPlotData entries matching the criteria.
-     */
-    @QueryMapping
-    public List<ScatterPlotData> getScatterPlotData(
-            @Argument String protocol,
-            @Argument String startDate,
-            @Argument String endDate) {
-        LocalDateTime start = LocalDateTime.parse(startDate);
-        LocalDateTime end = LocalDateTime.parse(endDate);
-        return scatterPlotDataService.getScatterPlotData(protocol, start, end);
-    }
 
-    /**
-     * GraphQL Query: Fetch a list of all available protocols.
-     *
-     * @return A list of distinct protocol names.
-     */
-    @QueryMapping
-    public List<String> getAllProtocols() {
-        return scatterPlotDataService.getAllProtocols();
-    }
+Why We Need It:
 
-    /**
-     * GraphQL Mutation: Insert a new scatter plot data entry.
-     *
-     * @param protocol      The protocol (e.g., SNMP, WSS).
-     * @param collectionDate The date of the collection.
-     * @param yValue        The Y-value (e.g., number of messages or size of messages).
-     * @return The newly created ScatterPlotData entry.
-     */
-    @MutationMapping
-    public ScatterPlotData addScatterPlotData(
-            @Argument String protocol,
-            @Argument String collectionDate,
-            @Argument Double yValue) {
-        LocalDateTime collectionTimestamp = LocalDateTime.parse(collectionDate);
-        return scatterPlotDataService.addScatterPlotData(protocol, collectionTimestamp, yValue);
+- This API is used to fetch the data required for dynamically rendering the scatter plot. It ensures that only relevant data (based on the user's protocol and data type selection) is fetched.
+
+
+
+2. Filter Data by Protocol API
+
+Purpose:
+Filters the available collections by the selected protocol (e.g., SNMP, WSS, gRPC), allowing users to visualize only the data for a specific protocol.
+
+Endpoint:
+
+GET /api/alarms/scatter-plot-data/{protocal}
+
+
+Request Parameters:
+- `protocol`: (SNMP, WSS, gRPC, etc.)
+
+Response:
+
+
+{
+  "scatter_plot_data": [
+    {
+      "collection_name": "Collection1" // Represents protocal names
+      "date": "2024-11-20T10:30:00Z",  // Represents last updated
+      "y_value": 204800 // Represents size of messages OR number of messages
     }
+  ]
 }
