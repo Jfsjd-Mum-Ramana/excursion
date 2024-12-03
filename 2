@@ -1,3 +1,11 @@
+Thank you for the clarification! I now understand you would like to update the repository queries based on the correct table names (ucsp_alarm_inventory, ucsp_alarm_metrics, and scatter_plot_data), while ensuring we don’t need to use the resolver you mentioned.
+
+Let’s focus on updating the repository with the correct table names and without using a custom GraphQL resolver.
+
+Here’s the updated repository:
+
+Updated Repository (UCSPAlarmRepository.java)
+
 package com.verizon.ucs.restapi.repository;
 
 import com.verizon.ucs.restapi.model.ScatterPlotData;
@@ -9,7 +17,6 @@ import org.springframework.stereotype.Repository;
 import java.time.LocalDateTime;
 import java.util.List;
 
-
 @Repository
 public interface UCSPAlarmRepository extends JpaRepository<ScatterPlotData, Long> {
 
@@ -17,9 +24,98 @@ public interface UCSPAlarmRepository extends JpaRepository<ScatterPlotData, Long
     @Query("SELECT s FROM ScatterPlotData s WHERE s.protocol = :protocol AND s.collectionDate BETWEEN :startDate AND :endDate")
     List<ScatterPlotData> findByProtocolAndDateRange(String protocol, LocalDateTime startDate, LocalDateTime endDate);
 
-    // Fetch all available protocols
+    // Fetch all available protocols from the scatter_plot_data table
     @Query("SELECT DISTINCT s.protocol FROM ScatterPlotData s")
     List<String> findAllProtocols();
+
+    // Fetch metrics from ucsp_alarm_metrics based on collection name
+    @Query("SELECT m FROM UCSPAlarmMetrics m WHERE m.collectionName = :collectionName")
+    List<UCSPAlarmMetrics> findMetricsByCollectionName(String collectionName);
     
-    
+    // Fetch inventory data from ucsp_alarm_inventory based on collection name (optional if needed)
+    @Query("SELECT i FROM UCSPAlarmInventory i WHERE i.collectionName = :collectionName")
+    List<UCSPAlarmInventory> findInventoryByCollectionName(String collectionName);
 }
+
+Explanation:
+
+1. findByProtocolAndDateRange: Fetches scatter plot data based on the protocol and a date range. This uses the scatter_plot_data table.
+
+
+2. findAllProtocols: Returns a distinct list of all protocols from the scatter_plot_data table.
+
+
+3. findMetricsByCollectionName: Fetches metrics from the ucsp_alarm_metrics table based on the collectionName.
+
+
+4. findInventoryByCollectionName: (Optional) This query fetches inventory data from the ucsp_alarm_inventory table based on the collectionName.
+
+
+
+Assumed Table Structure for Models:
+
+1. ScatterPlotData - This model should correspond to the scatter_plot_data table.
+
+
+2. UCSPAlarmMetrics - This model should correspond to the ucsp_alarm_metrics table.
+
+
+3. UCSPAlarmInventory - This model should correspond to the ucsp_alarm_inventory table.
+
+
+
+GraphQL Schema
+
+The GraphQL queries remain the same as previously provided, querying the correct repository methods to fetch data.
+
+Example GraphQL Queries:
+
+1. Get Scatter Plot Data:
+
+
+
+query {
+    getScatterPlotData(protocol: "SNMP", startDate: "2024-01-01T00:00:00", endDate: "2024-01-31T23:59:59") {
+        collectionName
+        date
+        yValue
+        protocol
+    }
+}
+
+2. Filter Data by Protocol:
+
+
+
+query {
+    filterDataByProtocol(protocol: "SNMP") {
+        collectionName
+        date
+        yValue
+        protocol
+    }
+}
+
+3. Get Available Protocols:
+
+
+
+query {
+    getAllProtocols
+}
+
+4. Get Metrics by Collection (optional):
+
+
+
+query {
+    getMetricsByCollection(collectionName: "Collection1") {
+        collectionName
+        lastUpdated
+        numberOfMsgs
+        sizeOfMsgs
+    }
+}
+
+This approach should resolve your requirements while using the correct table names in the repository, without needing to use a custom GraphQL resolver. Let me know if you need further adjustments!
+
