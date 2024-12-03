@@ -1,160 +1,316 @@
-To implement the ScatterPlotData functionality with the given classes, I will focus on modifying or extending the UCSPService, UCSPAlarmRepository, UCSPController, and ScatterPlotData model. Here's how the classes will be updated:
+Here’s a full implementation of the GraphQL APIs, including changes to the model, repository, controller (resolvers in the GraphQL context), and other necessary components.
 
 
 ---
 
-Updates to the UCSPService Class
+Database Table Schema
 
-@Service
-public class UCSPService {
-    
-    @Autowired
-    private UCSPAlarmRepository ucspAlarmRepository;
+Ensure the following table exists in your PostgreSQL database for scatterplotdata.
 
-    // Fetch scatter plot data based on protocol and data type
-    public List<ScatterPlotData> getScatterPlotData(String protocol, String dataType) {
-        return ucspAlarmRepository.fetchScatterPlotData(protocol, dataType);
-    }
-
-    // Fetch scatter plot data by protocol
-    public List<ScatterPlotData> getScatterPlotDataByProtocol(String protocol) {
-        return ucspAlarmRepository.fetchScatterPlotDataByProtocol(protocol);
-    }
-
-    // Fetch all available protocols
-    public List<String> getAvailableProtocols() {
-        return ucspAlarmRepository.fetchAvailableProtocols();
-    }
-}
+CREATE TABLE scatterplotdata (
+    id SERIAL PRIMARY KEY,
+    collection_name VARCHAR(255) NOT NULL,
+    collection_date TIMESTAMP NOT NULL,
+    protocol VARCHAR(50) NOT NULL,
+    number_of_msgs INT NOT NULL,
+    size_of_msgs BIGINT NOT NULL
+);
 
 
 ---
 
-Updates to the UCSPAlarmRepository Interface
+Model Class
 
-@Repository
-public interface UCSPAlarmRepository extends JpaRepository<UCSPAlarmMetrics, Long> {
+package com.example.project.model;
 
-    // Fetch scatter plot data based on protocol and data type
-    @Query("SELECT new com.verizon.ucs.restapi.model.ScatterPlotData(ai.collectionName, am.lastUpdated, " +
-            "CASE :dataType WHEN 'number_of_msgs' THEN am.numberOfMsgs ELSE am.sizeOfMsgs END) " +
-            "FROM UCSPAlarmInventory ai " +
-            "JOIN UCSPAlarmMetrics am ON ai.collectionName = am.ucspAlarmInventory.collectionName " +
-            "WHERE ai.ucgSource = :protocol")
-    List<ScatterPlotData> fetchScatterPlotData(String protocol, String dataType);
-
-    // Fetch scatter plot data by protocol
-    @Query("SELECT new com.verizon.ucs.restapi.model.ScatterPlotData(ai.collectionName, am.lastUpdated, am.numberOfMsgs) " +
-            "FROM UCSPAlarmInventory ai " +
-            "JOIN UCSPAlarmMetrics am ON ai.collectionName = am.ucspAlarmInventory.collectionName " +
-            "WHERE ai.ucgSource = :protocol")
-    List<ScatterPlotData> fetchScatterPlotDataByProtocol(String protocol);
-
-    // Fetch all available protocols
-    @Query("SELECT DISTINCT ai.ucgSource FROM UCSPAlarmInventory ai")
-    List<String> fetchAvailableProtocols();
-}
-
-
----
-
-Updates to the UCSPController Class
-
-@Controller
-public class UCSPController {
-
-    @Autowired
-    private UCSPService uCSPService;
-
-    // Fetch scatter plot data by protocol and data type
-    @QueryMapping(value = "scatterPlotData")
-    public List<ScatterPlotData> getScatterPlotData(@Argument String protocol, @Argument String dataType) {
-        return uCSPService.getScatterPlotData(protocol, dataType);
-    }
-
-    // Fetch scatter plot data by protocol only
-    @QueryMapping(value = "scatterPlotDataByProtocol")
-    public List<ScatterPlotData> getScatterPlotDataByProtocol(@Argument String protocol) {
-        return uCSPService.getScatterPlotDataByProtocol(protocol);
-    }
-
-    // Fetch all available protocols
-    @QueryMapping(value = "availableProtocols")
-    public List<String> getAvailableProtocols() {
-        return uCSPService.getAvailableProtocols();
-    }
-}
-
-
----
-
-Updates to the ScatterPlotData Class
-
-package com.verizon.ucs.restapi.model;
-
-import lombok.Getter;
-
+import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
-@Getter
+@Entity
+@Table(name = "scatterplotdata")
 public class ScatterPlotData {
 
-    private String collectionName;
-    private LocalDateTime date;
-    private Long yValue;
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
-    public ScatterPlotData(String collectionName, LocalDateTime date, Long yValue) {
-        this.collectionName = collectionName;
-        this.date = date;
-        this.yValue = yValue;
+    @Column(name = "collection_name", nullable = false)
+    private String collectionName;
+
+    @Column(name = "collection_date", nullable = false)
+    private LocalDateTime collectionDate;
+
+    @Column(name = "protocol", nullable = false)
+    private String protocol;
+
+    @Column(name = "number_of_msgs", nullable = false)
+    private int numberOfMsgs;
+
+    @Column(name = "size_of_msgs", nullable = false)
+    private long sizeOfMsgs;
+
+    // Getters and Setters
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public String getCollectionName() {
+        return collectionName;
     }
 
     public void setCollectionName(String collectionName) {
         this.collectionName = collectionName;
     }
 
-    public void setDate(LocalDateTime date) {
-        this.date = date;
+    public LocalDateTime getCollectionDate() {
+        return collectionDate;
     }
 
-    public void setYValue(Long yValue) {
-        this.yValue = yValue;
+    public void setCollectionDate(LocalDateTime collectionDate) {
+        this.collectionDate = collectionDate;
+    }
+
+    public String getProtocol() {
+        return protocol;
+    }
+
+    public void setProtocol(String protocol) {
+        this.protocol = protocol;
+    }
+
+    public int getNumberOfMsgs() {
+        return numberOfMsgs;
+    }
+
+    public void setNumberOfMsgs(int numberOfMsgs) {
+        this.numberOfMsgs = numberOfMsgs;
+    }
+
+    public long getSizeOfMsgs() {
+        return sizeOfMsgs;
+    }
+
+    public void setSizeOfMsgs(long sizeOfMsgs) {
+        this.sizeOfMsgs = sizeOfMsgs;
     }
 }
 
 
 ---
 
-GraphQL Queries (Example)
+Repository
 
-Query 1: Fetch Scatter Plot Data
+package com.example.project.repository;
 
-query {
-  scatterPlotData(protocol: "SNMP", dataType: "number_of_msgs") {
-    collectionName
-    date
-    yValue
-  }
-}
+import com.example.project.model.ScatterPlotData;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.stereotype.Repository;
 
-Query 2: Fetch Data by Protocol
+import java.time.LocalDateTime;
+import java.util.List;
 
-query {
-  scatterPlotDataByProtocol(protocol: "SNMP") {
-    collectionName
-    date
-    yValue
-  }
-}
+@Repository
+public interface ScatterPlotDataRepository extends JpaRepository<ScatterPlotData, Long> {
 
-Query 3: Fetch Available Protocols
+    @Query("SELECT s FROM ScatterPlotData s WHERE s.protocol = :protocol AND s.collectionDate BETWEEN :startDate AND :endDate")
+    List<ScatterPlotData> findByProtocolAndDateRange(String protocol, LocalDateTime startDate, LocalDateTime endDate);
 
-query {
-  availableProtocols
+    @Query("SELECT DISTINCT s.protocol FROM ScatterPlotData s")
+    List<String> findAllProtocols();
+
+    List<ScatterPlotData> findByProtocol(String protocol);
 }
 
 
 ---
 
-This approach ensures minimal disruption to existing functionality and focuses on the changes required for scatter plot data retrieval.
+Service
+
+package com.example.project.service;
+
+import com.example.project.model.ScatterPlotData;
+import com.example.project.repository.ScatterPlotDataRepository;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+import java.util.List;
+
+@Service
+public class ScatterPlotDataService {
+
+    private final ScatterPlotDataRepository repository;
+
+    public ScatterPlotDataService(ScatterPlotDataRepository repository) {
+        this.repository = repository;
+    }
+
+    public List<ScatterPlotData> getScatterPlotData(String protocol, LocalDateTime startDate, LocalDateTime endDate) {
+        return repository.findByProtocolAndDateRange(protocol, startDate, endDate);
+    }
+
+    public List<String> getAvailableProtocols() {
+        return repository.findAllProtocols();
+    }
+
+    public List<ScatterPlotData> getDataByProtocol(String protocol) {
+        return repository.findByProtocol(protocol);
+    }
+}
+
+
+---
+
+GraphQL Resolvers
+
+1. Scatter Plot Data Resolver
+
+package com.example.project.graphql;
+
+import com.example.project.model.ScatterPlotData;
+import com.example.project.service.ScatterPlotDataService;
+import org.springframework.stereotype.Component;
+
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
+
+@Component
+public class ScatterPlotDataResolver {
+
+    private final ScatterPlotDataService service;
+
+    public ScatterPlotDataResolver(ScatterPlotDataService service) {
+        this.service = service;
+    }
+
+    public List<ScatterPlotData> scatterPlotData(String protocol, String startDate, String endDate) {
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
+        LocalDateTime start = LocalDateTime.parse(startDate, formatter);
+        LocalDateTime end = LocalDateTime.parse(endDate, formatter);
+
+        return service.getScatterPlotData(protocol, start, end);
+    }
+}
+
+2. Available Protocols Resolver
+
+package com.example.project.graphql;
+
+import com.example.project.service.ScatterPlotDataService;
+import org.springframework.stereotype.Component;
+
+import java.util.List;
+
+@Component
+public class AvailableProtocolsResolver {
+
+    private final ScatterPlotDataService service;
+
+    public AvailableProtocolsResolver(ScatterPlotDataService service) {
+        this.service = service;
+    }
+
+    public List<String> availableProtocols() {
+        return service.getAvailableProtocols();
+    }
+}
+
+3. Filter Data by Protocol Resolver
+
+package com.example.project.graphql;
+
+import com.example.project.model.ScatterPlotData;
+import com.example.project.service.ScatterPlotDataService;
+import org.springframework.stereotype.Component;
+
+import java.util.List;
+
+@Component
+public class FilterDataByProtocolResolver {
+
+    private final ScatterPlotDataService service;
+
+    public FilterDataByProtocolResolver(ScatterPlotDataService service) {
+        this.service = service;
+    }
+
+    public List<ScatterPlotData> filterDataByProtocol(String protocol) {
+        return service.getDataByProtocol(protocol);
+    }
+}
+
+
+---
+
+GraphQL Schema
+
+type Query {
+    scatterPlotData(protocol: String!, startDate: String!, endDate: String!): [ScatterPlotData!]!
+    availableProtocols: [String!]!
+    filterDataByProtocol(protocol: String!): [ScatterPlotData!]!
+}
+
+type ScatterPlotData {
+    id: ID!
+    collectionName: String!
+    collectionDate: String!
+    protocol: String!
+    numberOfMsgs: Int!
+    sizeOfMsgs: Long!
+}
+
+
+---
+
+GraphQL Queries
+
+1. Fetch Scatter Plot Data
+
+query {
+    scatterPlotData(protocol: "SNMP", startDate: "2024-01-01T00:00:00", endDate: "2024-01-31T23:59:59") {
+        collectionName
+        collectionDate
+        numberOfMsgs
+        sizeOfMsgs
+    }
+}
+
+
+2. Fetch Available Protocols
+
+query {
+    availableProtocols
+}
+
+
+3. Filter Data by Protocol
+
+query {
+    filterDataByProtocol(protocol: "SNMP") {
+        collectionName
+        collectionDate
+        numberOfMsgs
+        sizeOfMsgs
+    }
+}
+
+
+
+
+---
+
+Test Data Insertion
+
+INSERT INTO scatterplotdata (collection_name, collection_date, protocol, number_of_msgs, size_of_msgs)
+VALUES 
+('Collection1', '2024-01-15 10:00:00', 'SNMP', 500, 10240),
+('Collection2', '2024-01-16 11:30:00', 'gRPC', 700, 20480),
+('Collection3', '2024-01-17 14:45:00', 'WSS', 300, 5120);
+
+This provides a complete implementation of the three APIs. Let me know if you need any modifications!
 
