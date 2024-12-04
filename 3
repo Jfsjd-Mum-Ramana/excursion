@@ -1,26 +1,42 @@
-# Define the ScatterPlotData type which represents the data for scatter plot
-type ScatterPlotData {
-  collectionName: String
-  protocol: String
-  collectionDate: String
-  yValue: Float
-}
+package com.verizon.ucs.restapi.controller;
 
-# Define the Query type that contains all the queries for our GraphQL API
-type Query {
+import com.verizon.ucs.restapi.model.UCSPAlarmMetrics;
+import com.verizon.ucs.restapi.service.UCSPAlarmService;
+import org.springframework.graphql.data.method.annotation.Argument;
+import org.springframework.graphql.data.method.annotation.QueryMapping;
+import org.springframework.stereotype.Controller;
 
-  # Query to fetch scatter plot data based on protocol and date range
-  getScatterPlotDataByProtocolAndDateRange(
-    protocol: String!, 
-    startDate: String!, 
-    endDate: String!
-  ): [ScatterPlotData]
+import java.util.List;
 
-  # Query to fetch scatter plot data filtered by protocol
-  getScatterPlotDataByProtocol(
-    protocol: String!
-  ): [ScatterPlotData]
+@Controller
+public class UCSPAlarmController {
 
-  # Query to fetch all available protocols
-  getAvailableProtocols: [String]
+    private final UCSPAlarmService ucspAlarmService;
+
+    public UCSPAlarmController(UCSPAlarmService ucspAlarmService) {
+        this.ucspAlarmService = ucspAlarmService;
+    }
+
+    /**
+     * API to get scatter plot data by protocol and data type.
+     *
+     * @param protocol The protocol to filter (e.g., SNMP, WSS).
+     * @param dataType The data type to retrieve (e.g., "number_of_msgs", "size_of_msgs").
+     * @return List of UCSPAlarmMetrics containing the requested scatter plot data.
+     */
+    @QueryMapping
+    public List<UCSPAlarmMetrics> getScatterPlotData(@Argument String protocol, @Argument String dataType) {
+        return ucspAlarmService.getScatterPlotData(protocol, dataType);
+    }
+
+    /**
+     * API to filter data by protocol.
+     *
+     * @param protocol The protocol to filter (e.g., SNMP, WSS).
+     * @return List of UCSPAlarmMetrics filtered by the specified protocol.
+     */
+    @QueryMapping
+    public List<UCSPAlarmMetrics> filterDataByProtocol(@Argument String protocol) {
+        return ucspAlarmService.filterDataByProtocol(protocol);
+    }
 }
