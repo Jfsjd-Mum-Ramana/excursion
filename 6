@@ -1,53 +1,333 @@
-1. `ucsp_alarm_inventory` Table
-Purpose:
-This table stores metadata about each collection, including details about the devices involved and the source of the data.
+To implement the functionality using GraphQL, repository, controller, and service layers, we'll proceed with the following:
+
+1. Model Classes: Represent UCSPAlarmInventory and UCSPAlarmMetrics as entities.
 
 
-CREATE TABLE ucsp_alarm_inventory(
-    id SERIAL PRIMARY KEY,  
-    collection_name VARCHAR(255) NOT NULL UNIQUE,  
-    device_name VARCHAR(255) NOT NULL, 
-    device_ip INET NOT NULL, 
-    ucg_source VARCHAR(255) NOT NULL,  
-    vendor VARCHAR(255) NOT NULL  );
+2. Repository: Implement queries to fetch data based on protocol and collection name.
 
 
-Explanation:
-- id: The `id` column is defined as SERIAL, which auto-increments in PostgreSQL. This means that a new value is automatically generated for each new row.
-- collection_name: This is the name of the collection. It's marked NOT NULL and has a UNIQUE constraint to ensure that no two collections have the same name.
-- device_ip: The `INET` type is used for the `device_ip` column to ensure that only valid IP addresses (IPv4/IPv6) are stored.
-  
-2. `ucsp_alarm_metrics` Table
-Purpose:
-This table stores the metrics related to each collection, with a foreign key linking to the `ucsp_alarm_inventory` table based on `collection_name`.
+3. Service: Define logic for fetching data using the repositories.
+
+
+4. Controller: Use @QueryMapping for GraphQL endpoints.
 
 
 
-CREATE TABLE ucsp_alarm_metrics(
-    id SERIAL PRIMARY KEY,  
-    collection_name VARCHAR(255) NOT NULL,
-    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  
-    number_of_msgs INT NOT NULL, 
-    size_of_msgs BIGINT NOT NULL,     
-    CONSTRAINT fk_collection_name FOREIGN KEY (collection_name) REFERENCES     ucsp_alarm_inventory(collection_name) ON DELETE CASCADE,
-    CONSTRAINT unique_collection_metric UNIQUE (collection_name)
-);
+1. Model Classes
 
+These classes will represent the entities in the database.
 
+UCSPAlarmInventory.java (Model)
 
-INSERT INTO ucsp_alarm_inventory (collection_name, device_name, device_ip, ucg_source, vendor)
-VALUES 
-('Collection1', 'DeviceA', '192.168.1.1', 'SNMP', 'VendorX'),
-('Collection2', 'DeviceB', '192.168.1.2', 'WSS', 'VendorY');
+package com.verizon.ucs.restapi.model;
 
-INSERT INTO ucsp_alarm_metrics (collection_name, number_of_msgs, size_of_msgs)
-VALUES 
-('Collection1', 1000, 204800),
-('Collection2', 500, 102400);
+import javax.persistence.*;
+import java.net.InetAddress;
+import java.util.Objects;
 
+@Entity
+@Table(name = "ucsp_alarm_inventory")
+public class UCSPAlarmInventory {
 
-SELECT c.id AS collection_id, c.collection_name, c.device_name, c.device_ip, 
-       m.id AS metric_id, m.last_updated, m.number_of_msgs, m.size_of_msgs
-FROM ucsp_alarm_inventory c
-LEFT JOIN ucsp_alarm_metrics m ON c.collection_name = m.collection_name;
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "collection_name", nullable = false, unique = true)
+    private String collectionName;
+
+    @Column(name = "device_name", nullable = false)
+    private String deviceName;
+
+    @Column(name = "device_ip", nullable = false)
+    private InetAddress deviceIp;
+
+    @Column(name = "ucg_source", nullable = false)
+    private String ucgSource;
+
+    @Column(name = "vendor", nullable = false)
+    private String vendor;
+
+    // Getters and setters
+    // ...
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        UCSPAlarmInventory that = (UCSPAlarmInventory) o;
+        return Objects.equals(id, that.id) &&
+               Objects.equals(collectionName, that.collectionName);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(id, collectionName);
+    }
+}
+
+UCSPAlarmMetrics.java (Model)
+
+package com.verizon.ucs.restapi.model;
+
+import javax.persistence.*;
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = "ucsp_alarm_metrics")
+public class UCSPAlarmMetrics {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne
+    @JoinColumn(name = "collection_name", referencedColumnName = "collection_name", nullable = false)
+    private UCSPAlarmInventory ucspAlarmInventory;
+
+    @Column(name = "last_updated")
+    private LocalDateTime lastUpdated;
+
+    @Column(name = "number_of_msgs", nullable = false)
+    private Long numberOfMsgs;
+
+    @Column(name = "size_of_msgs", nullable = false)
+    private Long sizeOfMsgs;
+
+    // Getters and setters
+    // ...
+}
+
+2. Repository Classes
+
+These repositories interact with the database.
+
+UCSPAlarmInventoryRepository.java
+
+package com.verizon.ucs.restapi.repository;
+
+import com.verizon.ucs.restapi.model.UCSPAlarmInventory;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+import java.util.List;
+
+public interface UCSPAlarmInventoryRepository extends JpaRepository<UCSPAlarmInventory, Long> {
+
+    // Query to filter collections by protocol
+    @Query("SELECT u FROM UCSPAlarmInventory u WHERE u.ucgSource = :protocol")
+    List<UCSPAlarmInventory> findByProtocol(@Param("protocol") String protocol);
+}
+
+UCSPAlarmMetricsRepository.java
+
+package com.verizon.ucs.restapi.repository;
+
+import com.verizon.ucs.restapi.model.UCSPAlarmMetrics;
+import com.verizon.ucs.restapi.model.ScatterPlotData;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+import java.util.List;
+
+public interface UCSPAlarmMetricsRepository extends JpaRepository<UCSPAlarmMetrics, Long> {
+
+    // Query to get scatter plot data by protocol
+    @Query("SELECT new com.verizon.ucs.restapi.model.ScatterPlotData(m.ucspAlarmInventory.collectionName, " +
+            "TO_CHAR(m.lastUpdated, 'YYYY-MM-DD'), m.sizeOfMsgs) " +
+            "FROM UCSPAlarmMetrics m WHERE m.ucspAlarmInventory.ucgSource = :protocol")
+    List<ScatterPlotData> findScatterPlotDataByProtocol(@Param("protocol") String protocol);
+
+    // Query to filter metrics by protocol
+    @Query("SELECT m FROM UCSPAlarmMetrics m WHERE m.ucspAlarmInventory.ucgSource = :protocol")
+    List<UCSPAlarmMetrics> findMetricsByProtocol(@Param("protocol") String protocol);
+}
+
+3. Service Layer
+
+Define the business logic that interacts with the repository.
+
+UCSPAlarmService.java
+
+package com.verizon.ucs.restapi.service;
+
+import com.verizon.ucs.restapi.model.ScatterPlotData;
+import com.verizon.ucs.restapi.model.UCSPAlarmInventory;
+import com.verizon.ucs.restapi.model.UCSPAlarmMetrics;
+import com.verizon.ucs.restapi.repository.UCSPAlarmInventoryRepository;
+import com.verizon.ucs.restapi.repository.UCSPAlarmMetricsRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+@Service
+public class UCSPAlarmService {
+
+    @Autowired
+    private UCSPAlarmInventoryRepository inventoryRepository;
+
+    @Autowired
+    private UCSPAlarmMetricsRepository metricsRepository;
+
+    // Fetch data by protocol
+    public List<UCSPAlarmInventory> getInventoryByProtocol(String protocol) {
+        return inventoryRepository.findByProtocol(protocol);
+    }
+
+    // Fetch scatter plot data by protocol
+    public List<ScatterPlotData> getScatterPlotDataByProtocol(String protocol) {
+        return metricsRepository.findScatterPlotDataByProtocol(protocol);
+    }
+
+    // Fetch metrics by protocol
+    public List<UCSPAlarmMetrics> getMetricsByProtocol(String protocol) {
+        return metricsRepository.findMetricsByProtocol(protocol);
+    }
+}
+
+4. Controller Layer (GraphQL)
+
+Using @QueryMapping for GraphQL queries.
+
+UCSPAlarmController.java
+
+package com.verizon.ucs.restapi.controller;
+
+import com.verizon.ucs.restapi.model.ScatterPlotData;
+import com.verizon.ucs.restapi.model.UCSPAlarmInventory;
+import com.verizon.ucs.restapi.model.UCSPAlarmMetrics;
+import com.verizon.ucs.restapi.service.UCSPAlarmService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.graphql.data.method.annotation.QueryMapping;
+import org.springframework.stereotype.Controller;
+
+import java.util.List;
+
+@Controller
+public class UCSPAlarmController {
+
+    @Autowired
+    private UCSPAlarmService alarmService;
+
+    // Query to get data by protocol (Inventory)
+    @QueryMapping
+    public List<UCSPAlarmInventory> filterDataByProtocol(String protocol) {
+        return alarmService.getInventoryByProtocol(protocol);
+    }
+
+    // Query to get scatter plot data by protocol
+    @QueryMapping
+    public List<ScatterPlotData> getScatterPlotDataByProtocol(String protocol) {
+        return alarmService.getScatterPlotDataByProtocol(protocol);
+    }
+
+    // Query to get metrics data by protocol
+    @QueryMapping
+    public List<UCSPAlarmMetrics> filterMetricsByProtocol(String protocol) {
+        return alarmService.getMetricsByProtocol(protocol);
+    }
+}
+
+5. ScatterPlotData Model
+
+This is the model used to represent the scatter plot data.
+
+ScatterPlotData.java
+
+package com.verizon.ucs.restapi.model;
+
+public class ScatterPlotData {
+
+    private String collectionName;
+    private String date;
+    private Long yValue;
+
+    public ScatterPlotData(String collectionName, String date, Long yValue) {
+        this.collectionName = collectionName;
+        this.date = date;
+        this.yValue = yValue;
+    }
+
+    // Getters and setters
+    // ...
+}
+
+6. GraphQL Schema
+
+Define the GraphQL schema for your application.
+
+schema.graphqls
+
+type ScatterPlotData {
+    collectionName: String
+    date: String
+    yValue: Long
+}
+
+type UCSPAlarmInventory {
+    id: Long
+    collectionName: String
+    deviceName: String
+    deviceIp: String
+    ucgSource: String
+    vendor: String
+}
+
+type UCSPAlarmMetrics {
+    id: Long
+    collectionName: String
+    lastUpdated: String
+    numberOfMsgs: Int
+    sizeOfMsgs: Long
+}
+
+type Query {
+    filterDataByProtocol(protocol: String): [UCSPAlarmInventory]
+    getScatterPlotDataByProtocol(protocol: String): [ScatterPlotData]
+    filterMetricsByProtocol(protocol: String): [UCSPAlarmMetrics]
+}
+
+7. Testing
+
+After setting up everything, you can test the GraphQL queries like this:
+
+1. Filter Data by Protocol
+
+query {
+    filterDataByProtocol(protocol: "SNMP") {
+        collectionName
+        deviceName
+        deviceIp
+        ucgSource
+        vendor
+    }
+}
+
+2. Get Scatter Plot Data by Protocol
+
+query {
+    getScatterPlotDataByProtocol(protocol: "SNMP") {
+        collectionName
+        date
+        yValue
+    }
+}
+
+3. Filter Metrics by Protocol
+
+query {
+    filterMetricsByProtocol(protocol: "SNMP") {
+        collectionName
+        lastUpdated
+        numberOfMsgs
+        sizeOfMsgs
+    }
+}
+
+Conclusion
+
+This solution includes:
 
