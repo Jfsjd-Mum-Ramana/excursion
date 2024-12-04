@@ -66,3 +66,313 @@ public class UCSPAlarmMetrics {
         this.sizeOfMsgs = sizeOfMsgs;
     }
 }
+
+package com.verizon.ucs.restapi.model;
+
+import javax.persistence.*;
+import java.net.InetAddress;
+import java.util.Objects;
+
+@Entity
+@Table(name = "ucsp_alarm_inventory")
+public class UCSPAlarmInventory {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "collection_name", nullable = false, unique = true)
+    private String collectionName;
+
+    @Column(name = "device_name", nullable = false)
+    private String deviceName;
+
+    @Column(name = "device_ip", nullable = false)
+    private InetAddress deviceIp;
+
+    @Column(name = "ucg_source", nullable = false)
+    private String ucgSource;
+
+    @Column(name = "vendor", nullable = false)
+    private String vendor;
+
+    // Getters and Setters
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public String getCollectionName() {
+        return collectionName;
+    }
+
+    public void setCollectionName(String collectionName) {
+        this.collectionName = collectionName;
+    }
+
+    public String getDeviceName() {
+        return deviceName;
+    }
+
+    public void setDeviceName(String deviceName) {
+        this.deviceName = deviceName;
+    }
+
+    public InetAddress getDeviceIp() {
+        return deviceIp;
+    }
+
+    public void setDeviceIp(InetAddress deviceIp) {
+        this.deviceIp = deviceIp;
+    }
+
+    public String getUcgSource() {
+        return ucgSource;
+    }
+
+    public void setUcgSource(String ucgSource) {
+        this.ucgSource = ucgSource;
+    }
+
+    public String getVendor() {
+        return vendor;
+    }
+
+    public void setVendor(String vendor) {
+        this.vendor = vendor;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        UCSPAlarmInventory that = (UCSPAlarmInventory) o;
+        return Objects.equals(id, that.id) &&
+                Objects.equals(collectionName, that.collectionName);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(id, collectionName);
+    }
+}
+
+
+Data Tables:
+1. `ucsp_alarm_inventory` Table
+Purpose:
+This table stores metadata about each collection, including details about the devices involved and the source of the data.
+
+
+CREATE TABLE ucsp_alarm_inventory(
+    id SERIAL PRIMARY KEY,  
+    collection_name VARCHAR(255) NOT NULL UNIQUE,  
+    device_name VARCHAR(255) NOT NULL, 
+    device_ip INET NOT NULL, 
+    ucg_source VARCHAR(255) NOT NULL,  
+    vendor VARCHAR(255) NOT NULL  );
+
+
+Explanation:
+- id: The `id` column is defined as SERIAL, which auto-increments in PostgreSQL. This means that a new value is automatically generated for each new row.
+- collection_name: This is the name of the collection. It's marked NOT NULL and has a UNIQUE constraint to ensure that no two collections have the same name.
+- device_ip: The `INET` type is used for the `device_ip` column to ensure that only valid IP addresses (IPv4/IPv6) are stored.
+  
+2. `ucsp_alarm_metrics` Table
+Purpose:
+This table stores the metrics related to each collection, with a foreign key linking to the `ucsp_alarm_inventory` table based on `collection_name`.
+
+
+
+CREATE TABLE ucsp_alarm_metrics(
+    id SERIAL PRIMARY KEY,  
+    collection_name VARCHAR(255) NOT NULL,
+    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  
+    number_of_msgs INT NOT NULL, 
+    size_of_msgs BIGINT NOT NULL,     
+    CONSTRAINT fk_collection_name FOREIGN KEY (collection_name) REFERENCES     ucsp_alarm_inventory(collection_name) ON DELETE CASCADE,
+    CONSTRAINT unique_collection_metric UNIQUE (collection_name)
+);
+
+
+Explanation:
+- id: The `id` column is again defined as **`SERIAL`** to auto-increment with each new entry.
+- collection_name: This is the foreign key linking `collection_metrics` to `ucs_collections`. It refers to the `collection_name` column in `ucs_collections` and enforces referential integrity.
+- ON DELETE CASCADE: This ensures that when a record in `ucs_collections` is deleted, all related entries in `collection_metrics` will also be automatically deleted.
+- last_updated: This column is set to the current timestamp by default when a record is created.
+- BIGINT: Used for `size_of_msgs` to store large message sizes (in bytes).
+
+ 
+ 
+Sample Queries for PostgreSQL
+
+1. Insert Data into `ucsp_alarm_inventory`:
+
+
+INSERT INTO ucsp_alarm_inventory (collection_name, device_name, device_ip, ucg_source, vendor)
+VALUES 
+('Collection1', 'DeviceA', '192.168.1.1', 'SNMP', 'VendorX'),
+('Collection2', 'DeviceB', '192.168.1.2', 'WSS', 'VendorY');
+
+
+
+2. Insert Data into `ucsp_alarm_metrics`:
+
+
+INSERT INTO ucsp_alarm_metrics (collection_name, number_of_msgs, size_of_msgs)
+VALUES 
+('Collection1', 1000, 204800),
+('Collection2', 500, 102400);
+
+
+
+3. Retrieve Data with Join:
+To fetch all collections and their associated metrics:
+
+
+SELECT c.id AS collection_id, c.collection_name, c.device_name, c.device_ip, 
+       m.id AS metric_id, m.last_updated, m.number_of_msgs, m.size_of_msgs
+FROM ucs_collections c
+LEFT JOIN collection_metrics m ON c.collection_name = m.collection_name;
+
+
+
+
+4. Update Data in `ucsp_alarm_metrics`:
+
+
+UPDATE ucsp_alarm_metrics
+SET number_of_msgs = 1200, size_of_msgs = 250000
+WHERE collection_name = 'Collection1';
+
+5. Delete a Collection and Cascade:
+
+When deleting a collection, the related metrics are automatically deleted:
+
+
+DELETE FROM ucsp_alarm_inventory
+WHERE collection_name = 'Collection1';
+ 
+ Summary of Changes for PostgreSQL:
+1. Tables:
+   - The `id` column is defined as `SERIAL` for auto-incrementing, making it the primary key for each table. 
+ - `collection_name` is `UNIQUE` in both tables, ensuring that each collection has a distinct name.
+
+2. Foreign Key Relationship:
+   - `collection_name` in `collection_metrics` is defined as a foreign key referencing the `collection_name` in `ucs_collections`.
+   - `ON DELETE CASCADE` ensures that when a collection is deleted, its associated metrics are automatically deleted as well.
+
+3. Data Types:
+   - `INET` is used for storing IP addresses in `device_ip`.
+   - `TIMESTAMP` for the `last_updated` column, with a default value set to the current timestamp.
+
+4. Constraints:
+   - `PRIMARY KEY` ensures each row is unique based on the `id`.
+   - `UNIQUE` ensures that the `collection_name` is unique across both tables.
+
+5. Sample Queries:
+   - Insert, update, select, and delete queries are provided, including the JOIN operation to fetch data from both tables.
+
+
+Essential API Requirements for Scatter Plot Visualization
+
+To ensure the scatter plot functions correctly with dynamic updates based on user input, the following are the key APIs required:
+
+
+1. Get Scatter Plot Data API
+
+Purpose:
+Retrieves both collection and metric data based on selected protocol and data type (e.g., number of messages or size of messages) to populate the scatter plot.
+
+Endpoint:
+
+GET /api/alarms/scatter-plot-data
+
+
+Request Parameters:
+ `protocol`: (SNMP, WSS, etc.)
+ `data_type`: (e.g., "number_of_msgs", "size_of_msgs")
+
+Response:
+
+
+{
+  "scatter_plot_data": [
+    {
+      "collection_name": "Collection1" // Represents protocal names
+      "date": "2024-11-20T10:30:00Z",  // Represents last updated
+      "y_value": 204800 // Represents size of messages OR number of messages
+    }
+  ]
+}
+
+
+Why We Need It:
+
+- This API is used to fetch the data required for dynamically rendering the scatter plot. It ensures that only relevant data (based on the user's protocol and data type selection) is fetched.
+
+
+
+2. Filter Data by Protocol API
+
+Purpose:
+Filters the available collections by the selected protocol (e.g., SNMP, WSS, gRPC), allowing users to visualize only the data for a specific protocol.
+
+Endpoint:
+
+GET /api/alarms/scatter-plot-data/{protocal}
+
+
+Request Parameters:
+- `protocol`: (SNMP, WSS, gRPC, etc.)
+
+Response:
+
+
+{
+  "scatter_plot_data": [
+    {
+      "collection_name": "Collection1" // Represents protocal names
+      "date": "2024-11-20T10:30:00Z",  // Represents last updated
+      "y_value": 204800 // Represents size of messages OR number of messages
+    }
+  ]
+}
+
+
+Why We Need It:
+
+- This ensures that the scatter plot can be filtered based on the selected protocol, allowing users to narrow down the data they are visualizing.
+
+
+
+3. Get Available Protocols API
+
+Purpose:
+Fetches the list of protocols supported, so users can select which protocol they want to visualize data for.
+
+Endpoint:
+
+GET /api/alarms/protocols
+
+
+Response:
+
+
+{
+  "protocols": ["SNMP", "WSS", "gRPC", "TL1", "syslog"]
+}
+
+
+Why We Need It:
+
+- The frontend needs to present available protocols for selection, allowing the user to choose which protocol’s data to visualize in the scatter plot.
+
+
+Bases on the above requirement create 3 API's by using graphql 
+
+and also the two tables has been created.
