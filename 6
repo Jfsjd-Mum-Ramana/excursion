@@ -1,18 +1,211 @@
-CREATE TABLE ucsp_alarm_metrics(
-    id SERIAL PRIMARY KEY,  
-    collection_name VARCHAR(255) NOT NULL,
-    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  
-    number_of_msgs INT NOT NULL, 
-    size_of_msgs BIGINT NOT NULL,     
-    CONSTRAINT fk_collection_name FOREIGN KEY (collection_name) REFERENCES     ucsp_alarm_inventory(collection_name) ON DELETE CASCADE,
-    CONSTRAINT unique_collection_metric UNIQUE (collection_name)
-);
+Thank you for providing the table structures. Given these details, let's adjust the repository queries and GraphQL schema to work properly with the ucsp_alarm_inventory and ucsp_alarm_metrics tables. Here's how we can structure the queries to align with your database schema and ensure smooth API functionality.
+
+Step 1: Update the Repository Queries
+
+First, we will ensure the repository queries correctly match your tables' fields.
+
+1. Repository Query for getScatterPlotDataByProtocol:
+
+This query retrieves the scatter plot data (collection name, last updated date, and size of messages) filtered by the protocol.
+
+public interface UCSPAlarmRepository extends JpaRepository<UCSPAlarmInventory, Long> {
+
+    @Query("SELECT new com.verizon.ucs.restapi.model.ScatterPlotData(c.collectionName, m.lastUpdated, m.sizeOfMsgs) " +
+           "FROM UCSPAlarmInventory c " +
+           "JOIN UCSPAlarmMetrics m ON c.collectionName = m.collectionName " +
+           "WHERE c.ucgSource = :protocol")
+    List<ScatterPlotData> findScatterPlotDataByProtocol(@Param("protocol") String protocol);
+
+    @Query("SELECT m FROM UCSPAlarmMetrics m WHERE m.ucspAlarmInventory.ucgSource = :protocol")
+    List<UCSPAlarmMetrics> findByProtocol(@Param("protocol") String protocol);
+
+    @Query("SELECT DISTINCT c.ucgSource FROM UCSPAlarmInventory c")
+    List<String> findAvailableProtocols();
+}
+
+Explanation:
+
+findScatterPlotDataByProtocol: This query fetches scatter plot data for a given protocol (ucgSource) by joining the ucsp_alarm_inventory and ucsp_alarm_metrics tables.
+
+findByProtocol: This query returns all metrics for a given protocol.
+
+findAvailableProtocols: This query retrieves distinct protocol values (ucgSource) from the ucsp_alarm_inventory table.
 
 
-CREATE TABLE ucsp_alarm_inventory(
-    id SERIAL PRIMARY KEY,  
-    collection_name VARCHAR(255) NOT NULL UNIQUE,  
-    device_name VARCHAR(255) NOT NULL, 
-    device_ip INET NOT NULL, 
-    ucg_source VARCHAR(255) NOT NULL,  
-    vendor VARCHAR(255) NOT NULL  );
+
+Step 2: Update the Service Class
+
+Now, let's implement the service methods to call these repository methods.
+
+@Service
+public class UCSPAlarmService {
+
+    private final UCSPAlarmRepository ucspAlarmRepository;
+
+    @Autowired
+    public UCSPAlarmService(UCSPAlarmRepository ucspAlarmRepository) {
+        this.ucspAlarmRepository = ucspAlarmRepository;
+    }
+
+    public List<ScatterPlotData> getScatterPlotDataByProtocol(String protocol) {
+        return ucspAlarmRepository.findScatterPlotDataByProtocol(protocol);
+    }
+
+    public List<UCSPAlarmMetrics> filterDataByProtocol(String protocol) {
+        return ucspAlarmRepository.findByProtocol(protocol);
+    }
+
+    public List<String> getAvailableProtocols() {
+        return ucspAlarmRepository.findAvailableProtocols();
+    }
+}
+
+Step 3: Update the GraphQL Controller
+
+Next, we'll make sure the GraphQL controller correctly maps the queries and returns the data.
+
+@Controller
+public class UCSPAlarmController {
+
+    private final UCSPAlarmService ucspAlarmService;
+
+    @Autowired
+    public UCSPAlarmController(UCSPAlarmService ucspAlarmService) {
+        this.ucspAlarmService = ucspAlarmService;
+    }
+
+    @QueryMapping
+    public List<ScatterPlotData> getScatterPlotDataByProtocol(@Argument String protocol) {
+        return ucspAlarmService.getScatterPlotDataByProtocol(protocol);
+    }
+
+    @QueryMapping
+    public List<UCSPAlarmMetrics> filterDataByProtocol(@Argument String protocol) {
+        return ucspAlarmService.filterDataByProtocol(protocol);
+    }
+
+    @QueryMapping
+    public List<String> getAvailableProtocols() {
+        return ucspAlarmService.getAvailableProtocols();
+    }
+}
+
+Step 4: GraphQL Schema
+
+Now that the repository and service are set up, the GraphQL schema should be defined accordingly. Here’s how the schema can be structured:
+
+type ScatterPlotData {
+  collectionName: String
+  date: String
+  yValue: Float
+}
+
+type UCSPAlarmMetrics {
+  id: ID
+  collectionName: String
+  lastUpdated: String
+  numberOfMsgs: Int
+  sizeOfMsgs: Float
+}
+
+type Query {
+  getScatterPlotDataByProtocol(protocol: String!): [ScatterPlotData]
+  filterDataByProtocol(protocol: String!): [UCSPAlarmMetrics]
+  getAvailableProtocols: [String]
+}
+
+Step 5: Test Queries in GraphQL
+
+Here are the sample queries you can test:
+
+1. Get Available Protocols:
+
+query {
+  getAvailableProtocols
+}
+
+Expected Response:
+
+{
+  "data": {
+    "getAvailableProtocols": ["SNMP", "WSS", "gRPC", "TL1", "syslog"]
+  }
+}
+
+2. Get Scatter Plot Data by Protocol:
+
+query {
+  getScatterPlotDataByProtocol(protocol: "SNMP") {
+    collectionName
+    date
+    yValue
+  }
+}
+
+Expected Response:
+
+{
+  "data": {
+    "getScatterPlotDataByProtocol": [
+      {
+        "collectionName": "Collection1",
+        "date": "2024-11-20",
+        "yValue": 204800
+      },
+      {
+        "collectionName": "Collection2",
+        "date": "2024-11-21",
+        "yValue": 100000
+      }
+    ]
+  }
+}
+
+3. Filter Data by Protocol:
+
+query {
+  filterDataByProtocol(protocol: "SNMP") {
+    id
+    collectionName
+    lastUpdated
+    numberOfMsgs
+    sizeOfMsgs
+  }
+}
+
+Expected Response:
+
+{
+  "data": {
+    "filterDataByProtocol": [
+      {
+        "id": 1,
+        "collectionName": "Collection1",
+        "lastUpdated": "2024-11-20T10:30:00",
+        "numberOfMsgs": 1000,
+        "sizeOfMsgs": 204800
+      },
+      {
+        "id": 2,
+        "collectionName": "Collection2",
+        "lastUpdated": "2024-11-21T10:30:00",
+        "numberOfMsgs": 1200,
+        "sizeOfMsgs": 250000
+      }
+    ]
+  }
+}
+
+Summary:
+
+Repository: Contains native queries to fetch data from the database.
+
+Service: Calls the repository methods to fetch data and returns it to the controller.
+
+Controller: Maps GraphQL queries to service methods and returns the data.
+
+GraphQL Schema: Defines the types and queries for ScatterPlotData, UCSPAlarmMetrics, and AvailableProtocols.
+
+
+If you still encounter any errors, make sure your GraphQL server is configured correctly and that the data exists in the database. Also, verify the query logs for any issues with the data retrieval.
+
