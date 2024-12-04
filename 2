@@ -1,6 +1,333 @@
-Here’s a complete solution, including the GraphQL Controller, Service Class, and Repository with the exact table names as you provided: ucsp_alarm_inventory, ucsp_alarm_metrics, and scatter_plot_data.
+package com.verizon.ucs.restapi.controllers;
 
-1. Repository Layer (with Correct Tables and Queries)
+import com.verizon.ucs.restapi.dto.ApiRequest;
+import com.verizon.ucs.restapi.dto.TrendsRequest;
+import com.verizon.ucs.restapi.model.*;
+import com.verizon.ucs.restapi.repository.UCSPAlarmRepository;
+import com.verizon.ucs.restapi.service.UCSPService;
+import graphql.GraphQLException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataAccessException;
+import org.springframework.graphql.data.method.annotation.Argument;
+import org.springframework.graphql.data.method.annotation.QueryMapping;
+import org.springframework.graphql.data.method.annotation.SchemaMapping;
+import org.springframework.stereotype.Controller;
+
+import java.time.LocalDateTime;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+/**
+ * Controller interface for UCS Portal Application with JPA
+ */
+@Controller
+public class UCSPController {
+    private static final Logger logger = LoggerFactory.getLogger(UCSPController.class);
+
+    @Autowired
+    private UCSPService uCSPService;
+    @Autowired
+    private UCSPAlarmRepository ucspAlarmRepository;
+
+    @QueryMapping(value = "searchDevices")
+    public List<Device> getFilteredDevices(@Argument ApiRequest apiRequest) {
+        return uCSPService.searchDevices(apiRequest);
+    }
+
+    @QueryMapping(value = "allDevices")
+    public List<Device> getAllDevices() {
+        return uCSPService.getAllDevices();
+    }
+
+    @SchemaMapping(typeName = "Query", value = "uniqueModels")
+    public List<String> getUniqueModels() {
+        return uCSPService.getUniqueValues().get("models");
+    }
+
+    @QueryMapping(value = "uniqueVendors")
+    public List<String> getUniqueVendors() {
+        return uCSPService.getUniqueValues().get("vendors");
+    }
+
+    @QueryMapping(value = "dailyTrends")
+    public List<TrendsDTO> getTrends(@Argument TrendsRequest trendsRequest) {
+        try {
+        	 Map<String, TrendsDTO> trendsDataMap = uCSPService.getDailyTrends(trendsRequest);
+             return trendsDataMap.values().stream()
+            		  .sorted(Comparator.comparing(TrendsDTO::getDate))
+            		 .collect(Collectors.toList());
+        } catch (DataAccessException e) {
+            logger.error("Database error occurred while fetching data", e);
+            throw new GraphQLException("Database error: Unable to fetch data");
+        } catch (RuntimeException e) {
+            logger.error("Runtime error occurred", e);
+            throw new GraphQLException("Runtime error: " + e.getMessage());
+        } catch (Exception e) {
+            logger.error("Unexpected error occurred", e);
+            throw new GraphQLException("Unexpected error: " + e.getMessage());
+        }
+    }
+
+    @QueryMapping
+    public List<String> uniqueNetworks() {
+        return uCSPService.getUniqueValues().get("networks");
+    }
+
+    @QueryMapping(value = "uniqueUCSPProjects")
+    public List<UcspProject> getUniqueProjects() {
+        List<UcspProject> ucgProjects = uCSPService.getUniqueProjects();
+        return ucgProjects;
+    }
+
+    @QueryMapping(value = "uniqueUCGSources")
+    public List<String> getUniqueUCGSources() {
+        List<String> ucgSources = uCSPService.getUniqueUCGSources();
+        return ucgSources;
+    }
+
+    @QueryMapping(value = "uniqueUCGSourcesByProject")
+    public List<UcspProject> getUniqueUCGSourcesByProject(@Argument Long projectId) {
+        try {
+            return uCSPService.getUniqueUCGSourcesByProject(projectId);
+        } catch (DataAccessException e) {
+            logger.error("Database error occurred while fetching UCG Sources", e);
+            throw new GraphQLException("Database error: Unable to fetch UCG Sources for project ID: " + projectId);
+        } catch (RuntimeException e) {
+            logger.error("Runtime error occurred", e);
+            throw new GraphQLException("Runtime error: " + e.getMessage());
+        } catch (Exception e) {
+            logger.error("Unexpected error occurred", e);
+            throw new GraphQLException("Unexpected error: " + e.getMessage());
+        }
+    }
+    
+    @QueryMapping
+    public List<String> uniqueNetworksByProtocol() {
+        return uCSPService.uniqueNetworksByProtocol().get("snmp");
+    }
+    
+    @QueryMapping
+    public List<String> uniqueDevicesByNetwork(@Argument String network) {
+        return uCSPService.uniqueDevicesByNetwork(network);
+    }
+    
+    @QueryMapping(value = "avgNetworkByCoverage")
+    public List<AvgNetworkCoverageDTO> avgNetworkByCoverage(@Argument String network,
+            @Argument String fromDate, @Argument String toDate, @Argument String device) {
+        try {
+            Map<String, AvgNetworkCoverageDTO> detailedData = uCSPService.avgNetworkByCoverage(network, fromDate, toDate, device);
+            return detailedData.values().stream()
+                    .map(dto -> {
+                        dto.setTotalCoverage(Double.parseDouble(dto.getFormattedTotalCoverage()));
+                        return dto;
+                    })
+                    .sorted(Comparator.comparing(AvgNetworkCoverageDTO::getDate))
+                    .collect(Collectors.toList());
+        } catch (DataAccessException e) {
+            logger.error("Database error occurred while fetching network coverage", e);
+            throw new GraphQLException("Database error: Unable to fetch network coverage for network: " + network);
+        } catch (RuntimeException e) {
+            logger.error("Runtime error occurred", e);
+            throw new GraphQLException("Runtime error: " + e.getMessage());
+        } catch (Exception e) {
+            logger.error("Unexpected error occurred", e);
+            throw new GraphQLException("Unexpected error: " + e.getMessage());
+        }
+    }
+    // API 1: GraphQL Query for getting scatter plot data by protocol and date range
+    @QueryMapping
+    public List<ScatterPlotData> getScatterPlotDataByProtocolAndDateRange(
+            @Argument String protocol,
+            @Argument String startDate,
+            @Argument String endDate) {
+
+        LocalDateTime start = LocalDateTime.parse(startDate);
+        LocalDateTime end = LocalDateTime.parse(endDate);
+
+        return uCSPService.getScatterPlotDataByProtocolAndDateRange(protocol, start, end);
+    }
+
+    // API 2: GraphQL Query for getting scatter plot data by protocol
+    @QueryMapping
+    public List<ScatterPlotData> getScatterPlotDataByProtocol(@Argument String protocol) {
+        return uCSPService.getScatterPlotDataByProtocol(protocol);
+    }
+
+    // API 3: GraphQL Query for getting available protocols
+    @QueryMapping
+    public List<String> getAvailableProtocols() {
+        return uCSPService.getAvailableProtocols();
+    }
+}
+
+package com.verizon.ucs.restapi.service;
+
+import com.verizon.ucs.restapi.dto.ApiRequest;
+import com.verizon.ucs.restapi.dto.TrendsRequest;
+import com.verizon.ucs.restapi.model.*;
+import com.verizon.ucs.restapi.repository.UCSPAlarmRepository;
+import com.verizon.ucs.restapi.repository.UCSPProjectsRepository;
+import com.verizon.ucs.restapi.repository.UCSPRepository;
+import com.verizon.ucs.restapi.repository.UCSPTrendsRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+@Service
+public class UCSPService {
+
+	private static final Logger logger = LoggerFactory.getLogger(UCSPService.class);
+
+	@Autowired
+	private UCSPRepository uCSPRepository;
+
+	@Autowired
+	private UCSPTrendsRepository uCSPTrendsRepository;
+
+	@Autowired
+	private UCSPProjectsRepository ucspProjectsRepository;
+
+	@Autowired
+	private UCSPAlarmRepository ucspAlarmRepository;
+	
+	public List<UcspProject> getUniqueUCGSourcesByProject(Long projectId) {
+		try {
+			List<UcspProject> ucgSources = ucspProjectsRepository.findDistinctUCGSourcesByProject(projectId);
+			if (ucgSources == null || ucgSources.isEmpty()) {
+				throw new RuntimeException("No UCG Sources found for the given project ID: " + projectId);
+			}
+			return ucgSources;
+		} catch (Exception e) {
+			logger.error("Error in service method getUniqueUCGSourcesByProject", e);
+			throw e;
+		}
+	}
+
+	public List<Device> searchDevices(ApiRequest params) {
+		if (params.getDeviceName() != null && !params.getDeviceName().isEmpty()) {
+			return uCSPRepository.findByDeviceNameIgnoreCase(params.getDeviceName());
+		}
+		if (params.getLoopback() != null && !params.getLoopback().isEmpty()) {
+			return uCSPRepository.findByLoopbackIgnoreCase(params.getLoopback());
+		}
+		if (params.getNetwork() != null && !params.getNetwork().isEmpty()) {
+			return uCSPRepository.findByNetworkIgnoreCase(params.getNetwork());
+		}
+		if (params.getVendor() != null && !params.getVendor().isEmpty()) {
+			return uCSPRepository.findByVendorIgnoreCase(params.getVendor());
+		}
+		if (params.getModel() != null && !params.getModel().isEmpty()) {
+			return uCSPRepository.findByModelIgnoreCase(params.getModel());
+		}
+		return null;
+	}
+
+	public Map<String, TrendsDTO> getDailyTrends(TrendsRequest params) throws ParseException {
+	    SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+	    List<Map<String, Object>> results = uCSPTrendsRepository.findDailyTrends(params.getUcgSourceID(), params.getFromDate(), params.getToDate());
+
+	    Map<String, TrendsDTO> trendsData = new HashMap<>();
+
+	    for (Map<String, Object> result : results) {
+	        String date = dateFormat.format(result.get("date"));
+	        String time = (String) result.get("time");
+	        double sizeOfFilesBytes = ((Number) result.get("sizeOfFilesBytes")).doubleValue();
+	        int numberOfFiles = ((Number) result.get("numberOfFiles")).intValue();
+
+	        TrendsDrillDownData trendsDataPoint = new TrendsDrillDownData(time, sizeOfFilesBytes, numberOfFiles);
+
+	        trendsData
+	            .computeIfAbsent(date, k -> new TrendsDTO(date))
+	            .addTrendsData(trendsDataPoint);
+	    }
+
+	    logger.debug("trendsData {}", trendsData);
+	    return trendsData;
+	}
+
+
+	public Map<String, List<String>> getUniqueValues() {
+		Map<String, List<String>> uniqueValues = new HashMap<>();
+		uniqueValues.put("models", uCSPRepository.findDistinctModels());
+		uniqueValues.put("vendors", uCSPRepository.findDistinctVendors());
+		uniqueValues.put("networks", uCSPRepository.findDistinctNetworks());
+		return uniqueValues;
+	}
+	public List<String> getUniqueUCGSources(){
+		return uCSPRepository.findDistinctUCGSources();
+	}
+	public List<Device> getAllDevices() {
+		return uCSPRepository.findAll();
+	}
+
+	public List<UcspProject> getUniqueProjects() {
+		return ucspProjectsRepository.findUniqueProjects();
+	}
+	public Map<String, List<String>> uniqueNetworksByProtocol() {
+		Map<String, List<String>> uniqueValues = new HashMap<>();
+		uniqueValues.put("snmp", uCSPRepository.uniqueNetworksBySNMPprotocol());
+		return uniqueValues;
+	}
+	
+	public List<String> uniqueDevicesByNetwork(String network) {
+		return uCSPRepository.getUniqueDevicesByNetwork(network);
+	}
+	
+	public Map<String, AvgNetworkCoverageDTO> avgNetworkByCoverage(String networkName,String fromDate,String toDate,String device) throws ParseException {
+        Map<String, AvgNetworkCoverageDTO> detailedData = new HashMap<>();
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+
+        List<Map<String, Object>> results = uCSPRepository.avgNetworkByCoverage(networkName,dateFormat.parse(fromDate),dateFormat.parse(toDate),device);
+
+        for (Map<String, Object> result : results) {
+            String date = dateFormat.format(result.get("date"));
+            String time = (String) result.get("time");
+            double sumOfCoverage = ((Number) result.get("sumOfCoverage")).doubleValue();
+
+            AvgNetworkCovDrillDownData coverageData = new AvgNetworkCovDrillDownData(time, sumOfCoverage);
+
+            detailedData
+                .computeIfAbsent(date, k -> new AvgNetworkCoverageDTO(date))
+                .addCoverageData(coverageData);
+            /*detaileddata
+                .computeifabsent(date, k -> new avgnetworkcoveragedto(date, 0.0, new arraylist<>()))
+                .getCoveragedatalist().add(coveragedata);
+            detaileddata.get(date).setTotalcoverage(detaileddata.get(date).getTotalcoverage() + sumofcoverage);
+            */
+        }
+        logger.debug("detailedData {}",detailedData);
+        return detailedData;
+    }
+
+	// API 1: Get scatter plot data by protocol and date range
+	public List<ScatterPlotData> getScatterPlotDataByProtocolAndDateRange(String protocol, LocalDateTime startDate, LocalDateTime endDate) {
+		return ucspAlarmRepository.findByProtocolAndDateRange(protocol, startDate, endDate);
+	}
+
+	// API 2: Get scatter plot data by protocol
+	public List<ScatterPlotData> getScatterPlotDataByProtocol(String protocol) {
+		return ucspAlarmRepository.findByProtocol(protocol);
+	}
+
+	// API 3: Get available protocols
+	public List<String> getAvailableProtocols() {
+		return ucspAlarmRepository.findAllProtocols();
+	}
+
+}
 
 package com.verizon.ucs.restapi.repository;
 
@@ -16,123 +343,122 @@ import java.util.List;
 public interface UCSPAlarmRepository extends JpaRepository<ScatterPlotData, Long> {
 
     // Fetch scatter plot data based on protocol and date range
-    @Query("SELECT s FROM ScatterPlotData s " +
-           "JOIN ucsp_alarm_metrics m ON m.collection_name = s.collection_name " +
-           "JOIN ucsp_alarm_inventory i ON i.collection_name = m.collection_name " +
-           "WHERE s.protocol = :protocol " +
-           "AND s.collection_date BETWEEN :startDate AND :endDate")
+    @Query("SELECT s FROM scatter_plot_data s " +
+            "JOIN ucsp_alarm_metrics m ON m.collection_name = s.collection_name " +
+            "JOIN ucsp_alarm_inventory i ON i.collection_name = m.collection_name " +
+            "WHERE s.protocol = :protocol " +
+            "AND s.collection_date BETWEEN :startDate AND :endDate")
     List<ScatterPlotData> findByProtocolAndDateRange(String protocol, LocalDateTime startDate, LocalDateTime endDate);
 
     // Fetch scatter plot data filtered by protocol
-    @Query("SELECT s FROM ScatterPlotData s " +
-           "JOIN ucsp_alarm_metrics m ON m.collection_name = s.collection_name " +
-           "JOIN ucsp_alarm_inventory i ON i.collection_name = m.collection_name " +
-           "WHERE s.protocol = :protocol")
+    @Query("SELECT s FROM scatter_plot_data s " +
+            "JOIN ucsp_alarm_metrics m ON m.collection_name = s.collection_name " +
+            "JOIN ucsp_alarm_inventory i ON i.collection_name = m.collection_name " +
+            "WHERE s.protocol = :protocol")
     List<ScatterPlotData> findByProtocol(String protocol);
 
     // Fetch all available protocols
-    @Query("SELECT DISTINCT s.protocol FROM ScatterPlotData s")
+    @Query("SELECT DISTINCT s.protocol FROM scatter_plot_data s")
     List<String> findAllProtocols();
 }
 
-2. Service Layer (with Methods for Each API)
-
-package com.verizon.ucs.restapi.service;
-
-import com.verizon.ucs.restapi.model.ScatterPlotData;
-import com.verizon.ucs.restapi.repository.UCSPAlarmRepository;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-
-import java.time.LocalDateTime;
-import java.util.List;
-
-@Service
-public class UCSPAlarmService {
-
-    @Autowired
-    private UCSPAlarmRepository alarmRepository;
-
-    // API 1: Get scatter plot data by protocol and date range
-    public List<ScatterPlotData> getScatterPlotDataByProtocolAndDateRange(String protocol, LocalDateTime startDate, LocalDateTime endDate) {
-        return alarmRepository.findByProtocolAndDateRange(protocol, startDate, endDate);
-    }
-
-    // API 2: Get scatter plot data by protocol
-    public List<ScatterPlotData> getScatterPlotDataByProtocol(String protocol) {
-        return alarmRepository.findByProtocol(protocol);
-    }
-
-    // API 3: Get available protocols
-    public List<String> getAvailableProtocols() {
-        return alarmRepository.findAllProtocols();
-    }
-}
-
-3. GraphQL Controller Layer
-
-package com.verizon.ucs.restapi.controller;
-
-import com.verizon.ucs.restapi.model.ScatterPlotData;
-import com.verizon.ucs.restapi.service.UCSPAlarmService;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.graphql.data.method.annotation.QueryMapping;
-import org.springframework.graphql.data.method.annotation.Argument;
-import org.springframework.stereotype.Controller;
-
-import java.time.LocalDateTime;
-import java.util.List;
-
-@Controller
-public class UCSPAlarmController {
-
-    @Autowired
-    private UCSPAlarmService alarmService;
-
-    // API 1: GraphQL Query for getting scatter plot data by protocol and date range
-    @QueryMapping
-    public List<ScatterPlotData> getScatterPlotDataByProtocolAndDateRange(
-        @Argument String protocol, 
-        @Argument String startDate, 
-        @Argument String endDate) {
-        
-        LocalDateTime start = LocalDateTime.parse(startDate);
-        LocalDateTime end = LocalDateTime.parse(endDate);
-        
-        return alarmService.getScatterPlotDataByProtocolAndDateRange(protocol, start, end);
-    }
-
-    // API 2: GraphQL Query for getting scatter plot data by protocol
-    @QueryMapping
-    public List<ScatterPlotData> getScatterPlotDataByProtocol(@Argument String protocol) {
-        return alarmService.getScatterPlotDataByProtocol(protocol);
-    }
-
-    // API 3: GraphQL Query for getting available protocols
-    @QueryMapping
-    public List<String> getAvailableProtocols() {
-        return alarmService.getAvailableProtocols();
-    }
-}
-
-4. Model for ScatterPlotData (for reference)
-
 package com.verizon.ucs.restapi.model;
 
-import javax.persistence.Entity;
-import javax.persistence.Id;
+import javax.persistence.*;
 import java.time.LocalDateTime;
 
 @Entity
-public class ScatterPlotData {
+@Table(name = "ucsp_alarm_metrics")
+public class UCSPAlarmMetrics {
 
     @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @ManyToOne
+    @JoinColumn(name = "collection_name", referencedColumnName = "collection_name", nullable = false)
+    private UCSPAlarmInventory ucspAlarmInventory;
+
+    @Column(name = "last_updated")
+    private LocalDateTime lastUpdated;
+
+    @Column(name = "number_of_msgs", nullable = false)
+    private Long numberOfMsgs;
+
+    @Column(name = "size_of_msgs", nullable = false)
+    private Long sizeOfMsgs;
+
+    // Getters and Setters
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public UCSPAlarmInventory getUcspAlarmInventory() {
+        return ucspAlarmInventory;
+    }
+
+    public void setUcspAlarmInventory(UCSPAlarmInventory ucspAlarmInventory) {
+        this.ucspAlarmInventory = ucspAlarmInventory;
+    }
+
+    public LocalDateTime getLastUpdated() {
+        return lastUpdated;
+    }
+
+    public void setLastUpdated(LocalDateTime lastUpdated) {
+        this.lastUpdated = lastUpdated;
+    }
+
+    public Long getNumberOfMsgs() {
+        return numberOfMsgs;
+    }
+
+    public void setNumberOfMsgs(Long numberOfMsgs) {
+        this.numberOfMsgs = numberOfMsgs;
+    }
+
+    public Long getSizeOfMsgs() {
+        return sizeOfMsgs;
+    }
+
+    public void setSizeOfMsgs(Long sizeOfMsgs) {
+        this.sizeOfMsgs = sizeOfMsgs;
+    }
+}
+
+package com.verizon.ucs.restapi.model;
+
+import javax.persistence.*;
+import java.net.InetAddress;
+import java.util.Objects;
+
+@Entity
+@Table(name = "ucsp_alarm_inventory")
+public class UCSPAlarmInventory {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "collection_name", nullable = false, unique = true)
     private String collectionName;
-    private String protocol;
-    private LocalDateTime collectionDate;
-    private Long yValue;
+
+    @Column(name = "device_name", nullable = false)
+    private String deviceName;
+
+    @Column(name = "device_ip", nullable = false)
+    private InetAddress deviceIp;
+
+    @Column(name = "ucg_source", nullable = false)
+    private String ucgSource;
+
+    @Column(name = "vendor", nullable = false)
+    private String vendor;
 
     // Getters and Setters
 
@@ -152,24 +478,91 @@ public class ScatterPlotData {
         this.collectionName = collectionName;
     }
 
-    public String getProtocol() {
-        return protocol;
+    public String getDeviceName() {
+        return deviceName;
+    }
+
+    public void setDeviceName(String deviceName) {
+        this.deviceName = deviceName;
+    }
+
+    public InetAddress getDeviceIp() {
+        return deviceIp;
+    }
+
+    public void setDeviceIp(InetAddress deviceIp) {
+        this.deviceIp = deviceIp;
+    }
+
+    public String getUcgSource() {
+        return ucgSource;
+    }
+
+    public void setUcgSource(String ucgSource) {
+        this.ucgSource = ucgSource;
+    }
+
+    public String getVendor() {
+        return vendor;
+    }
+
+    public void setVendor(String vendor) {
+        this.vendor = vendor;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        UCSPAlarmInventory that = (UCSPAlarmInventory) o;
+        return Objects.equals(id, that.id) &&
+                Objects.equals(collectionName, that.collectionName);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(id, collectionName);
+    }
+}
+
+
+package com.verizon.ucs.restapi.model;
+
+import lombok.Getter;
+
+import javax.persistence.*;
+import java.time.LocalDateTime;
+
+@Getter
+@Entity
+@Table(name = "scatter_plot_data")
+public class ScatterPlotData {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "protocol", nullable = false)
+    private String protocol;
+
+    @Column(name = "collection_date", nullable = false)
+    private LocalDateTime collectionDate;
+
+    @Column(name = "y_value", nullable = false)
+    private Long yValue;
+
+    // Getters and Setters
+
+    public void setId(Long id) {
+        this.id = id;
     }
 
     public void setProtocol(String protocol) {
         this.protocol = protocol;
     }
 
-    public LocalDateTime getCollectionDate() {
-        return collectionDate;
-    }
-
     public void setCollectionDate(LocalDateTime collectionDate) {
         this.collectionDate = collectionDate;
-    }
-
-    public Long getyValue() {
-        return yValue;
     }
 
     public void setyValue(Long yValue) {
@@ -177,49 +570,5 @@ public class ScatterPlotData {
     }
 }
 
-GraphQL Queries Example:
 
-Now, in your GraphQL schema (or IDE like GraphiQL or Postman), you can query the three APIs as follows:
-
-1. Get Scatter Plot Data by Protocol and Date Range:
-
-query {
-  getScatterPlotDataByProtocolAndDateRange(
-    protocol: "SNMP", 
-    startDate: "2024-11-01T00:00:00", 
-    endDate: "2024-12-01T23:59:59") {
-    collectionName
-    protocol
-    collectionDate
-    yValue
-  }
-}
-
-2. Get Scatter Plot Data by Protocol:
-
-query {
-  getScatterPlotDataByProtocol(protocol: "SNMP") {
-    collectionName
-    protocol
-    collectionDate
-    yValue
-  }
-}
-
-3. Get Available Protocols:
-
-query {
-  getAvailableProtocols
-}
-
-Summary of the Workflow:
-
-Repository: Handles the actual data queries using @Query annotations, querying the ucsp_alarm_inventory, ucsp_alarm_metrics, and scatter_plot_data tables.
-
-Service: Contains the business logic, calling the repository methods and handling data.
-
-Controller: Exposes the GraphQL API, allowing clients to query data with the provided GraphQL queries.
-
-
-This setup ensures you use GraphQL for querying, and you fetch data from the correct tables (ucsp_alarm_inventory, ucsp_alarm_metrics, and scatter_plot_data) as per your requirements. Let me know if you need further adjustments!
-
+For the above the springboot pplication is not running please resolve if there is any errors
