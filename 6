@@ -1,106 +1,10 @@
-To implement the functionality using GraphQL, repository, controller, and service layers, we'll proceed with the following:
+To resolve the error and adjust the repository structure according to the provided reference, I'll modify the repository and query implementation, ensuring it matches your needs for the ucsp_alarm_inventory and ucsp_alarm_metrics tables.
 
-1. Model Classes: Represent UCSPAlarmInventory and UCSPAlarmMetrics as entities.
+Based on the reference repository you provided, I'll ensure that the queries are written in a correct format, leveraging native SQL queries for more complex filtering and data aggregation.
 
+1. UCSPAlarmInventoryRepository
 
-2. Repository: Implement queries to fetch data based on protocol and collection name.
-
-
-3. Service: Define logic for fetching data using the repositories.
-
-
-4. Controller: Use @QueryMapping for GraphQL endpoints.
-
-
-
-1. Model Classes
-
-These classes will represent the entities in the database.
-
-UCSPAlarmInventory.java (Model)
-
-package com.verizon.ucs.restapi.model;
-
-import javax.persistence.*;
-import java.net.InetAddress;
-import java.util.Objects;
-
-@Entity
-@Table(name = "ucsp_alarm_inventory")
-public class UCSPAlarmInventory {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(name = "collection_name", nullable = false, unique = true)
-    private String collectionName;
-
-    @Column(name = "device_name", nullable = false)
-    private String deviceName;
-
-    @Column(name = "device_ip", nullable = false)
-    private InetAddress deviceIp;
-
-    @Column(name = "ucg_source", nullable = false)
-    private String ucgSource;
-
-    @Column(name = "vendor", nullable = false)
-    private String vendor;
-
-    // Getters and setters
-    // ...
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        UCSPAlarmInventory that = (UCSPAlarmInventory) o;
-        return Objects.equals(id, that.id) &&
-               Objects.equals(collectionName, that.collectionName);
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(id, collectionName);
-    }
-}
-
-UCSPAlarmMetrics.java (Model)
-
-package com.verizon.ucs.restapi.model;
-
-import javax.persistence.*;
-import java.time.LocalDateTime;
-
-@Entity
-@Table(name = "ucsp_alarm_metrics")
-public class UCSPAlarmMetrics {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @ManyToOne
-    @JoinColumn(name = "collection_name", referencedColumnName = "collection_name", nullable = false)
-    private UCSPAlarmInventory ucspAlarmInventory;
-
-    @Column(name = "last_updated")
-    private LocalDateTime lastUpdated;
-
-    @Column(name = "number_of_msgs", nullable = false)
-    private Long numberOfMsgs;
-
-    @Column(name = "size_of_msgs", nullable = false)
-    private Long sizeOfMsgs;
-
-    // Getters and setters
-    // ...
-}
-
-2. Repository Classes
-
-These repositories interact with the database.
+This repository should handle queries for ucsp_alarm_inventory (metadata of collections and devices).
 
 UCSPAlarmInventoryRepository.java
 
@@ -120,12 +24,16 @@ public interface UCSPAlarmInventoryRepository extends JpaRepository<UCSPAlarmInv
     List<UCSPAlarmInventory> findByProtocol(@Param("protocol") String protocol);
 }
 
+2. UCSPAlarmMetricsRepository
+
+The ucsp_alarm_metrics table holds the metrics for each collection. The repository will handle complex queries like aggregation of metrics based on the protocol and collection name.
+
 UCSPAlarmMetricsRepository.java
 
 package com.verizon.ucs.restapi.repository;
 
-import com.verizon.ucs.restapi.model.UCSPAlarmMetrics;
 import com.verizon.ucs.restapi.model.ScatterPlotData;
+import com.verizon.ucs.restapi.model.UCSPAlarmMetrics;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -134,10 +42,13 @@ import java.util.List;
 
 public interface UCSPAlarmMetricsRepository extends JpaRepository<UCSPAlarmMetrics, Long> {
 
-    // Query to get scatter plot data by protocol
-    @Query("SELECT new com.verizon.ucs.restapi.model.ScatterPlotData(m.ucspAlarmInventory.collectionName, " +
-            "TO_CHAR(m.lastUpdated, 'YYYY-MM-DD'), m.sizeOfMsgs) " +
-            "FROM UCSPAlarmMetrics m WHERE m.ucspAlarmInventory.ucgSource = :protocol")
+    // Query to get scatter plot data by protocol (aggregation based on protocol)
+    @Query(nativeQuery = true, value = "SELECT c.collection_name AS collectionName, " +
+            "TO_CHAR(m.last_updated, 'YYYY-MM-DD') AS date, " +
+            "m.size_of_msgs AS yValue " +
+            "FROM ucsp_alarm_inventory c " +
+            "JOIN ucsp_alarm_metrics m ON c.collection_name = m.collection_name " +
+            "WHERE c.ucg_source = :protocol")
     List<ScatterPlotData> findScatterPlotDataByProtocol(@Param("protocol") String protocol);
 
     // Query to filter metrics by protocol
@@ -145,9 +56,55 @@ public interface UCSPAlarmMetricsRepository extends JpaRepository<UCSPAlarmMetri
     List<UCSPAlarmMetrics> findMetricsByProtocol(@Param("protocol") String protocol);
 }
 
-3. Service Layer
+3. ScatterPlotData Model
 
-Define the business logic that interacts with the repository.
+This model represents the data structure for scatter plot data. It is used in the repository and returned in GraphQL queries.
+
+ScatterPlotData.java
+
+package com.verizon.ucs.restapi.model;
+
+public class ScatterPlotData {
+
+    private String collectionName;
+    private String date;
+    private Long yValue;
+
+    public ScatterPlotData(String collectionName, String date, Long yValue) {
+        this.collectionName = collectionName;
+        this.date = date;
+        this.yValue = yValue;
+    }
+
+    // Getters and setters
+    public String getCollectionName() {
+        return collectionName;
+    }
+
+    public void setCollectionName(String collectionName) {
+        this.collectionName = collectionName;
+    }
+
+    public String getDate() {
+        return date;
+    }
+
+    public void setDate(String date) {
+        this.date = date;
+    }
+
+    public Long getYValue() {
+        return yValue;
+    }
+
+    public void setYValue(Long yValue) {
+        this.yValue = yValue;
+    }
+}
+
+4. Service Layer
+
+The service layer uses the repositories to interact with the data, encapsulating the logic and fetching the required data.
 
 UCSPAlarmService.java
 
@@ -172,7 +129,7 @@ public class UCSPAlarmService {
     @Autowired
     private UCSPAlarmMetricsRepository metricsRepository;
 
-    // Fetch data by protocol
+    // Fetch data by protocol (inventory)
     public List<UCSPAlarmInventory> getInventoryByProtocol(String protocol) {
         return inventoryRepository.findByProtocol(protocol);
     }
@@ -188,9 +145,9 @@ public class UCSPAlarmService {
     }
 }
 
-4. Controller Layer (GraphQL)
+5. Controller Layer (GraphQL)
 
-Using @QueryMapping for GraphQL queries.
+The controller uses GraphQL's @QueryMapping to define GraphQL queries for fetching data.
 
 UCSPAlarmController.java
 
@@ -231,33 +188,9 @@ public class UCSPAlarmController {
     }
 }
 
-5. ScatterPlotData Model
-
-This is the model used to represent the scatter plot data.
-
-ScatterPlotData.java
-
-package com.verizon.ucs.restapi.model;
-
-public class ScatterPlotData {
-
-    private String collectionName;
-    private String date;
-    private Long yValue;
-
-    public ScatterPlotData(String collectionName, String date, Long yValue) {
-        this.collectionName = collectionName;
-        this.date = date;
-        this.yValue = yValue;
-    }
-
-    // Getters and setters
-    // ...
-}
-
 6. GraphQL Schema
 
-Define the GraphQL schema for your application.
+The schema definition allows GraphQL to query the data.
 
 schema.graphqls
 
@@ -290,9 +223,20 @@ type Query {
     filterMetricsByProtocol(protocol: String): [UCSPAlarmMetrics]
 }
 
-7. Testing
+Conclusion
 
-After setting up everything, you can test the GraphQL queries like this:
+This setup resolves the issues and adapts the repository query to work with your data model. Here's a summary of the changes:
+
+Native SQL Query: Queries are written as native SQL to ensure compatibility with complex data aggregation (similar to the ucsp_trends_raw query you provided).
+
+Repository Layer: Custom queries are used for filtering and aggregating data based on protocols.
+
+Service Layer: Business logic is abstracted to ensure a clean separation of concerns.
+
+GraphQL Controller: Queries are mapped to GraphQL @QueryMapping methods.
+
+
+Now, you can test these queries by sending GraphQL queries like:
 
 1. Filter Data by Protocol
 
@@ -327,7 +271,5 @@ query {
     }
 }
 
-Conclusion
-
-This solution includes:
+With this configuration, your repository, service, and controller layers should function as expected for the given use case.
 
