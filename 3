@@ -1,3 +1,54 @@
+Below are the corrected GraphQL queries and the relevant controller methods. Additionally, I will provide an explanation for proper integration and usage.
+
+
+---
+
+Correct GraphQL Queries
+
+Query 1: Get Scatter Plot Data
+
+query GetScatterPlotData($protocol: String!, $dataType: String!) {
+  getScatterPlotData(protocol: $protocol, dataType: $dataType) {
+    id
+    collectionName
+    lastUpdated
+    numberOfMsgs
+    sizeOfMsgs
+  }
+}
+
+Variables:
+
+{
+  "protocol": "SNMP",
+  "dataType": "number_of_msgs"
+}
+
+Query 2: Filter Data by Protocol
+
+query FilterDataByProtocol($protocol: String!) {
+  filterDataByProtocol(protocol: $protocol) {
+    id
+    collectionName
+    lastUpdated
+    numberOfMsgs
+    sizeOfMsgs
+  }
+}
+
+Variables:
+
+{
+  "protocol": "SNMP"
+}
+
+
+---
+
+Corrected Controller Code
+
+Controller Class
+
 package com.verizon.ucs.restapi.controller;
 
 import com.verizon.ucs.restapi.model.UCSPAlarmMetrics;
@@ -25,7 +76,10 @@ public class UCSPAlarmController {
      * @return List of UCSPAlarmMetrics containing the requested scatter plot data.
      */
     @QueryMapping
-    public List<UCSPAlarmMetrics> getScatterPlotData(@Argument String protocol, @Argument String dataType) {
+    public List<UCSPAlarmMetrics> getScatterPlotData(
+            @Argument String protocol, 
+            @Argument String dataType
+    ) {
         return ucspAlarmService.getScatterPlotData(protocol, dataType);
     }
 
@@ -40,3 +94,110 @@ public class UCSPAlarmController {
         return ucspAlarmService.filterDataByProtocol(protocol);
     }
 }
+
+
+---
+
+Service Layer
+
+Ensure the service methods return valid results by querying the repository with correct methods.
+
+Service Methods
+
+package com.verizon.ucs.restapi.service;
+
+import com.verizon.ucs.restapi.model.UCSPAlarmMetrics;
+import com.verizon.ucs.restapi.repository.UCSPAlarmMetricsRepository;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+@Service
+public class UCSPAlarmService {
+
+    private final UCSPAlarmMetricsRepository metricsRepository;
+
+    public UCSPAlarmService(UCSPAlarmMetricsRepository metricsRepository) {
+        this.metricsRepository = metricsRepository;
+    }
+
+    public List<UCSPAlarmMetrics> getScatterPlotData(String protocol, String dataType) {
+        if (dataType.equalsIgnoreCase("number_of_msgs")) {
+            return metricsRepository.findByProtocolAndNumberOfMsgs(protocol);
+        } else if (dataType.equalsIgnoreCase("size_of_msgs")) {
+            return metricsRepository.findByProtocolAndSizeOfMsgs(protocol);
+        } else {
+            throw new IllegalArgumentException("Invalid data type: " + dataType);
+        }
+    }
+
+    public List<UCSPAlarmMetrics> filterDataByProtocol(String protocol) {
+        return metricsRepository.findByProtocol(protocol);
+    }
+}
+
+
+---
+
+Repository Layer
+
+The repository should use the correct JPA query methods.
+
+Repository Interface
+
+package com.verizon.ucs.restapi.repository;
+
+import com.verizon.ucs.restapi.model.UCSPAlarmMetrics;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+
+@Repository
+public interface UCSPAlarmMetricsRepository extends JpaRepository<UCSPAlarmMetrics, Long> {
+
+    @Query("SELECT m FROM UCSPAlarmMetrics m WHERE m.ucspAlarmInventory.ucgSource = :protocol")
+    List<UCSPAlarmMetrics> findByProtocol(String protocol);
+
+    @Query("SELECT m FROM UCSPAlarmMetrics m WHERE m.ucspAlarmInventory.ucgSource = :protocol AND m.numberOfMsgs IS NOT NULL")
+    List<UCSPAlarmMetrics> findByProtocolAndNumberOfMsgs(String protocol);
+
+    @Query("SELECT m FROM UCSPAlarmMetrics m WHERE m.ucspAlarmInventory.ucgSource = :protocol AND m.sizeOfMsgs IS NOT NULL")
+    List<UCSPAlarmMetrics> findByProtocolAndSizeOfMsgs(String protocol);
+}
+
+
+---
+
+GraphQL Schema
+
+Ensure the schema (schema.graphqls) is correct:
+
+type Query {
+    getScatterPlotData(protocol: String!, dataType: String!): [UCSPAlarmMetrics!]!
+    filterDataByProtocol(protocol: String!): [UCSPAlarmMetrics!]!
+}
+
+type UCSPAlarmMetrics {
+    id: ID!
+    collectionName: String!
+    lastUpdated: String
+    numberOfMsgs: Long
+    sizeOfMsgs: Long
+}
+
+
+---
+
+Testing Queries
+
+Use Postman, GraphQL Playground, or Insomnia to test.
+
+Pass the required arguments using the GraphQL schema.
+
+Ensure the correct JSON response is returned.
+
+
+Let me know if you encounter any further issues!
+
