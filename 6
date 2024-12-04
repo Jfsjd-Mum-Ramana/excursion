@@ -1,16 +1,11 @@
-INSERT INTO scatter_plot_data (protocol, collection_date, y_value)
-VALUES 
-    ('SNMP', '2024-11-01 10:00:00', 1500),
-    ('SNMP', '2024-11-02 10:00:00', 2000),
-    ('WSS', '2024-11-01 11:00:00', 1800),
-    ('WSS', '2024-11-02 11:00:00', 2200),
-    ('gRPC', '2024-11-01 12:00:00', 1700),
-    ('gRPC', '2024-11-02 12:00:00', 2100);
+public interface UCSPTrendsRepository extends JpaRepository<Trends, Long> {
+	
+	  @Query(nativeQuery = true, value = "SELECT CAST(collection_timestamp AS DATE) as date, TO_CHAR(collection_timestamp, 'HH24:MI') as time, " +
+	            "SUM(size_of_files_bytes) as sizeOfFilesBytes, SUM(number_of_files) as numberOfFiles " +
+	            "FROM ucsp_trends_raw " +
+	            "WHERE ucg_source_id = :ucgSourceId AND CAST(collection_timestamp AS DATE) BETWEEN :fromDate AND :toDate " +
+	            "GROUP BY CAST(collection_timestamp AS DATE), TO_CHAR(collection_timestamp, 'HH24:MI') " +
+	            "ORDER BY CAST(collection_timestamp AS DATE), TO_CHAR(collection_timestamp, 'HH24:MI')")
+	    List<Map<String, Object>> findDailyTrends(@Param("ucgSourceId") int ucgSourceId, @Param("fromDate") Date fromDate, @Param("toDate") Date toDate);
 
-
-CREATE TABLE scatter_plot_data (
-    id SERIAL PRIMARY KEY,
-    protocol VARCHAR(255) NOT NULL,
-    collection_date TIMESTAMP NOT NULL,
-    y_value INT NOT NULL
-);
+}
