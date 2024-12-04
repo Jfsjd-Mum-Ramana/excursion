@@ -1,132 +1,64 @@
-To resolve issues with your Spring Data JPA repository, ensure that your repository is properly set up with the correct annotations, entity mapping, and query definitions. Here’s a step-by-step guide and an example repository implementation.
+Here is the updated repository code for handling the two GraphQL APIs:
+
+Changes to UCSPAlarmRepository
+
+1. The repository now includes queries for fetching scatter plot data based on protocol and date range, and for fetching scatter plot data filtered only by protocol.
 
 
----
-
-Repository Setup
-
-1. Entity Class: Ensure your entity class is annotated with @Entity and the fields match the database table schema.
-
-import jakarta.persistence.*;
-import java.time.LocalDateTime;
-
-@Entity
-@Table(name = "ucsp_alarm_metrics")
-public class UCSPAlarmMetrics {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(name = "collection_name", nullable = false)
-    private String collectionName;
-
-    @Column(name = "last_updated", nullable = false)
-    private LocalDateTime lastUpdated;
-
-    @Column(name = "number_of_msgs", nullable = false)
-    private int numberOfMsgs;
-
-    @Column(name = "size_of_msgs", nullable = false)
-    private long sizeOfMsgs;
-
-    // Getters and Setters
-    // toString, hashCode, equals if necessary
-}
+2. Added a method to retrieve all available protocols.
 
 
-2. Repository Interface: Define the repository interface with the necessary query methods.
 
+package com.verizon.ucs.restapi.repository;
+
+import com.verizon.ucs.restapi.model.ScatterPlotData;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+
 import java.time.LocalDateTime;
 import java.util.List;
 
 @Repository
-public interface UCSPAlarmMetricsRepository extends JpaRepository<UCSPAlarmMetrics, Long> {
+public interface UCSPAlarmRepository extends JpaRepository<ScatterPlotData, Long> {
 
-    // Find by collection name
-    List<UCSPAlarmMetrics> findByCollectionName(String collectionName);
+    // Fetch scatter plot data based on protocol and date range
+    @Query("SELECT new com.verizon.ucs.restapi.model.ScatterPlotData(s.collectionName, s.collectionDate, m.sizeOfMsgs) " +
+            "FROM UCSPAlarmMetrics m " +
+            "JOIN UCSPAlarmInventory i ON m.ucspAlarmInventory.collectionName = i.collectionName " +
+            "WHERE i.ucgSource = :protocol " +
+            "AND m.lastUpdated BETWEEN :startDate AND :endDate")
+    List<ScatterPlotData> findByProtocolAndDateRange(String protocol, LocalDateTime startDate, LocalDateTime endDate);
 
-    // Custom query to find metrics by protocol and date range
-    @Query("SELECT m FROM UCSPAlarmMetrics m " +
-           "JOIN UCSPAlarmInventory i ON m.collectionName = i.collectionName " +
-           "WHERE i.ucgSource = :protocol AND m.lastUpdated BETWEEN :startDate AND :endDate")
-    List<UCSPAlarmMetrics> findByProtocolAndDateRange(
-            @Param("protocol") String protocol,
-            @Param("startDate") LocalDateTime startDate,
-            @Param("endDate") LocalDateTime endDate);
+    // Fetch scatter plot data filtered by protocol
+    @Query("SELECT new com.verizon.ucs.restapi.model.ScatterPlotData(s.collectionName, s.collectionDate, m.sizeOfMsgs) " +
+            "FROM UCSPAlarmMetrics m " +
+            "JOIN UCSPAlarmInventory i ON m.ucspAlarmInventory.collectionName = i.collectionName " +
+            "WHERE i.ucgSource = :protocol")
+    List<ScatterPlotData> findByProtocol(String protocol);
+
+    // Fetch all available protocols
+    @Query("SELECT DISTINCT i.ucgSource FROM UCSPAlarmInventory i")
+    List<String> findAllProtocols();
 }
 
+Key Adjustments
 
-3. Service Layer (Optional but recommended): Create a service to abstract business logic from the repository layer.
+Changed the queries to reflect the relationship between UCSPAlarmInventory, UCSPAlarmMetrics, and ScatterPlotData.
 
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-import java.time.LocalDateTime;
-import java.util.List;
+Queries use JPQL to fetch specific fields for optimized performance.
 
-@Service
-public class UCSPAlarmMetricsService {
-
-    private final UCSPAlarmMetricsRepository repository;
-
-    @Autowired
-    public UCSPAlarmMetricsService(UCSPAlarmMetricsRepository repository) {
-        this.repository = repository;
-    }
-
-    public List<UCSPAlarmMetrics> getMetricsByProtocolAndDateRange(String protocol, LocalDateTime startDate, LocalDateTime endDate) {
-        return repository.findByProtocolAndDateRange(protocol, startDate, endDate);
-    }
-}
+Query parameterized inputs (:protocol, :startDate, :endDate) for safer and dynamic queries.
 
 
-4. Test Your Repository: Write a test case to verify the repository methods.
+Explanation of API Mapping
 
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
+findByProtocolAndDateRange: Fetches scatter plot data filtered by protocol and a date range (startDate and endDate).
 
-import java.time.LocalDateTime;
-import java.util.List;
+findByProtocol: Fetches scatter plot data filtered only by protocol.
 
-@SpringBootTest
-public class UCSPAlarmMetricsRepositoryTest {
-
-    @Autowired
-    private UCSPAlarmMetricsRepository repository;
-
-    @Test
-    public void testFindByProtocolAndDateRange() {
-        String protocol = "SNMP";
-        LocalDateTime startDate = LocalDateTime.now().minusDays(7);
-        LocalDateTime endDate = LocalDateTime.now();
-
-        List<UCSPAlarmMetrics> results = repository.findByProtocolAndDateRange(protocol, startDate, endDate);
-
-        results.forEach(System.out::println);
-    }
-}
+findAllProtocols: Fetches a list of all unique protocols in the inventory.
 
 
-
-
----
-
-Checklist to Avoid Issues
-
-Entity Mappings: Ensure your entity classes match the database schema (column names, types, and constraints).
-
-Repository Methods: Validate that the queries use the correct JPQL or SQL syntax.
-
-Database Connection: Confirm that your database connection is working, and the tables exist.
-
-Dependencies: Ensure the following dependencies are included in your pom.xml:
-
-<dependency>
-    <groupId>org.springframework.boot</
-
+Would you like updates to the Controller or Service layers based on this repository?
 
