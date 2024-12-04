@@ -1,74 +1,143 @@
-To make sure your repository works correctly, based on the provided sample UCSPTrendsRepository, I'll adjust the repository for the UCSPAlarmMetrics repository with the necessary queries.
+The GraphQL schema and the response structure can be different or similar, depending on how you want to model the data and return it through the API. Based on the repository methods provided earlier, I'll walk you through how the GraphQL schema should look and how the response will be structured.
 
-Updated Repository for UCSPAlarmMetrics
+GraphQL Schema
 
-Below is an updated version of your repository that ensures the queries are written correctly and can be executed successfully with native queries.
+Here is how your GraphQL schema (schema.graphqls) should look, based on the repository queries:
 
-package com.verizon.ucs.restapi.repository;
+type Query {
+    # Fetch the available protocols (e.g., SNMP, WSS, gRPC)
+    getAvailableProtocols: [String]
 
-import com.verizon.ucs.restapi.model.UCSPAlarmMetrics;
-import com.verizon.ucs.restapi.model.UCSPAlarmInventory;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
-import org.springframework.stereotype.Repository;
+    # Get the scatter plot data by protocol
+    getScatterPlotDataByProtocol(protocol: String!): [ScatterPlotData]
 
-import java.util.List;
-
-@Repository
-public interface UCSPAlarmMetricsRepository extends JpaRepository<UCSPAlarmMetrics, Long> {
-
-    // Query to get available protocols (UCSPAlarmInventory.ucgSource)
-    @Query("SELECT DISTINCT u.ucgSource FROM UCSPAlarmInventory u")
-    List<String> findAvailableProtocols();
-
-    // Query to get scatter plot data by protocol
-    @Query("SELECT new com.verizon.ucs.restapi.model.ScatterPlotData(a.ucspAlarmInventory.collectionName, a.lastUpdated, a.sizeOfMsgs) " +
-            "FROM UCSPAlarmMetrics a " +
-            "WHERE a.ucspAlarmInventory.ucgSource = :protocol " +
-            "ORDER BY a.lastUpdated")
-    List<ScatterPlotData> findScatterPlotDataByProtocol(@Param("protocol") String protocol);
-
-    // Query to filter data by protocol
-    @Query("SELECT a FROM UCSPAlarmMetrics a WHERE a.ucspAlarmInventory.ucgSource = :protocol")
-    List<UCSPAlarmMetrics> findMetricsByProtocol(@Param("protocol") String protocol);
-
+    # Filter metrics by protocol
+    filterDataByProtocol(protocol: String!): [UCSPAlarmMetrics]
 }
 
-Explanation of Changes
+# Type to represent scatter plot data
+type ScatterPlotData {
+    collectionName: String
+    date: String  # ISO8601 format of lastUpdated (e.g., "2024-12-01T10:30:00Z")
+    yValue: Long  # This could be the sizeOfMsgs (y-value for scatter plot)
+}
 
-1. findAvailableProtocols:
+# Type to represent UCSPAlarmMetrics (filtered by protocol)
+type UCSPAlarmMetrics {
+    id: ID
+    collectionName: String
+    lastUpdated: String  # ISO8601 format of lastUpdated
+    numberOfMsgs: Long
+    sizeOfMsgs: Long
+}
 
-This query fetches the distinct protocols from the UCSPAlarmInventory table using ucgSource (the protocol).
+Response Structure
 
+1. getAvailableProtocols:
 
+Query: This fetches the distinct protocols (i.e., values from ucgSource in UCSPAlarmInventory).
 
-2. findScatterPlotDataByProtocol:
-
-This query retrieves the data for the scatter plot by joining UCSPAlarmMetrics with UCSPAlarmInventory based on the protocol (ucgSource). It returns the collectionName, lastUpdated date, and sizeOfMsgs (to be used as the y-value for the scatter plot).
-
-
-
-3. findMetricsByProtocol:
-
-This query filters and returns all UCSPAlarmMetrics for the given protocol.
-
-
-
-
-Testing the Queries
-
-You can now test these queries using GraphQL. Ensure that your service and controller use these repository methods as discussed earlier to fetch data based on the protocol.
-
-
----
-
-Notes on Using the Repository
-
-The native query is not necessary for the current repository structure since we are using JPQL (@Query annotation without nativeQuery = true). JPQL allows us to query using entity field names instead of column names directly.
-
-The method names (findAvailableProtocols, findScatterPlotDataByProtocol, and findMetricsByProtocol) are written to match the GraphQL queries, ensuring the repository can handle the requested data correctly.
+Response:
 
 
-Now the repository should work properly and pass the query successfully, as it aligns with the structure you've shared.
+{
+  "data": {
+    "getAvailableProtocols": ["SNMP", "WSS", "gRPC", "TL1", "syslog"]
+  }
+}
+
+
+2. getScatterPlotDataByProtocol:
+
+Query: This fetches scatter plot data by the selected protocol (protocol).
+
+Response (Example for protocol "SNMP"):
+
+
+{
+  "data": {
+    "getScatterPlotDataByProtocol": [
+      {
+        "collectionName": "Collection1",
+        "date": "2024-11-20T10:30:00Z",
+        "yValue": 204800
+      },
+      {
+        "collectionName": "Collection2",
+        "date": "2024-11-21T11:00:00Z",
+        "yValue": 300000
+      }
+    ]
+  }
+}
+
+
+3. filterDataByProtocol:
+
+Query: This returns a list of UCSPAlarmMetrics filtered by the given protocol.
+
+Response (Example for protocol "SNMP"):
+
+
+{
+  "data": {
+    "filterDataByProtocol": [
+      {
+        "id": "1",
+        "collectionName": "Collection1",
+        "lastUpdated": "2024-11-20T10:30:00Z",
+        "numberOfMsgs": 1000,
+        "sizeOfMsgs": 204800
+      },
+      {
+        "id": "2",
+        "collectionName": "Collection2",
+        "lastUpdated": "2024-11-21T11:00:00Z",
+        "numberOfMsgs": 1500,
+        "sizeOfMsgs": 300000
+      }
+    ]
+  }
+}
+
+
+
+Explanation of Response
+
+1. getAvailableProtocols: Returns a list of protocol names (e.g., "SNMP", "WSS", etc.) as a list of strings.
+
+
+2. getScatterPlotDataByProtocol: Returns the scatter plot data where:
+
+collectionName: The name of the collection.
+
+date: The timestamp (in ISO 8601 format).
+
+yValue: The sizeOfMsgs value used for plotting the y-axis of the scatter plot.
+
+
+
+3. filterDataByProtocol: Returns a list of UCSPAlarmMetrics objects for the selected protocol, with each object containing:
+
+id: Unique identifier of the metric.
+
+collectionName: The name of the collection associated with the metric.
+
+lastUpdated: Timestamp when the metric was last updated.
+
+numberOfMsgs: The number of messages for the given metric.
+
+sizeOfMsgs: The size of the messages for the given metric.
+
+
+
+
+Changes in Schema vs. Repository/Service
+
+The GraphQL schema defines how clients interact with your API, specifying the types and fields that can be queried.
+
+The repository and service will handle the underlying database operations and logic to fetch the necessary data from the database based on the protocol and date filters.
+
+
+By following the schema and the repository structure, the API will allow users to query for available protocols, scatter plot data, and filtered metrics based on protocol and other parameters.
 
