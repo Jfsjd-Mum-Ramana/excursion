@@ -1,11 +1,74 @@
-public interface UCSPTrendsRepository extends JpaRepository<Trends, Long> {
-	
-	  @Query(nativeQuery = true, value = "SELECT CAST(collection_timestamp AS DATE) as date, TO_CHAR(collection_timestamp, 'HH24:MI') as time, " +
-	            "SUM(size_of_files_bytes) as sizeOfFilesBytes, SUM(number_of_files) as numberOfFiles " +
-	            "FROM ucsp_trends_raw " +
-	            "WHERE ucg_source_id = :ucgSourceId AND CAST(collection_timestamp AS DATE) BETWEEN :fromDate AND :toDate " +
-	            "GROUP BY CAST(collection_timestamp AS DATE), TO_CHAR(collection_timestamp, 'HH24:MI') " +
-	            "ORDER BY CAST(collection_timestamp AS DATE), TO_CHAR(collection_timestamp, 'HH24:MI')")
-	    List<Map<String, Object>> findDailyTrends(@Param("ucgSourceId") int ucgSourceId, @Param("fromDate") Date fromDate, @Param("toDate") Date toDate);
+To make sure your repository works correctly, based on the provided sample UCSPTrendsRepository, I'll adjust the repository for the UCSPAlarmMetrics repository with the necessary queries.
+
+Updated Repository for UCSPAlarmMetrics
+
+Below is an updated version of your repository that ensures the queries are written correctly and can be executed successfully with native queries.
+
+package com.verizon.ucs.restapi.repository;
+
+import com.verizon.ucs.restapi.model.UCSPAlarmMetrics;
+import com.verizon.ucs.restapi.model.UCSPAlarmInventory;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+
+@Repository
+public interface UCSPAlarmMetricsRepository extends JpaRepository<UCSPAlarmMetrics, Long> {
+
+    // Query to get available protocols (UCSPAlarmInventory.ucgSource)
+    @Query("SELECT DISTINCT u.ucgSource FROM UCSPAlarmInventory u")
+    List<String> findAvailableProtocols();
+
+    // Query to get scatter plot data by protocol
+    @Query("SELECT new com.verizon.ucs.restapi.model.ScatterPlotData(a.ucspAlarmInventory.collectionName, a.lastUpdated, a.sizeOfMsgs) " +
+            "FROM UCSPAlarmMetrics a " +
+            "WHERE a.ucspAlarmInventory.ucgSource = :protocol " +
+            "ORDER BY a.lastUpdated")
+    List<ScatterPlotData> findScatterPlotDataByProtocol(@Param("protocol") String protocol);
+
+    // Query to filter data by protocol
+    @Query("SELECT a FROM UCSPAlarmMetrics a WHERE a.ucspAlarmInventory.ucgSource = :protocol")
+    List<UCSPAlarmMetrics> findMetricsByProtocol(@Param("protocol") String protocol);
 
 }
+
+Explanation of Changes
+
+1. findAvailableProtocols:
+
+This query fetches the distinct protocols from the UCSPAlarmInventory table using ucgSource (the protocol).
+
+
+
+2. findScatterPlotDataByProtocol:
+
+This query retrieves the data for the scatter plot by joining UCSPAlarmMetrics with UCSPAlarmInventory based on the protocol (ucgSource). It returns the collectionName, lastUpdated date, and sizeOfMsgs (to be used as the y-value for the scatter plot).
+
+
+
+3. findMetricsByProtocol:
+
+This query filters and returns all UCSPAlarmMetrics for the given protocol.
+
+
+
+
+Testing the Queries
+
+You can now test these queries using GraphQL. Ensure that your service and controller use these repository methods as discussed earlier to fetch data based on the protocol.
+
+
+---
+
+Notes on Using the Repository
+
+The native query is not necessary for the current repository structure since we are using JPQL (@Query annotation without nativeQuery = true). JPQL allows us to query using entity field names instead of column names directly.
+
+The method names (findAvailableProtocols, findScatterPlotDataByProtocol, and findMetricsByProtocol) are written to match the GraphQL queries, ensuring the repository can handle the requested data correctly.
+
+
+Now the repository should work properly and pass the query successfully, as it aligns with the structure you've shared.
+
