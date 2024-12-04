@@ -1,16 +1,197 @@
-query {
-  filterDataByProtocol(protocol: "SNMP") {
-    collectionName
-    date
-    yValue
-  }
+If the query in the UCSPAlarmMetricsRepository is not working as expected, we can refactor the implementation to better suit the requirements using GraphQL Java with a custom query resolver. This approach eliminates reliance on Spring Data JPA for custom queries and directly defines the query logic in the service or resolver layer.
+
+Here’s how you can implement it:
+
+
+---
+
+1. Define Resolvers for GraphQL Queries
+
+Create a new class implementing GraphQLQueryResolver to handle your GraphQL queries directly.
+
+Example: Query Resolver
+
+package com.verizon.ucs.restapi.resolver;
+
+import com.verizon.ucs.restapi.model.UCSPAlarmMetrics;
+import com.verizon.ucs.restapi.service.UCSPAlarmService;
+import org.springframework.stereotype.Component;
+
+import java.util.List;
+
+@Component
+public class QueryResolver implements GraphQLQueryResolver {
+
+    private final UCSPAlarmService ucspAlarmService;
+
+    public QueryResolver(UCSPAlarmService ucspAlarmService) {
+        this.ucspAlarmService = ucspAlarmService;
+    }
+
+    // 1. Get Available Protocols
+    public List<String> getAvailableProtocols() {
+        return ucspAlarmService.getAvailableProtocols();
+    }
+
+    // 2. Get Scatter Plot Data
+    public List<UCSPAlarmMetrics> getScatterPlotData(String protocol, String dataType) {
+        return ucspAlarmService.getScatterPlotData(protocol, dataType);
+    }
+
+    // 3. Filter Data by Protocol
+    public List<UCSPAlarmMetrics> filterDataByProtocol(String protocol) {
+        return ucspAlarmService.filterDataByProtocol(protocol);
+    }
 }
 
+
+---
+
+2. Refactor Service Layer
+
+Move your logic from the repository to the service layer. Use @Query only for simpler queries and JPA or custom logic in the service for more complex requirements.
+
+Example: Service Implementation
+
+package com.verizon.ucs.restapi.service;
+
+import com.verizon.ucs.restapi.model.UCSPAlarmMetrics;
+import com.verizon.ucs.restapi.repository.UCSPAlarmInventoryRepository;
+import com.verizon.ucs.restapi.repository.UCSPAlarmMetricsRepository;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+@Service
+public class UCSPAlarmService {
+
+    private final UCSPAlarmInventoryRepository inventoryRepository;
+    private final UCSPAlarmMetricsRepository metricsRepository;
+
+    public UCSPAlarmService(UCSPAlarmInventoryRepository inventoryRepository, 
+                            UCSPAlarmMetricsRepository metricsRepository) {
+        this.inventoryRepository = inventoryRepository;
+        this.metricsRepository = metricsRepository;
+    }
+
+    // 1. Get Available Protocols
+    public List<String> getAvailableProtocols() {
+        return inventoryRepository.findAllProtocols();
+    }
+
+    // 2. Get Scatter Plot Data
+    public List<UCSPAlarmMetrics> getScatterPlotData(String protocol, String dataType) {
+        if ("number_of_msgs".equalsIgnoreCase(dataType)) {
+            return metricsRepository.findMetricsByProtocolWithNumberOfMsgs(protocol);
+        } else if ("size_of_msgs".equalsIgnoreCase(dataType)) {
+            return metricsRepository.findMetricsByProtocolWithSizeOfMsgs(protocol);
+        }
+        throw new IllegalArgumentException("Invalid data type: " + dataType);
+    }
+
+    // 3. Filter Data by Protocol
+    public List<UCSPAlarmMetrics> filterDataByProtocol(String protocol) {
+        return metricsRepository.findMetricsByProtocol(protocol);
+    }
+}
+
+
+---
+
+3. Modify Repository Queries
+
+Make sure to write simple, efficient JPQL or native queries.
+
+Example: UCSPAlarmMetricsRepository
+
+package com.verizon.ucs.restapi.repository;
+
+import com.verizon.ucs.restapi.model.UCSPAlarmMetrics;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.CrudRepository;
+
+import java.util.List;
+
+public interface UCSPAlarmMetricsRepository extends CrudRepository<UCSPAlarmMetrics, Long> {
+
+    @Query("SELECT m FROM UCSPAlarmMetrics m JOIN m.ucspAlarmInventory i WHERE i.ucgSource = :protocol")
+    List<UCSPAlarmMetrics> findMetricsByProtocol(String protocol);
+
+    @Query("SELECT m FROM UCSPAlarmMetrics m JOIN m.ucspAlarmInventory i WHERE i.ucgSource = :protocol AND m.numberOfMsgs IS NOT NULL")
+    List<UCSPAlarmMetrics> findMetricsByProtocolWithNumberOfMsgs(String protocol);
+
+    @Query("SELECT m FROM UCSPAlarmMetrics m JOIN m.ucspAlarmInventory i WHERE i.ucgSource = :protocol AND m.sizeOfMsgs IS NOT NULL")
+    List<UCSPAlarmMetrics> findMetricsByProtocolWithSizeOfMsgs(String protocol);
+}
+
+
+---
+
+4. Update GraphQL Schema
+
+Make sure the schema matches your updated resolver methods.
+
+Example: schema.graphqls
+
+type Query {
+    getAvailableProtocols: [String!]!
+    getScatterPlotData(protocol: String!, dataType: String!): [UCSPAlarmMetrics!]!
+    filterDataByProtocol(protocol: String!): [UCSPAlarmMetrics!]!
+}
+
+type UCSPAlarmMetrics {
+    id: ID!
+    collectionName: String!
+    lastUpdated: String
+    numberOfMsgs: Long
+    sizeOfMsgs: Long
+}
+
+
+---
+
+5. Test the APIs
+
+Test Query 1: Get Available Protocols
+
+query {
+  getAvailableProtocols
+}
+
+Test Query 2: Get Scatter Plot Data
 
 query {
   getScatterPlotData(protocol: "SNMP", dataType: "number_of_msgs") {
     collectionName
-    date
-    yValue
+    lastUpdated
+    numberOfMsgs
   }
 }
+
+Test Query 3: Filter Data by Protocol
+
+query {
+  filterDataByProtocol(protocol: "SNMP") {
+    collectionName
+    lastUpdated
+    sizeOfMsgs
+  }
+}
+
+
+---
+
+Key Benefits of this Approach
+
+1. Avoids overly complex queries in the repository.
+
+
+2. Business logic is centralized in the service layer for better readability and maintainability.
+
+
+3. Fully leverages GraphQL Java's query resolvers, which work well with your schema.
+
+
+
+Let me know if you need further clarification!
+
