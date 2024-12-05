@@ -1,29 +1,209 @@
+Let's implement the three required APIs:
+
+1. Get Scatter Plot Data API
+
+
+2. Filter Data by Protocol API
+
+
+3. Available Protocols API
+
+
+
+We'll make sure these APIs are implemented properly and without causing the previous error related to GraphQL parameter mapping.
+
+1. Define the Repository Layer
+
+First, let's ensure the repository layer can handle the queries needed for each API. You will need the following repository methods:
+
+@Repository
+public interface UCSPAlarmInventoryRepository extends JpaRepository<UCSPAlarmInventory, Long> {
+
+    @Query("SELECT DISTINCT ucgSource FROM UCSPAlarmInventory")
+    List<String> findDistinctProtocols();  // To fetch available protocols
+}
+
 @Repository
 public interface UCSPAlarmMetricsRepository extends JpaRepository<UCSPAlarmMetrics, Long> {
 
-    @Query(nativeQuery = true, value = """
-        SELECT collection_name AS collectionName, last_updated AS lastUpdated,
-               CASE :dataType WHEN 'number_of_msgs' THEN number_of_msgs
-               ELSE size_of_msgs END AS value
-        FROM ucsp_alarm_metrics
-        WHERE collection_name IN (
-            SELECT collection_name FROM ucsp_alarm_inventory WHERE ucg_source = :protocol
-        )
-    """)
-    List<Map<String, Object>> getScatterPlotData(@Param("protocol") String protocol, @Param("dataType") String dataType);
-
-    @Query(nativeQuery = true, value = """
-        SELECT DISTINCT ucg_source FROM ucsp_alarm_inventory
-    """)
-    List<String> getAvailableProtocols();
-
-    @Query(nativeQuery = true, value = """
-        SELECT collection_name AS collectionName, last_updated AS lastUpdated, 
-               number_of_msgs AS numberOfMsgs, size_of_msgs AS sizeOfMsgs
-        FROM ucsp_alarm_metrics
-        WHERE collection_name IN (
-            SELECT collection_name FROM ucsp_alarm_inventory WHERE ucg_source = :protocol
-        )
-    """)
-    List<Map<String, Object>> filterDataByProtocol(@Param("protocol") String protocol);
+    // Query to get scatter plot data
+    @Query("SELECT new com.verizon.ucs.restapi.model.ScatterPlotData(m.collectionName, m.lastUpdated, " +
+           "CASE WHEN :dataType = 'number_of_msgs' THEN m.numberOfMsgs ELSE m.sizeOfMsgs END) " +
+           "FROM UCSPAlarmMetrics m JOIN UCSPAlarmInventory i ON m.collectionName = i.collectionName " +
+           "WHERE i.ucgSource = :protocol")
+    List<ScatterPlotData> findScatterPlotData(@Param("protocol") String protocol, @Param("dataType") String dataType);
 }
+
+2. Define the Service Layer
+
+The service will contain the business logic for each of the APIs.
+
+@Service
+public class UCSPAlarmService {
+
+    @Autowired
+    private UCSPAlarmInventoryRepository inventoryRepository;
+
+    @Autowired
+    private UCSPAlarmMetricsRepository metricsRepository;
+
+    /**
+     * Fetch scatter plot data filtered by protocol and data type.
+     */
+    public List<ScatterPlotData> getScatterPlotData(String protocol, String dataType) {
+        return metricsRepository.findScatterPlotData(protocol, dataType);
+    }
+
+    /**
+     * Fetch all available protocols from the inventory table.
+     */
+    public List<String> getAvailableProtocols() {
+        return inventoryRepository.findDistinctProtocols();
+    }
+}
+
+3. Controller Layer
+
+The controller will expose the GraphQL queries for each API. We're using @QueryMapping from Spring GraphQL to map queries to the service layer.
+
+@GraphQlController
+public class UCSPAlarmController {
+
+    @Autowired
+    private UCSPAlarmService alarmService;
+
+    /**
+     * Get scatter plot data filtered by protocol and data type.
+     */
+    @QueryMapping
+    public List<ScatterPlotData> getScatterPlotDataByProtocol(
+            @Argument String protocol,
+            @Argument String dataType) {
+        return alarmService.getScatterPlotData(protocol, dataType);
+    }
+
+    /**
+     * Get available protocols from the inventory table.
+     */
+    @QueryMapping
+    public List<String> getAvailableProtocols() {
+        return alarmService.getAvailableProtocols();
+    }
+
+    /**
+     * Filter scatter plot data by protocol.
+     */
+    @QueryMapping
+    public List<ScatterPlotData> filterDataByProtocol(
+            @Argument String protocol,
+            @Argument String dataType) {
+        return alarmService.getScatterPlotData(protocol, dataType);
+    }
+}
+
+4. DTO for Scatter Plot Data
+
+Here’s the DTO that will represent the scatter plot data. This class is used to format the response data.
+
+public class ScatterPlotData {
+
+    private String collectionName;
+    private LocalDateTime lastUpdated;
+    private long yValue;
+
+    public ScatterPlotData(String collectionName, LocalDateTime lastUpdated, long yValue) {
+        this.collectionName = collectionName;
+        this.lastUpdated = lastUpdated;
+        this.yValue = yValue;
+    }
+
+    // Getters and setters
+    public String getCollectionName() {
+        return collectionName;
+    }
+
+    public void setCollectionName(String collectionName) {
+        this.collectionName = collectionName;
+    }
+
+    public LocalDateTime getLastUpdated() {
+        return lastUpdated;
+    }
+
+    public void setLastUpdated(LocalDateTime lastUpdated) {
+        this.lastUpdated = lastUpdated;
+    }
+
+    public long getYValue() {
+        return yValue;
+    }
+
+    public void setYValue(long yValue) {
+        this.yValue = yValue;
+    }
+}
+
+5. Testing the GraphQL Queries
+
+Once the API is implemented, these are the GraphQL queries you can use to test:
+
+1. Get Scatter Plot Data by Protocol and Data Type
+
+query {
+  getScatterPlotDataByProtocol(protocol: "SNMP", dataType: "number_of_msgs") {
+    collectionName
+    lastUpdated
+    yValue
+  }
+}
+
+2. Get Available Protocols
+
+query {
+  getAvailableProtocols
+}
+
+3. Filter Data by Protocol
+
+query {
+  filterDataByProtocol(protocol: "SNMP", dataType: "size_of_msgs") {
+    collectionName
+    lastUpdated
+    yValue
+  }
+}
+
+6. Ensure No Logger Errors
+
+To avoid the error you're encountering (IllegalStateException), make sure of the following:
+
+Correct Parameter Mapping: The @Argument annotations should match the parameters used in the GraphQL query. Ensure that both protocol and dataType are defined in the queries and in the controller method signature.
+
+Correct GraphQL Query: Verify the query structure. The error you were seeing can happen if the parameters defined in the GraphQL query don't match the controller's method.
+
+GraphQL Schema: Ensure your GraphQL schema is correctly configured in your Spring Boot application. If necessary, add a schema definition in your schema.graphqls file. If you’re using GraphQL with Spring Boot, ensure that the @QueryMapping methods are properly defined in the controller, and that the resolver is handling them correctly.
+
+
+7. Application Properties
+
+Make sure the Spring application properties for GraphQL are correctly configured. This might involve adding the following if missing in application.properties or application.yml:
+
+spring.graphql.schema-location=classpath:graphql/schema.graphqls
+spring.graphql.enabled=true
+
+Conclusion
+
+This implementation will provide:
+
+1. Get Scatter Plot Data by Protocol: Allows you to query data filtered by protocol and data type.
+
+
+2. Filter Data by Protocol: Similar functionality as the first API.
+
+
+3. Get Available Protocols: A list of distinct protocols from the ucsp_alarm_inventory table.
+
+
+
+Make sure to test these APIs via GraphQL queries, and if you still experience the IllegalStateException error, verify the method signature matches the GraphQL query format and that no mismatches exist between the query parameters and controller arguments.
+
