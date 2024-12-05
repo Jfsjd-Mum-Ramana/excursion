@@ -1,113 +1,24 @@
-Here is the GraphQL schema based on your UCSPAlarmController class:
+package com.verizon.ucs.restapi.resolvers;
 
-# Define the types for UCSPAlarmInventory, UCSPAlarmMetrics, and ScatterPlotData
+import com.verizon.ucs.restapi.model.ScatterPlotData;
+import com.verizon.ucs.restapi.services.ScatterPlotDataService;
+import graphql.kickstart.tools.GraphQLQueryResolver;
+import org.springframework.stereotype.Component;
 
-# Represents data from the inventory table
-type UCSPAlarmInventory {
-    id: ID!
-    collectionName: String!
-    deviceName: String!
-    deviceIp: String!
-    ucgSource: String!
-    vendor: String!
+import java.util.List;
+
+@Component
+public class ScatterPlotDataResolver implements GraphQLQueryResolver {
+
+    private final ScatterPlotDataService scatterPlotDataService;
+
+    // Constructor injection of the service class (you can replace this with your actual service)
+    public ScatterPlotDataResolver(ScatterPlotDataService scatterPlotDataService) {
+        this.scatterPlotDataService = scatterPlotDataService;
+    }
+
+    // Resolver for getScatterPlotDataByProtocol
+    public List<ScatterPlotData> getScatterPlotDataByProtocol(String protocol) {
+        return scatterPlotDataService.getScatterPlotDataByProtocol(protocol);
+    }
 }
-
-# Represents metrics data for each collection
-type UCSPAlarmMetrics {
-    id: ID!
-    collectionName: String!
-    lastUpdated: String!
-    numberOfMsgs: Int!
-    sizeOfMsgs: Int!
-}
-
-# Represents a single data point for the scatter plot
-type ScatterPlotData {
-    collectionName: String!
-    date: String!
-    yValue: Int!
-}
-
-# Root Query type with queries for inventory, metrics, and scatter plot data
-type Query {
-    # Query to get inventory data filtered by protocol
-    filterDataByProtocol(protocol: String!): [UCSPAlarmInventory]!
-    
-    # Query to get scatter plot data by protocol
-    getScatterPlotDataByProtocol(protocol: String!): [ScatterPlotData]!
-    
-    # Query to get metrics data filtered by protocol
-    filterMetricsByProtocol(protocol: String!): [UCSPAlarmMetrics]!
-}
-
-Explanation:
-
-1. UCSPAlarmInventory type:
-
-Represents the data stored in the ucsp_alarm_inventory table. It includes the collection name, device name, IP, and other metadata.
-
-
-
-2. UCSPAlarmMetrics type:
-
-Represents the data from the ucsp_alarm_metrics table, including the number of messages, message size, and timestamp for each collection.
-
-
-
-3. ScatterPlotData type:
-
-Represents the data points for the scatter plot, which include the collection name, date, and a y-axis value (e.g., size_of_msgs or number_of_msgs).
-
-
-
-4. Query type:
-
-filterDataByProtocol(protocol: String!): Fetches a list of UCSPAlarmInventory filtered by the protocol.
-
-getScatterPlotDataByProtocol(protocol: String!): Retrieves the scatter plot data filtered by protocol.
-
-filterMetricsByProtocol(protocol: String!): Fetches UCSPAlarmMetrics filtered by the protocol.
-
-
-
-
-Example Query Usage:
-
-Fetch Inventory Data by Protocol:
-
-query {
-  filterDataByProtocol(protocol: "SNMP") {
-    id
-    collectionName
-    deviceName
-    deviceIp
-    ucgSource
-    vendor
-  }
-}
-
-Fetch Scatter Plot Data by Protocol:
-
-query {
-  getScatterPlotDataByProtocol(protocol: "SNMP") {
-    collectionName
-    date
-    yValue
-  }
-}
-
-Fetch Metrics Data by Protocol:
-
-query {
-  filterMetricsByProtocol(protocol: "SNMP") {
-    id
-    collectionName
-    lastUpdated
-    numberOfMsgs
-    sizeOfMsgs
-  }
-}
-
-
-This schema provides the structure for the queries you implemented in the UCSPAlarmController class. It assumes that your alarmService methods are properly implemented to fetch data based on the protocol.
-
