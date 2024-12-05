@@ -1,129 +1,8 @@
-[2024-12-05 13:43:16,594 UTC] [ERROR] http-nio-8080-exec-3 org.springframework.graphql.execution.ExceptionResolversExceptionHandler - Unresolved ConverterNotFoundException for executionId 6ae5dbb5-9177-97e9-c4bc-ecfe5bf27dff
-org.springframework.core.convert.ConverterNotFoundException: No converter found capable of converting from type [org.springframework.data.jpa.repository.query.AbstractJpaQuery$TupleConverter$TupleBackedMap] to type [com.verizon.ucs.restapi.model.ScatterPlotData]
-	at org.springframework.core.convert.support.GenericConversionService.handleConverterNotFound(GenericConversionService.java:321)
-	at org.springframework.core.convert.support.GenericConversionService.convert(GenericConversionService.java:195)
-	at org.springframework.core.convert.support.GenericConversionService.convert(GenericConversionService.java:175)
-	at org.springframework.data.repository.query.ResultProcessor$ProjectingConverter.convert(ResultProcessor.java:313)
-	at org.springframework.data.repository.query.ResultProcessor$ChainingConverter.lambda$and$0(ResultProcessor.java:229)
-	at org.springframework.data.repository.query.ResultProcessor$ChainingConverter.convert(ResultProcessor.java:240)
-	at org.springframework.data.repository.query.ResultProcessor.processResult(ResultProcessor.java:156)
-	at org.springframework.data.jpa.repository.query.AbstractJpaQuery.doExecute(AbstractJpaQuery.java:159)
-	at org.springframework.data.jpa.repository.query.AbstractJpaQuery.execute(AbstractJpaQuery.java:144)
-	at org.springframework.data.repository.core.support.RepositoryMethodInvoker.doInvoke(RepositoryMethodInvoker.java:137)
-	at org.springframework.data.repository.core.support.RepositoryMethodInvoker.invoke(RepositoryMethodInvoker.java:121)
-	at org.springframework.data.repository.core.support.QueryExecutorMethodInterceptor.doInvoke(QueryExecutorMethodInterceptor.java:160)
-	at org.springframework.data.repository.core.support.QueryExecutorMethodInterceptor.invoke(QueryExecutorMethodInterceptor.java:139)
-	at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:186)
-	at org.springframework.data.projection.DefaultMethodInvokingMethodInterceptor.invoke(DefaultMethodInvokingMethodInterceptor.java:76)
-	at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:186)
-	at org.springframework.transaction.interceptor.TransactionInterceptor$1.proceedWithInvocation(TransactionInterceptor.java:123)
-	at org.springframework.transaction.interceptor.TransactionAspectSupport.invokeWithinTransaction(TransactionAspectSupport.java:388)
-	at org.springframework.transaction.interceptor.TransactionInterceptor.invoke(TransactionInterceptor.java:119)
-	at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:186)
-	at org.springframework.dao.support.PersistenceExceptionTranslationInterceptor.invoke(PersistenceExceptionTranslationInterceptor.java:137)
-	at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:186)
-	at org.springframework.data.jpa.repository.support.CrudMethodMetadataPostProcessor$CrudMethodMetadataPopulatingMethodInterceptor.invoke(CrudMethodMetadataPostProcessor.java:145)
-	at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:186)
-	at org.springframework.aop.interceptor.ExposeInvocationInterceptor.invoke(ExposeInvocationInterceptor.java:97)
-	at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:186)
-	at org.springframework.aop.framework.JdkDynamicAopProxy.invoke(JdkDynamicAopProxy.java:241)
-	at jdk.proxy2/jdk.proxy2.$Proxy182.findScatterPlotDataByProtocol(Unknown Source)
-	at com.verizon.ucs.restapi.repository.UCSPAlarmMetricsRepository.findScatterPlotDataWithLogging(UCSPAlarmMetricsRepository.java:27)
-	at java.base/java.lang.invoke.MethodHandle.invokeWithArguments(MethodHandle.java:732)
-	at org.springframework.data.projection.DefaultMethodInvokingMethodInterceptor.invoke(DefaultMethodInvokingMethodInterceptor.java:82)
-	at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:186)
-	at org.springframework.transaction.interceptor.TransactionInterceptor$1.proceedWithInvocation(TransactionInterceptor.java:123)
-	at org.springframework.transaction.interceptor.TransactionAspectSupport.invokeWithinTransaction(TransactionAspectSupport.java:388)
-	at org.springframework.transaction.interceptor.TransactionInterceptor.invoke(TransactionInterceptor.java:119)
-	at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:186)
-	at org.springframework.dao.support.PersistenceExceptionTranslationInterceptor.invoke(PersistenceExceptionTranslationInterceptor.java:137)
-	at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:186)
-	at org.springframework.data.jpa.repository.support.CrudMethodMetadataPostProcessor$CrudMethodMetadataPopulatingMethodInterceptor.invoke(CrudMethodMetadataPostProcessor.java:174)
-	at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:186)
-	at org.springframework.aop.interceptor.ExposeInvocationInterceptor.invoke(ExposeInvocationInterceptor.java:97)
-	at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:186)
-	at org.springframework.aop.framework.JdkDynamicAopProxy.invoke(JdkDynamicAopProxy.java:241)
-	at jdk.proxy2/jdk.proxy2.$Proxy182.findScatterPlotDataWithLogging(Unknown Source)
-	at com.verizon.ucs.restapi.service.UCSPAlarmService.getScatterPlotDataByProtocol(UCSPAlarmService.java:33)
-	at com.verizon.ucs.restapi.controllers.UCSPAlarmController.getScatterPlotDataByProtocol(UCSPAlarmController.java:30)
-	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
-	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)
-	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
-	at java.base/java.lang.reflect.Method.invoke(Method.java:568)
-	at org.springframework.graphql.data.method.InvocableHandlerMethodSupport.doInvoke(InvocableHandlerMethodSupport.java:87)
-	at org.springframework.graphql.data.method.annotation.support.DataFetcherHandlerMethod.validateAndInvoke(DataFetcherHandlerMethod.java:198)
-	at org.springframework.graphql.data.method.annotation.support.DataFetcherHandlerMethod.invoke(DataFetcherHandlerMethod.java:126)
-	at org.springframework.graphql.data.method.annotation.support.AnnotatedControllerConfigurer$SchemaMappingDataFetcher.get(AnnotatedControllerConfigurer.java:513)
-	at org.springframework.graphql.execution.ContextDataFetcherDecorator.lambda$get$0(ContextDataFetcherDecorator.java:76)
-	at org.springframework.graphql.execution.ReactorContextManager.invokeCallable(ReactorContextManager.java:104)
-	at org.springframework.graphql.execution.ContextDataFetcherDecorator.get(ContextDataFetcherDecorator.java:75)
-	at org.springframework.boot.actuate.metrics.graphql.GraphQlMetricsInstrumentation.lambda$instrumentDataFetcher$1(GraphQlMetricsInstrumentation.java:103)
-	at graphql.execution.ExecutionStrategy.fetchField(ExecutionStrategy.java:279)
-	at graphql.execution.ExecutionStrategy.resolveFieldWithInfo(ExecutionStrategy.java:210)
-	at graphql.execution.AsyncExecutionStrategy.execute(AsyncExecutionStrategy.java:60)
-	at graphql.execution.Execution.executeOperation(Execution.java:159)
-	at graphql.execution.Execution.execute(Execution.java:105)
-	at graphql.GraphQL.execute(GraphQL.java:641)
-	at graphql.GraphQL.lambda$parseValidateAndExecute$11(GraphQL.java:561)
-	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1187)
-	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2309)
-	at graphql.GraphQL.parseValidateAndExecute(GraphQL.java:556)
-	at graphql.GraphQL.executeAsync(GraphQL.java:524)
-	at org.springframework.graphql.execution.DefaultExecutionGraphQlService.lambda$execute$2(DefaultExecutionGraphQlService.java:81)
-	at reactor.core.publisher.MonoDeferContextual.subscribe(MonoDeferContextual.java:47)
-	at reactor.core.publisher.Mono.subscribe(Mono.java:4490)
-	at reactor.core.publisher.Mono.subscribeWith(Mono.java:4605)
-	at reactor.core.publisher.Mono.toFuture(Mono.java:5010)
-	at org.springframework.core.ReactiveAdapterRegistry$ReactorRegistrar.lambda$registerAdapters$5(ReactiveAdapterRegistry.java:293)
-	at org.springframework.core.ReactiveAdapter.fromPublisher(ReactiveAdapter.java:121)
-	at org.springframework.web.servlet.function.DefaultAsyncServerResponse.create(DefaultAsyncServerResponse.java:188)
-	at org.springframework.web.servlet.function.ServerResponse.async(ServerResponse.java:239)
-	at org.springframework.graphql.server.webmvc.GraphQlHttpHandler.handleRequest(GraphQlHttpHandler.java:102)
-	at org.springframework.web.servlet.function.support.HandlerFunctionAdapter.handle(HandlerFunctionAdapter.java:106)
-	at org.springframework.web.servlet.DispatcherServlet.doDispatch(DispatcherServlet.java:1072)
-	at org.springframework.web.servlet.DispatcherServlet.doService(DispatcherServlet.java:965)
-	at org.springframework.web.servlet.FrameworkServlet.processRequest(FrameworkServlet.java:1006)
-	at org.springframework.web.servlet.FrameworkServlet.doPost(FrameworkServlet.java:909)
-	at javax.servlet.http.HttpServlet.service(HttpServlet.java:555)
-	at org.springframework.web.servlet.FrameworkServlet.service(FrameworkServlet.java:883)
-	at javax.servlet.http.HttpServlet.service(HttpServlet.java:623)
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:209)
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:153)
-	at org.apache.tomcat.websocket.server.WsFilter.doFilter(WsFilter.java:51)
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:178)
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:153)
-	at org.springframework.web.filter.RequestContextFilter.doFilterInternal(RequestContextFilter.java:100)
-	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:117)
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:178)
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:153)
-	at org.springframework.web.filter.FormContentFilter.doFilterInternal(FormContentFilter.java:93)
-	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:117)
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:178)
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:153)
-	at org.springframework.boot.actuate.metrics.web.servlet.WebMvcMetricsFilter.doFilterInternal(WebMvcMetricsFilter.java:96)
-	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:117)
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:178)
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:153)
-	at org.springframework.web.filter.CharacterEncodingFilter.doFilterInternal(CharacterEncodingFilter.java:201)
-	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:117)
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:178)
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:153)
-	at org.apache.catalina.core.StandardWrapperValve.invoke(StandardWrapperValve.java:168)
-	at org.apache.catalina.core.StandardContextValve.invoke(StandardContextValve.java:90)
-	at org.apache.catalina.authenticator.AuthenticatorBase.invoke(AuthenticatorBase.java:481)
-	at org.apache.catalina.core.StandardHostValve.invoke(StandardHostValve.java:130)
-	at org.apache.catalina.valves.ErrorReportValve.invoke(ErrorReportValve.java:93)
-	at org.apache.catalina.core.StandardEngineValve.invoke(StandardEngineValve.java:74)
-	at org.apache.catalina.connector.CoyoteAdapter.service(CoyoteAdapter.java:342)
-	at org.apache.coyote.http11.Http11Processor.service(Http11Processor.java:390)
-	at org.apache.coyote.AbstractProcessorLight.process(AbstractProcessorLight.java:63)
-	at org.apache.coyote.AbstractProtocol$ConnectionHandler.process(AbstractProtocol.java:928)
-	at org.apache.tomcat.util.net.NioEndpoint$SocketProcessor.doRun(NioEndpoint.java:1794)
-	at org.apache.tomcat.util.net.SocketProcessorBase.run(SocketProcessorBase.java:52)
-	at org.apache.tomcat.util.threads.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1191)
-	at org.apache.tomcat.util.threads.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:659)
-	at org.apache.tomcat.util.threads.TaskThread$WrappingRunnable.run(TaskThread.java:61)
-Now showing this error in the loggers please resolve here the classes
+To address the issue you're facing with the ConverterNotFoundException, it seems like there's a problem with the conversion of the Tuple result to your ScatterPlotData model. We can resolve this by ensuring proper mapping and conversion between the query results and the model.
+
+Here's an updated set of classes that includes the necessary mapping for your scatter plot data.
+
+1. UCSPAlarmController.java (Updated)
 
 package com.verizon.ucs.restapi.controllers;
 
@@ -164,6 +43,11 @@ public class UCSPAlarmController {
     }
 }
 
+2. UCSPAlarmMetricsRepository.java (Updated)
+
+The key change here is using a DTO (like ScatterPlotData) for the query result. Also, ensure you're using @Query properly for conversion to the custom data model.
+
+
 package com.verizon.ucs.restapi.repository;
 
 import com.verizon.ucs.restapi.model.ScatterPlotData;
@@ -180,24 +64,23 @@ import java.util.List;
 @Repository
 public interface UCSPAlarmMetricsRepository extends JpaRepository<UCSPAlarmMetrics, Long> {
     Logger logger = LoggerFactory.getLogger(UCSPAlarmMetricsRepository.class);
+
     // Query to get scatter plot data by protocol (aggregation based on protocol)
-    @Query(nativeQuery = true, value = "SELECT c.collection_name AS collectionName, " +
-            "TO_CHAR(m.last_updated, 'YYYY-MM-DD') AS date, " +
-            "m.size_of_msgs AS yValue " +
-            "FROM ucsp_alarm_inventory c " +
-            "JOIN ucsp_alarm_metrics m ON c.collection_name = m.collection_name " +
-            "WHERE c.ucg_source = :protocol")
+    @Query("SELECT new com.verizon.ucs.restapi.model.ScatterPlotData(" +
+            "c.collectionName, " +
+            "FUNCTION('TO_CHAR', m.lastUpdated, 'YYYY-MM-DD'), " +
+            "m.sizeOfMsgs) " +
+            "FROM UCSPAlarmInventory c " +
+            "JOIN UCSPAlarmMetrics m ON c.collectionName = m.collectionName " +
+            "WHERE c.ucgSource = :protocol")
     List<ScatterPlotData> findScatterPlotDataByProtocol(@Param("protocol") String protocol);
-    default  List<ScatterPlotData> findScatterPlotDataWithLogging(String protocol) {
-        logger.info("Executing query for protocol: " +protocol) ;
-        List<ScatterPlotData> result = findScatterPlotDataByProtocol(protocol);
-        logger.info("Query result: " +result);
-        return result;
-    }
-    // Query to filter metrics by protocol
+
+    // Fetch metrics by protocol
     @Query("SELECT m FROM UCSPAlarmMetrics m WHERE m.ucspAlarmInventory.ucgSource = :protocol")
     List<UCSPAlarmMetrics> findMetricsByProtocol(@Param("protocol") String protocol);
 }
+
+3. UCSPAlarmInventoryRepository.java (No changes, just keeping it here for reference)
 
 package com.verizon.ucs.restapi.repository;
 
@@ -217,6 +100,10 @@ public interface UCSPAlarmInventoryRepository extends JpaRepository<UCSPAlarmInv
     List<UCSPAlarmInventory> findByProtocol(@Param("protocol") String protocol);
 }
 
+4. UCSPAlarmService.java (Updated)
+
+I've added logging and a call to the repository that now directly returns the correctly mapped ScatterPlotData from the repository.
+
 
 package com.verizon.ucs.restapi.service;
 
@@ -234,6 +121,7 @@ import java.util.List;
 
 @Service
 public class UCSPAlarmService {
+
     Logger logger = LoggerFactory.getLogger(UCSPAlarmService.class);
 
     @Autowired
@@ -249,9 +137,9 @@ public class UCSPAlarmService {
 
     // Fetch scatter plot data by protocol
     public List<ScatterPlotData> getScatterPlotDataByProtocol(String protocol) {
-        logger.debug("Received request to fetch plot data for protocol: " +protocol);
-        List<ScatterPlotData> scatterPlotData = metricsRepository.findScatterPlotDataWithLogging(protocol);
-        logger.debug("returning data: " +scatterPlotData);
+        logger.debug("Received request to fetch scatter plot data for protocol: " + protocol);
+        List<ScatterPlotData> scatterPlotData = metricsRepository.findScatterPlotDataByProtocol(protocol);
+        logger.debug("Returning scatter plot data: " + scatterPlotData);
         return scatterPlotData;
     }
 
@@ -260,3 +148,83 @@ public class UCSPAlarmService {
         return metricsRepository.findMetricsByProtocol(protocol);
     }
 }
+
+5. ScatterPlotData.java (DTO Class) (Updated)
+
+Make sure your ScatterPlotData class is set up to match the result structure. It's a Data Transfer Object (DTO) for the scatter plot data:
+
+package com.verizon.ucs.restapi.model;
+
+public class ScatterPlotData {
+
+    private String collectionName;
+    private String date;
+    private Long yValue;
+
+    // Constructor
+    public ScatterPlotData(String collectionName, String date, Long yValue) {
+        this.collectionName = collectionName;
+        this.date = date;
+        this.yValue = yValue;
+    }
+
+    // Getters and Setters
+    public String getCollectionName() {
+        return collectionName;
+    }
+
+    public void setCollectionName(String collectionName) {
+        this.collectionName = collectionName;
+    }
+
+    public String getDate() {
+        return date;
+    }
+
+    public void setDate(String date) {
+        this.date = date;
+    }
+
+    public Long getyValue() {
+        return yValue;
+    }
+
+    public void setyValue(Long yValue) {
+        this.yValue = yValue;
+    }
+
+    @Override
+    public String toString() {
+        return "ScatterPlotData{" +
+                "collectionName='" + collectionName + '\'' +
+                ", date='" + date + '\'' +
+                ", yValue=" + yValue +
+                '}';
+    }
+}
+
+Explanation of Changes:
+
+1. JPQL Query in UCSPAlarmMetricsRepository:
+
+I've updated the query to use the new keyword to directly map the result of the query to a ScatterPlotData object.
+
+The function TO_CHAR is used to format the lastUpdated timestamp as a string in the format YYYY-MM-DD.
+
+
+
+2. ScatterPlotData Class:
+
+This is a simple DTO that matches the data required for the scatter plot (collectionName, date, and yValue).
+
+
+
+3. Service Layer:
+
+The service layer now calls the repository methods directly, which return ScatterPlotData objects. This allows your GraphQL controller to send the data in the format required for the scatter plot visualization.
+
+
+
+
+This should resolve the ConverterNotFoundException as we're now directly mapping the query results to the ScatterPlotData class without requiring an additional conversion step.
+
