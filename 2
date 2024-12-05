@@ -1,3 +1,26 @@
+The error you are encountering indicates that Spring GraphQL is having trouble resolving the parameters for the getScatterPlotDataByProtocol method in the UCSPAlarmController. The specific issue is related to the GraphQL query parameter not being recognized.
+
+The error message:
+
+IllegalStateException: Parameter [0] in public java.util.List<com.verizon.ucs.restapi.model.ScatterPlotData> com.verizon.ucs.restapi.controllers.UCSPAlarmController.getScatterPlotDataByProtocol(java.lang.String): was not recognized by any resolver
+
+Solution:
+
+To resolve this issue, you need to make sure that Spring GraphQL can recognize the parameters passed to the @QueryMapping annotated methods. The issue is that Spring GraphQL is not recognizing the method parameters correctly when a query is executed. This might be due to the lack of a correct parameter binding in the GraphQL schema or the method signature not being aligned with the GraphQL request.
+
+Steps to resolve:
+
+1. Correct Parameter Naming: Ensure that the parameter in the method matches the expected query parameter from GraphQL. GraphQL expects to use the name of the field in the query as the parameter name in the controller method. Make sure that the parameter in the GraphQL query corresponds to the method signature.
+
+
+2. Use @Argument annotation: Spring GraphQL uses @Argument to bind query parameters to method arguments. You need to add the @Argument annotation to your method parameters.
+
+
+
+Here's the corrected code:
+
+UCSPAlarmController class
+
 package com.verizon.ucs.restapi.controllers;
 
 import com.verizon.ucs.restapi.model.ScatterPlotData;
@@ -6,6 +29,7 @@ import com.verizon.ucs.restapi.model.UCSPAlarmMetrics;
 import com.verizon.ucs.restapi.service.UCSPAlarmService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.graphql.data.method.annotation.QueryMapping;
+import org.springframework.graphql.data.method.annotation.Argument;
 import org.springframework.stereotype.Controller;
 
 import java.util.List;
@@ -18,207 +42,44 @@ public class UCSPAlarmController {
 
     // Query to get data by protocol (Inventory)
     @QueryMapping
-    public List<UCSPAlarmInventory> filterDataByProtocol(String protocol) {
+    public List<UCSPAlarmInventory> filterDataByProtocol(@Argument String protocol) {
         return alarmService.getInventoryByProtocol(protocol);
     }
 
     // Query to get scatter plot data by protocol
     @QueryMapping
-    public List<ScatterPlotData> getScatterPlotDataByProtocol(String protocol) {
+    public List<ScatterPlotData> getScatterPlotDataByProtocol(@Argument String protocol) {
         return alarmService.getScatterPlotDataByProtocol(protocol);
     }
 
     // Query to get metrics data by protocol
     @QueryMapping
-    public List<UCSPAlarmMetrics> filterMetricsByProtocol(String protocol) {
+    public List<UCSPAlarmMetrics> filterMetricsByProtocol(@Argument String protocol) {
         return alarmService.getMetricsByProtocol(protocol);
     }
 }
 
+Explanation of Changes:
 
-package com.verizon.ucs.restapi.service;
+The @Argument annotation was added to the method parameters (String protocol). This ensures that the parameters passed from the GraphQL query are mapped to the method arguments properly.
 
-import com.verizon.ucs.restapi.model.ScatterPlotData;
-import com.verizon.ucs.restapi.model.UCSPAlarmInventory;
-import com.verizon.ucs.restapi.model.UCSPAlarmMetrics;
-import com.verizon.ucs.restapi.repository.UCSPAlarmInventoryRepository;
-import com.verizon.ucs.restapi.repository.UCSPAlarmMetricsRepository;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
+The GraphQL query will now recognize the protocol parameter and pass it to the corresponding service methods.
 
-import java.util.List;
 
-@Service
-public class UCSPAlarmService {
-    Logger logger = LoggerFactory.getLogger(UCSPAlarmService.class);
+With this change, the Spring GraphQL framework should be able to recognize the query parameters and correctly execute the methods.
 
-    @Autowired
-    private UCSPAlarmInventoryRepository inventoryRepository;
+Notes:
 
-    @Autowired
-    private UCSPAlarmMetricsRepository metricsRepository;
+Ensure that the GraphQL query is structured correctly on the client side when you call this method. For example:
 
-    // Fetch data by protocol (inventory)
-    public List<UCSPAlarmInventory> getInventoryByProtocol(String protocol) {
-        return inventoryRepository.findByProtocol(protocol);
-    }
 
-    // Fetch scatter plot data by protocol
-    public List<ScatterPlotData> getScatterPlotDataByProtocol(String protocol) {
-        logger.debug("Received request to fetch plot data for protocol: " +protocol);
-        List<ScatterPlotData> scatterPlotData = metricsRepository.findScatterPlotDataWithLogging(protocol);
-        logger.debug("returning data: " +scatterPlotData);
-        return scatterPlotData;
-    }
-
-    // Fetch metrics by protocol
-    public List<UCSPAlarmMetrics> getMetricsByProtocol(String protocol) {
-        return metricsRepository.findMetricsByProtocol(protocol);
-    }
+{
+  getScatterPlotDataByProtocol(protocol: "SNMP") {
+    collectionName
+    date
+    yValue
+  }
 }
 
+By applying these changes, you should be able to resolve the issue and allow the GraphQL queries to work as expected.
 
-package com.verizon.ucs.restapi.repository;
-
-import com.verizon.ucs.restapi.model.UCSPAlarmInventory;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
-import org.springframework.stereotype.Repository;
-
-import java.util.List;
-
-@Repository
-public interface UCSPAlarmInventoryRepository extends JpaRepository<UCSPAlarmInventory, Long> {
-
-    // Query to filter collections by protocol
-    @Query("SELECT u FROM UCSPAlarmInventory u WHERE u.ucgSource = :protocol")
-    List<UCSPAlarmInventory> findByProtocol(@Param("protocol") String protocol);
-}
-
-package com.verizon.ucs.restapi.repository;
-
-import com.verizon.ucs.restapi.model.ScatterPlotData;
-import com.verizon.ucs.restapi.model.UCSPAlarmMetrics;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
-import org.springframework.stereotype.Repository;
-
-import java.util.List;
-
-@Repository
-public interface UCSPAlarmMetricsRepository extends JpaRepository<UCSPAlarmMetrics, Long> {
-    Logger logger = LoggerFactory.getLogger(UCSPAlarmMetricsRepository.class);
-    // Query to get scatter plot data by protocol (aggregation based on protocol)
-    @Query(nativeQuery = true, value = "SELECT c.collection_name AS collectionName, " +
-            "TO_CHAR(m.last_updated, 'YYYY-MM-DD') AS date, " +
-            "m.size_of_msgs AS yValue " +
-            "FROM ucsp_alarm_inventory c " +
-            "JOIN ucsp_alarm_metrics m ON c.collection_name = m.collection_name " +
-            "WHERE c.ucg_source = :protocol")
-    List<ScatterPlotData> findScatterPlotDataByProtocol(@Param("protocol") String protocol);
-    default  List<ScatterPlotData> findScatterPlotDataWithLogging(String protocol) {
-        logger.info("Executing query for protocol: " +protocol) ;
-        List<ScatterPlotData> result = findScatterPlotDataByProtocol(protocol);
-        logger.info("Query result: " +result);
-        return result;
-    }
-    // Query to filter metrics by protocol
-    @Query("SELECT m FROM UCSPAlarmMetrics m WHERE m.ucspAlarmInventory.ucgSource = :protocol")
-    List<UCSPAlarmMetrics> findMetricsByProtocol(@Param("protocol") String protocol);
-}
-
-The above project showing this error please resolve thie error and make sure that the code will work finr here the error trace 
-
-IllegalStateException for executionId 6fbf0cbb-fda7-8629-42ad-479d8ac4412d
-java.lang.IllegalStateException: Parameter [0] in public java.util.List<com.verizon.ucs.restapi.model.ScatterPlotData> com.verizon.ucs.restapi.controllers.UCSPAlarmController.getScatterPlotDataByProtocol(java.lang.String):  was not recognized by any resolver and there is no source/parent either. Please, refer to the documentation for the full list of supported parameters.
-	at org.springframework.graphql.data.method.annotation.support.SourceMethodArgumentResolver.resolveArgument(SourceMethodArgumentResolver.java:70)
-	at org.springframework.graphql.data.method.HandlerMethodArgumentResolverComposite.resolveArgument(HandlerMethodArgumentResolverComposite.java:83)
-	at org.springframework.graphql.data.method.annotation.support.DataFetcherHandlerMethod.getMethodArgumentValues(DataFetcherHandlerMethod.java:177)
-	at org.springframework.graphql.data.method.annotation.support.DataFetcherHandlerMethod.invoke(DataFetcherHandlerMethod.java:119)
-	at org.springframework.graphql.data.method.annotation.support.AnnotatedControllerConfigurer$SchemaMappingDataFetcher.get(AnnotatedControllerConfigurer.java:513)
-	at org.springframework.graphql.execution.ContextDataFetcherDecorator.lambda$get$0(ContextDataFetcherDecorator.java:76)
-	at org.springframework.graphql.execution.ReactorContextManager.invokeCallable(ReactorContextManager.java:104)
-	at org.springframework.graphql.execution.ContextDataFetcherDecorator.get(ContextDataFetcherDecorator.java:75)
-	at org.springframework.boot.actuate.metrics.graphql.GraphQlMetricsInstrumentation.lambda$instrumentDataFetcher$1(GraphQlMetricsInstrumentation.java:103)
-	at graphql.execution.ExecutionStrategy.fetchField(ExecutionStrategy.java:279)
-	at graphql.execution.ExecutionStrategy.resolveFieldWithInfo(ExecutionStrategy.java:210)
-	at graphql.execution.AsyncExecutionStrategy.execute(AsyncExecutionStrategy.java:60)
-	at graphql.execution.Execution.executeOperation(Execution.java:159)
-	at graphql.execution.Execution.execute(Execution.java:105)
-	at graphql.GraphQL.execute(GraphQL.java:641)
-	at graphql.GraphQL.lambda$parseValidateAndExecute$11(GraphQL.java:561)
-	at java.base/java.util.concurrent.CompletableFuture.uniComposeStage(CompletableFuture.java:1187)
-	at java.base/java.util.concurrent.CompletableFuture.thenCompose(CompletableFuture.java:2309)
-	at graphql.GraphQL.parseValidateAndExecute(GraphQL.java:556)
-	at graphql.GraphQL.executeAsync(GraphQL.java:524)
-	at org.springframework.graphql.execution.DefaultExecutionGraphQlService.lambda$execute$2(DefaultExecutionGraphQlService.java:81)
-	at reactor.core.publisher.MonoDeferContextual.subscribe(MonoDeferContextual.java:47)
-	at reactor.core.publisher.Mono.subscribe(Mono.java:4490)
-	at reactor.core.publisher.Mono.subscribeWith(Mono.java:4605)
-	at reactor.core.publisher.Mono.toFuture(Mono.java:5010)
-	at org.springframework.core.ReactiveAdapterRegistry$ReactorRegistrar.lambda$registerAdapters$5(ReactiveAdapterRegistry.java:293)
-	at org.springframework.core.ReactiveAdapter.fromPublisher(ReactiveAdapter.java:121)
-	at org.springframework.web.servlet.function.DefaultAsyncServerResponse.create(DefaultAsyncServerResponse.java:188)
-	at org.springframework.web.servlet.function.ServerResponse.async(ServerResponse.java:239)
-	at org.springframework.graphql.server.webmvc.GraphQlHttpHandler.handleRequest(GraphQlHttpHandler.java:102)
-	at org.springframework.web.servlet.function.support.HandlerFunctionAdapter.handle(HandlerFunctionAdapter.java:106)
-	at org.springframework.web.servlet.DispatcherServlet.doDispatch(DispatcherServlet.java:1072)
-	at org.springframework.web.servlet.DispatcherServlet.doService(DispatcherServlet.java:965)
-	at org.springframework.web.servlet.FrameworkServlet.processRequest(FrameworkServlet.java:1006)
-	at org.springframework.web.servlet.FrameworkServlet.doPost(FrameworkServlet.java:909)
-	at javax.servlet.http.HttpServlet.service(HttpServlet.java:555)
-	at org.springframework.web.servlet.FrameworkServlet.service(FrameworkServlet.java:883)
-	at javax.servlet.http.HttpServlet.service(HttpServlet.java:623)
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:209)
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:153)
-	at org.apache.tomcat.websocket.server.WsFilter.doFilter(WsFilter.java:51)
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:178)
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:153)
-	at org.springframework.web.filter.RequestContextFilter.doFilterInternal(RequestContextFilter.java:100)
-	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:117)
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:178)
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:153)
-	at org.springframework.web.filter.FormContentFilter.doFilterInternal(FormContentFilter.java:93)
-	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:117)
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:178)
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:153)
-	at org.springframework.boot.actuate.metrics.web.servlet.WebMvcMetricsFilter.doFilterInternal(WebMvcMetricsFilter.java:96)
-	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:117)
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:178)
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:153)
-	at org.springframework.web.filter.CharacterEncodingFilter.doFilterInternal(CharacterEncodingFilter.java:201)
-	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:117)
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:178)
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:153)
-	at org.apache.catalina.core.StandardWrapperValve.invoke(StandardWrapperValve.java:168)
-	at org.apache.catalina.core.StandardContextValve.invoke(StandardContextValve.java:90)
-	at org.apache.catalina.authenticator.AuthenticatorBase.invoke(AuthenticatorBase.java:481)
-	at org.apache.catalina.core.StandardHostValve.invoke(StandardHostValve.java:130)
-	at org.apache.catalina.valves.ErrorReportValve.invoke(ErrorReportValve.java:93)
-	at org.apache.catalina.core.StandardEngineValve.invoke(StandardEngineValve.java:74)
-	at org.apache.catalina.connector.CoyoteAdapter.service(CoyoteAdapter.java:342)
-	at org.apache.coyote.http11.Http11Processor.service(Http11Processor.java:390)
-	at org.apache.coyote.AbstractProcessorLight.process(AbstractProcessorLight.java:63)
-	at org.apache.coyote.AbstractProtocol$ConnectionHandler.process(AbstractProtocol.java:928)
-	at org.apache.tomcat.util.net.NioEndpoint$SocketProcessor.doRun(NioEndpoint.java:1794)
-	at org.apache.tomcat.util.net.SocketProcessorBase.run(SocketProcessorBase.java:52)
-	at org.apache.tomcat.util.threads.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1191)
-	at org.apache.tomcat.util.threads.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:659)
-	at org.apache.tomcat.util.threads.TaskThread$WrappingRunnable.run(TaskThread.java:61)
-	at java.base/java.lang.Thread.run(Thread.java:833)
-[2024-12-05 11:22:08,207 UTC] [INFO ] Thread-2 com.verizon.ucs.restapi.RestApi - Shuttingdown restapi service.
-[2024-12-05 11:22:08,259 UTC] [INFO ] SpringApplicationShutdownHook org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean - Closing JPA EntityManagerFactory for persistence unit 'default'
-[2024-12-05 11:22:19,158 UTC] [INFO ] main com.verizon.ucs.restapi.RestApi - Starting RestApi using Java 17.0.6 on VIN0020ALKKW1V1 with PID 28800 (C:\Users\margara\temp\ms-restapi\target\classes started by MARGARA in C:\Users\margara\temp\ms-restapi)
-[2024-12-05 11:22:19,161 UTC] [INFO ] main com.verizon.ucs.restapi.RestApi - No active profile set, falling back to 1 default profile: "default"
-[2024-12-05 11:22:20,805 UTC] [INFO ] main org.springframework.data.repository.config.RepositoryConfigurationDelegate - Multiple Spring Data modules found, entering strict repository configuration mode
-[2024-12-05 11:22:20,807 UTC] [INFO ] main org.springframework.data.repository.config.RepositoryConfigurationDelegate - Bootstrapping Spring Data JPA repositories in DEFAULT mode.
-[2024-12-05 11:22:21,318 UTC] [INFO ] main org.springframework.data.repository.config.RepositoryConfigurationDelegate - Finished Spring Data repository scanning in 493 ms. Found 5 JPA repository interfaces.
-[2024-12-05 11:22:21,327 UTC] [INFO ] main org.springframework.data.repository.config.RepositoryConfigurationDelegate - Multiple Spring Data modules found, entering strict repository configuration mode
-[2024-12-05 11:22:21,328 UTC] [INFO ] main org.springframework.data.repository.config.RepositoryConfigurationDelegate - Bootstrapping Spring Data MongoDB repositories in DEFAULT mode.
-[2024-12-05 11:22:21,340 UTC] [INFO ] main org.springframework.data.repository.config.RepositoryConfigurationExtensionSupport - Spring Data MongoDB - Could not safely identify store assignment for repository candidate interface com.verizon.ucs.restapi.repository.UCSPAlarmInventoryRepository; If you want this repository to be a MongoDB repository, consider annotating your entities with one of these annotations: 
