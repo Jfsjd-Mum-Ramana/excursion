@@ -1,110 +1,170 @@
-The issue likely lies in how the filterDataByProtocol and filterMetricsByProtocol methods are implemented in your UCSPAlarmService and UCSPAlarmController. Based on the provided code, here are some potential fixes:
+To ensure the filterDataByProtocol and availableProtocols APIs work like the getScatterPlotData API, I will modify the implementation to follow the same pattern. Here's how you can achieve this:
 
 
 ---
 
-Issues and Fixes:
+Updated Implementation
 
-1. filterDataByProtocol Issue:
+Controller
 
-The filterDataByProtocol method in UCSPAlarmService uses inventoryRepository.findByProtocol(protocol) but assumes that the repository query works as intended. Ensure that the column mapping in your query matches the database schema.
+Update the controller to ensure consistent behavior across APIs.
 
+@RestController
+public class UCSPAlarmController {
 
-Fix: Modify the repository query for UCSPAlarmInventoryRepository. Based on your schema, ucg_source should match correctly.
+    @Autowired
+    private UCSPAlarmService alarmService;
 
-@Query("SELECT u FROM UCSPAlarmInventory u WHERE u.ucgSource = :protocol")
-List<UCSPAlarmInventory> findByProtocol(@Param("protocol") String protocol);
+    // Query to get data by protocol (Inventory)
+    @QueryMapping
+    public List<UCSPAlarmInventory> filterDataByProtocol(@Argument String protocol) {
+        return alarmService.getInventoryByProtocol(protocol);
+    }
 
-Ensure your database has records with ucg_source values that match the protocol argument passed to the API.
+    // Query to get available protocols
+    @QueryMapping
+    public List<String> availableProtocols() {
+        return alarmService.getAvailableProtocols();
+    }
 
-
-2. filterMetricsByProtocol Issue:
-
-The findMetricsByProtocol query in UCSPAlarmMetricsRepository uses m.ucspAlarmInventory.ucgSource. Ensure the ucspAlarmInventory relationship is correctly established and fetched in the entity.
-
-
-Fix: Use JOIN FETCH in your query to load the relationship data eagerly if needed.
-
-@Query("SELECT m FROM UCSPAlarmMetrics m JOIN FETCH m.ucspAlarmInventory i WHERE i.ucgSource = :protocol")
-List<UCSPAlarmMetrics> findMetricsByProtocol(@Param("protocol") String protocol);
-
-Additionally, verify that UCSPAlarmInventory has a @OneToMany relationship mapped correctly.
-
-
-3. Logging and Debugging: Add logging to both service methods to verify the inputs and outputs.
-
-public List<UCSPAlarmInventory> getInventoryByProtocol(String protocol) {
-    logger.debug("Fetching inventory by protocol: {}", protocol);
-    List<UCSPAlarmInventory> result = inventoryRepository.findByProtocol(protocol);
-    logger.debug("Result: {}", result);
-    return result;
+    // Existing scatter plot data API (unchanged)
+    @QueryMapping
+    public List<ScatterPlotData> getScatterPlotDataByProtocol(@Argument String protocol) {
+        return alarmService.getScatterPlotDataByProtocol(protocol);
+    }
 }
-
-public List<UCSPAlarmMetrics> getMetricsByProtocol(String protocol) {
-    logger.debug("Fetching metrics by protocol: {}", protocol);
-    List<UCSPAlarmMetrics> result = metricsRepository.findMetricsByProtocol(protocol);
-    logger.debug("Result: {}", result);
-    return result;
-}
-
-
-4. Controller Endpoint Validation: Ensure the @QueryMapping methods in the controller match the required GraphQL schema and the arguments are correctly passed.
-
-@QueryMapping
-public List<UCSPAlarmInventory> filterDataByProtocol(@Argument String protocol) {
-    logger.debug("Received request to filter data by protocol: {}", protocol);
-    return alarmService.getInventoryByProtocol(protocol);
-}
-
-@QueryMapping
-public List<UCSPAlarmMetrics> filterMetricsByProtocol(@Argument String protocol) {
-    logger.debug("Received request to filter metrics by protocol: {}", protocol);
-    return alarmService.getMetricsByProtocol(protocol);
-}
-
-
-5. GraphQL Schema: Verify that the GraphQL schema properly defines the queries.
-
-type Query {
-    filterDataByProtocol(protocol: String!): [UCSPAlarmInventory]
-    filterMetricsByProtocol(protocol: String!): [UCSPAlarmMetrics]
-}
-
-type UCSPAlarmInventory {
-    id: ID
-    collectionName: String
-    deviceName: String
-    deviceIp: String
-    ucgSource: String
-    vendor: String
-}
-
-type UCSPAlarmMetrics {
-    id: ID
-    ucspAlarmInventory: UCSPAlarmInventory
-    lastUpdated: String
-    numberOfMsgs: Int
-    sizeOfMsgs: Int
-}
-
-
-6. Test the API Endpoints: Use tools like Postman or GraphQL Playground to ensure the endpoints are receiving the expected inputs and returning correct results.
-
-
 
 
 ---
 
-Summary of Changes:
+Service
 
-Verified and fixed repository queries.
+Update the service to fetch data for the new APIs.
 
-Added logging for debugging purposes.
+@Service
+public class UCSPAlarmService {
 
-Ensured proper relationship mapping in JPA entities.
+    Logger logger = LoggerFactory.getLogger(UCSPAlarmService.class);
 
-Updated GraphQL schema to align with the API structure.
+    @Autowired
+    private UCSPAlarmInventoryRepository inventoryRepository;
+
+    @Autowired
+    private UCSPAlarmMetricsRepository metricsRepository;
+
+    // Fetch inventory data by protocol
+    public List<UCSPAlarmInventory> getInventoryByProtocol(String protocol) {
+        logger.info("Fetching inventory data for protocol: " + protocol);
+        return inventoryRepository.findByProtocol(protocol);
+    }
+
+    // Fetch available protocols
+    public List<String> getAvailableProtocols() {
+        logger.info("Fetching available protocols");
+        return inventoryRepository.findDistinctProtocols();
+    }
+
+    // Existing scatter plot data API (unchanged)
+    public List<ScatterPlotData> getScatterPlotDataByProtocol(String protocol) {
+        logger.info("Fetching scatter plot data for protocol: " + protocol);
+        return metricsRepository.findScatterPlotDataByProtocol(protocol);
+    }
+}
 
 
-Apply these fixes, and your filterDataByProtocol and filterMetricsByProtocol APIs should start working as intended. Let me know if further assistance is required!
+---
+
+Repository
+
+Add the required repository methods for availableProtocols.
+
+@Repository
+public interface UCSPAlarmInventoryRepository extends JpaRepository<UCSPAlarmInventory, Long> {
+
+    // Query to filter collections by protocol
+    @Query("SELECT u FROM UCSPAlarmInventory u WHERE u.ucgSource = :protocol")
+    List<UCSPAlarmInventory> findByProtocol(@Param("protocol") String protocol);
+
+    // Query to fetch distinct protocols
+    @Query("SELECT DISTINCT u.ucgSource FROM UCSPAlarmInventory u")
+    List<String> findDistinctProtocols();
+}
+
+
+---
+
+GraphQL Queries
+
+1. Query: filterDataByProtocol
+
+To fetch inventory data by protocol:
+
+query {
+  filterDataByProtocol(protocol: "SNMP") {
+    id
+    collectionName
+    deviceName
+    deviceIp
+    ucgSource
+    vendor
+  }
+}
+
+2. Query: availableProtocols
+
+To fetch the list of available protocols:
+
+query {
+  availableProtocols
+}
+
+
+---
+
+Expected Output
+
+Output for filterDataByProtocol
+
+{
+  "data": {
+    "filterDataByProtocol": [
+      {
+        "id": 1,
+        "collectionName": "Collection1",
+        "deviceName": "DeviceA",
+        "deviceIp": "192.168.1.1",
+        "ucgSource": "SNMP",
+        "vendor": "VendorX"
+      }
+    ]
+  }
+}
+
+Output for availableProtocols
+
+{
+  "data": {
+    "availableProtocols": ["SNMP", "WSS", "gRPC", "TL1", "syslog"]
+  }
+}
+
+
+---
+
+Testing Steps
+
+1. Start Your Application: Ensure the Spring Boot application is running on the default port (e.g., http://localhost:8080/graphql).
+
+
+2. Use GraphQL Client: Open your preferred GraphQL client (e.g., GraphQL Playground or Postman).
+
+
+3. Run the Queries: Copy and paste the queries above into the client, then execute them.
+
+
+4. Verify the Results: Check the responses against the expected output.
+
+
+
+Let me know if any issues persist, and I'll assist further!
 
