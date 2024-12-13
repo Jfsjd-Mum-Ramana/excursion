@@ -1,93 +1,344 @@
-Since the collection_id column is of type VARCHAR and contains non-integer values, we need to clean up the data and properly map it to integers before modifying the column type. Here's a step-by-step approach to handle this situation:
+To map the Java model classes to the database tables using JPA (Java Persistence API) and Hibernate, you can use annotations such as @Entity, @Table, @Id, and @ManyToOne (for foreign key relationships).
+
+Here's how you can update the model classes to be mapped to the ucsp_alarm_inventory and ucsp_alarm_metrics tables:
 
 
 ---
 
-Step 1: Inspect the Data
+UcspAlarmInventory Class with JPA Annotations
 
-Run this query to view the current values in the collection_id column:
+package com.example.models;
 
-SELECT DISTINCT collection_id FROM ucsp_alarm_metrics;
+import javax.persistence.*;
+import java.net.InetAddress;
+import java.sql.Timestamp;
 
-This will show all unique values in the column, allowing you to identify non-numeric entries like collection1.
+@Entity
+@Table(name = "ucsp_alarm_inventory")
+public class UcspAlarmInventory {
+    
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id")
+    private int id;
+
+    @ManyToOne
+    @JoinColumn(name = "collection_type_id", referencedColumnName = "type_id")
+    private UcspCollectionType collectionType; // Foreign Key to ucsp_collection_type
+
+    @Column(name = "device_name", unique = true, nullable = false)
+    private String deviceName;
+
+    @Column(name = "device_ip", unique = true, nullable = false)
+    private InetAddress deviceIp;
+
+    @Column(name = "model")
+    private String model;
+
+    @Column(name = "vendor")
+    private String vendor;
+
+    @Column(name = "routerType")
+    private String routerType;
+
+    @Column(name = "status")
+    private String status;
+
+    @Column(name = "loopback")
+    private String loopback;
+
+    @Column(name = "network")
+    private String network;
+
+    @Column(name = "pollerCluster")
+    private String pollerCluster;
+
+    @Column(name = "pollerInterval")
+    private String pollerInterval;
+
+    @Column(name = "lastUpdate")
+    private Timestamp lastUpdate;
+
+    @Column(name = "physIp")
+    private InetAddress physIp;
+
+    // Getters and Setters
+    public int getId() {
+        return id;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
+
+    public UcspCollectionType getCollectionType() {
+        return collectionType;
+    }
+
+    public void setCollectionType(UcspCollectionType collectionType) {
+        this.collectionType = collectionType;
+    }
+
+    public String getDeviceName() {
+        return deviceName;
+    }
+
+    public void setDeviceName(String deviceName) {
+        this.deviceName = deviceName;
+    }
+
+    public InetAddress getDeviceIp() {
+        return deviceIp;
+    }
+
+    public void setDeviceIp(InetAddress deviceIp) {
+        this.deviceIp = deviceIp;
+    }
+
+    public String getModel() {
+        return model;
+    }
+
+    public void setModel(String model) {
+        this.model = model;
+    }
+
+    public String getVendor() {
+        return vendor;
+    }
+
+    public void setVendor(String vendor) {
+        this.vendor = vendor;
+    }
+
+    public String getRouterType() {
+        return routerType;
+    }
+
+    public void setRouterType(String routerType) {
+        this.routerType = routerType;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    public String getLoopback() {
+        return loopback;
+    }
+
+    public void setLoopback(String loopback) {
+        this.loopback = loopback;
+    }
+
+    public String getNetwork() {
+        return network;
+    }
+
+    public void setNetwork(String network) {
+        this.network = network;
+    }
+
+    public String getPollerCluster() {
+        return pollerCluster;
+    }
+
+    public void setPollerCluster(String pollerCluster) {
+        this.pollerCluster = pollerCluster;
+    }
+
+    public String getPollerInterval() {
+        return pollerInterval;
+    }
+
+    public void setPollerInterval(String pollerInterval) {
+        this.pollerInterval = pollerInterval;
+    }
+
+    public Timestamp getLastUpdate() {
+        return lastUpdate;
+    }
+
+    public void setLastUpdate(Timestamp lastUpdate) {
+        this.lastUpdate = lastUpdate;
+    }
+
+    public InetAddress getPhysIp() {
+        return physIp;
+    }
+
+    public void setPhysIp(InetAddress physIp) {
+        this.physIp = physIp;
+    }
+}
 
 
 ---
 
-Step 2: Create a Mapping Table (Optional)
+UcspAlarmMetrics Class with JPA Annotations
 
-If the collection_id values are descriptive (e.g., collection1, collection2), create a mapping table to assign unique integer IDs to these values:
+package com.example.models;
 
-CREATE TABLE collection_id_mapping (
-    old_value VARCHAR(255) PRIMARY KEY,
-    new_id INT
-);
+import javax.persistence.*;
+import java.sql.Timestamp;
 
--- Populate the mapping table
-INSERT INTO collection_id_mapping (old_value, new_id)
-VALUES 
-    ('collection1', 1),
-    ('collection2', 2),
-    ('collection3', 3);
+@Entity
+@Table(name = "ucsp_alarm_metrics")
+public class UcspAlarmMetrics {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id")
+    private int id;
+
+    @ManyToOne
+    @JoinColumn(name = "collection_id", referencedColumnName = "id")
+    private UcspAlarmInventory collection; // Foreign Key to ucsp_alarm_inventory
+
+    @Column(name = "collection_date")
+    private Timestamp collectionDate;
+
+    @Column(name = "number_of_msgs")
+    private long numberOfMsgs;
+
+    @Column(name = "size_of_msgs")
+    private long sizeOfMsgs;
+
+    // Getters and Setters
+    public int getId() {
+        return id;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
+
+    public UcspAlarmInventory getCollection() {
+        return collection;
+    }
+
+    public void setCollection(UcspAlarmInventory collection) {
+        this.collection = collection;
+    }
+
+    public Timestamp getCollectionDate() {
+        return collectionDate;
+    }
+
+    public void setCollectionDate(Timestamp collectionDate) {
+        this.collectionDate = collectionDate;
+    }
+
+    public long getNumberOfMsgs() {
+        return numberOfMsgs;
+    }
+
+    public void setNumberOfMsgs(long numberOfMsgs) {
+        this.numberOfMsgs = numberOfMsgs;
+    }
+
+    public long getSizeOfMsgs() {
+        return sizeOfMsgs;
+    }
+
+    public void setSizeOfMsgs(long sizeOfMsgs) {
+        this.sizeOfMsgs = sizeOfMsgs;
+    }
+}
 
 
 ---
 
-Step 3: Update the collection_id Column with Mapped Values
+UcspCollectionType Class (for the collection type)
 
-Use the mapping table to replace the collection_id values with their corresponding integer IDs:
+package com.example.models;
 
-UPDATE ucsp_alarm_metrics
-SET collection_id = m.new_id::VARCHAR
-FROM collection_id_mapping m
-WHERE ucsp_alarm_metrics.collection_id = m.old_value;
+import javax.persistence.*;
+import java.util.List;
+
+@Entity
+@Table(name = "ucsp_collection_type")
+public class UcspCollectionType {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "type_id")
+    private int typeId;
+
+    @Column(name = "type", unique = true, nullable = false)
+    private String type;
+
+    @OneToMany(mappedBy = "collectionType")
+    private List<UcspAlarmInventory> alarmInventories;
+
+    // Getters and Setters
+    public int getTypeId() {
+        return typeId;
+    }
+
+    public void setTypeId(int typeId) {
+        this.typeId = typeId;
+    }
+
+    public String getType() {
+        return type;
+    }
+
+    public void setType(String type) {
+        this.type = type;
+    }
+
+    public List<UcspAlarmInventory> getAlarmInventories() {
+        return alarmInventories;
+    }
+
+    public void setAlarmInventories(List<UcspAlarmInventory> alarmInventories) {
+        this.alarmInventories = alarmInventories;
+    }
+}
 
 
 ---
 
-Step 4: Verify the Data
+Key Points:
 
-Check that all values in the collection_id column are now numeric:
+1. @Entity: Marks the class as an entity for JPA.
 
-SELECT DISTINCT collection_id FROM ucsp_alarm_metrics;
+
+2. @Table: Specifies the table name in the database.
+
+
+3. @Id: Marks the field as the primary key.
+
+
+4. @GeneratedValue: Automatically generates the primary key value.
+
+
+5. @ManyToOne: Specifies the many-to-one relationship between UcspAlarmMetrics and UcspAlarmInventory (i.e., each metric belongs to one inventory collection).
+
+
+6. @JoinColumn: Specifies the foreign key column name for the relationship.
+
+
+7. @Column: Maps fields to database columns.
+
+
+
+Relationships:
+
+UcspAlarmInventory to UcspCollectionType: Many-to-one (each UcspAlarmInventory references a UcspCollectionType).
+
+UcspAlarmMetrics to UcspAlarmInventory: Many-to-one (each UcspAlarmMetrics references a UcspAlarmInventory).
+
 
 
 ---
 
-Step 5: Alter the Column Type
+These classes can now be used with JPA to interact with the database, including performing CRUD operations, querying, and managing relationships.
 
-Now you can safely change the column type to INT:
-
-ALTER TABLE ucsp_alarm_metrics
-ALTER COLUMN collection_id TYPE INT USING collection_id::INTEGER;
-
-
----
-
-Step 6: Add the Foreign Key Constraint
-
-Finally, add the foreign key constraint:
-
-ALTER TABLE ucsp_alarm_metrics
-ADD CONSTRAINT fk_collection_id FOREIGN KEY (collection_id) REFERENCES ucsp_alarm_inventory(id) ON DELETE CASCADE;
-
-
----
-
-Alternate Approach (Without Mapping)
-
-If the collection_id values are not important and can be replaced with arbitrary numeric IDs, use this query to directly assign integers:
-
-WITH cte AS (
-    SELECT collection_id, ROW_NUMBER() OVER () AS new_id
-    FROM ucsp_alarm_metrics
-)
-UPDATE ucsp_alarm_metrics
-SET collection_id = cte.new_id::VARCHAR
-FROM cte
-WHERE ucsp_alarm_metrics.collection_id = cte.collection_id;
-
-Then, proceed with Steps 5 and 6.
-
-Let me know if you need additional help!
+Let me know if you need further modifications or explanations!
 
