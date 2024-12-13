@@ -1,65 +1,67 @@
-Table: ucsp_collection_type
+Here is the updated schema for the ucsp_alarm_metrics table, incorporating the requested changes:
 
-CREATE TABLE ucsp_collection_type (
-    type_id SERIAL PRIMARY KEY,
-    type VARCHAR(255) NOT NULL UNIQUE
-);
+Updated Table: ucsp_alarm_metrics
 
-
-Table:ucsp_alarm_inventory
-
-CREATE TABLE ucsp_alarm_inventory (
+CREATE TABLE ucsp_alarm_metrics (
     id SERIAL PRIMARY KEY,
-    collection_type_id INT NOT NULL,
-    device_name VARCHAR(255) NOT NULL UNIQUE,
-    device_ip INET NOT NULL UNIQUE,
-    model VARCHAR(255),
-    vendor VARCHAR(255),
-    routerType VARCHAR(255),
-    status VARCHAR(255),
-    loopback VARCHAR(255),
-    network VARCHAR(255),
-    pollerCluster VARCHAR(255),
-    pollerInterval VARCHAR(255),
-    lastUpdate TIMESTAMP,
-    physIp INET,
-    CONSTRAINT fk_collection_type_id FOREIGN KEY (collection_type_id) REFERENCES ucsp_collection_type(type_id) ON DELETE CASCADE
+    collection_id INT NOT NULL,
+    collection_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    number_of_msgs BIGINT NOT NULL,
+    size_of_msgs BIGINT NOT NULL,
+    CONSTRAINT fk_collection_id FOREIGN KEY (collection_id) REFERENCES ucsp_alarm_inventory(id) ON DELETE CASCADE
 );
 
- Queries:
-1. Fetch Collection Types
-This query retrieves all collection types from the ucsp_collection_type table.
-SELECT type_id, type FROM ucsp_collection_type;
-2. Fetch Device Names and IPs by Collection Type
-This query retrieves device names and IPs based on the selected collection type.
-SELECT device_name, device_ip 
-FROM ucsp_alarm_inventory 
-WHERE collection_type_id = :type_id;
-3. Fetch Device Details Based on Filters
-This query retrieves detailed device information based on the selected collection type, device name, device IP, model, and vendor. The model and vendor filters are optional.
+Explanation of Changes:
+
+1. Column Changes:
+
+Renamed last_updated to collection_date.
+
+Renamed collection_name to collection_id and made it an INT type to reference the id column in the ucsp_alarm_inventory table.
+
+
+
+2. Foreign Key Constraint:
+
+Added a foreign key constraint to reference the id column in the ucsp_alarm_inventory table (ON DELETE CASCADE ensures that metrics are automatically deleted when a collection is removed).
+
+
+
+
+Example Queries:
+
+Here are some queries you can use with the updated schema:
+
+1. Insert Metrics for a Collection
+
+INSERT INTO ucsp_alarm_metrics (collection_id, collection_date, number_of_msgs, size_of_msgs)
+VALUES (1, '2024-12-13 10:30:00', 1000, 204800);
+
+2. Fetch Metrics with Collection Details
+
 SELECT 
-    id,
-    collection_type_id,
-    device_name,
-    device_ip,
-    model,
-    vendor,
-    routerType,
-    status,
-    loopback,
-    network,
-    pollerCluster,
-    pollerInterval,
-    lastUpdate,
-    physIp
+    i.device_name,
+    i.device_ip,
+    m.collection_date,
+    m.number_of_msgs,
+    m.size_of_msgs
 FROM 
-    ucsp_alarm_inventory 
-WHERE 
-    collection_type_id = :type_id 
-    AND device_name = :device_name 
-    AND device_ip = :device_ip 
-    AND (:model IS NULL OR :model = '' OR model = :model) 
-    AND (:vendor IS NULL OR :vendor = '' OR vendor = :vendor);
+    ucsp_alarm_metrics m
+JOIN 
+    ucsp_alarm_inventory i
+ON 
+    m.collection_id = i.id;
 
+3. Update Metrics for a Collection
 
-Based on this tables ucsp_alarm_metrics (Here change the last_updated to collection_date also change collection_name to collection_id and use foreign key constraint) 
+UPDATE ucsp_alarm_metrics
+SET number_of_msgs = 1200, size_of_msgs = 250000
+WHERE collection_id = 1;
+
+4. Delete Collection and Related Metrics
+
+DELETE FROM ucsp_alarm_inventory
+WHERE id = 1;
+
+Let me know if you need further refinements or additional queries!
+
