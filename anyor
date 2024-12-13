@@ -1,602 +1,65 @@
-import React, { useEffect, useState } from 'react';
-import axios from 'axios';
-import { __UCS_GRAPHQL_URL__ } from '../../api-endpoints';
-import { UNIQUE_UGS_SOURCE_QUERY, UNIQUE_PROJECT_QUERY, GET_DAILY_TRENDS_DATA } from '../../graphQL/graphqlQueries';
-import LoadingButton from "@mui/lab/LoadingButton";
-import { LineChart } from '@mui/x-charts/LineChart';
-import { AxisConfig, ChartsXAxisProps } from '@mui/x-charts';
-import { Box, FormControl, Grid, InputLabel, MenuItem, Select, SelectChangeEvent, TextField, Autocomplete, Button, Breadcrumbs, Link, Typography } from '@mui/material';
-import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import dayjs, { Dayjs } from 'dayjs';
-import { DatePicker } from "@mui/x-date-pickers/DatePicker";
-import { useTheme } from "@mui/material/styles";
-import { useSnackbar } from '../../utils/SnackbarContext';
-import NavigateNextIcon from '@mui/icons-material/NavigateNext';
-import HomeIcon from '@mui/icons-material/Home';
+Table: ucsp_collection_type
 
-const generateLast10Dates = () => {
-    const dates = [];
-    for (let i = 0; i < 10; i++) {
-        dates.push(dayjs().subtract(i, 'day').format('YYYY-MM-DD'));
-    }
-    return dates;
-};
-
-interface DataPoint {
-    date: string;
-    totalNumberOfFiles: number;
-    totalSizeOfFilesBytes: number;
-    trendsDrillDownList: DetailedDataPoint[];
-}
-
-interface DetailedDataPoint {
-    time: string;
-    sizeOfFilesBytes: number;
-    numberOfFiles: number;
-}
-
-const chartHeight = 450;
-const childChartHeight = 410;
-
-const ParentChart = ({ data, onDrillDown, setIsChildChartDisplayed }: { data: DataPoint[], onDrillDown: (date: string) => void, setIsChildChartDisplayed: (value: boolean) => void }) => {
-    const theme = useTheme();
-
-    const transformedData = data.map(item => ({
-        collectionDate: item.date,
-        totalNumberOfFiles: item.totalNumberOfFiles,
-        totalSizeOfFilesBytes: item.totalSizeOfFilesBytes,
-    }));
-
-    const lineChartParams = {
-        series: [
-            {
-                id: 'totalNumberOfFiles',
-                datakey: 'totalNumberOfFiles',
-                label: 'Number of Files',
-                data: transformedData.map(item => item.totalNumberOfFiles),
-            },
-            {
-                id: 'totalSizeOfFilesBytes',
-                datakey: 'totalSizeOfFilesBytes',
-                label: 'Size of Files (Bytes)',
-                data: transformedData.map(item => item.totalSizeOfFilesBytes),
-            }
-        ],
-        xAxis: [{
-            data: transformedData.map(item => item.collectionDate),
-            id: 'axis1',
-            dataKey: 'collectionDate',
-            scaleType: "point",
-            label: "Collected Date",
-            tickLabelStyle: {
-                angle: -25,
-                textAnchor: 'end',
-                fontSize: 10,
-            },
-            labelStyle: { transform: "translateY(30px)" },
-            tickPlacement: 'middle', tickLabelPlacement: 'middle',
-        } as AxisConfig<'point', string, ChartsXAxisProps>],
-        height: chartHeight,
-        margin: {
-            left: 60,
-            right: 10,
-            top: 20,
-            bottom: 80,
-        },
-        colors: theme.palette.distinctLightPalette
-    };
-
-    return (
-        <Box width="100%">
-            <LineChart
-                {...lineChartParams}
-                onAxisClick={(event, d) => {
-                    if (d && d.axisValue) {
-                        setIsChildChartDisplayed(true);
-                        onDrillDown(String(d.axisValue));
-                    } else {
-                        console.error('collectionDate not found in data point');
-                    }
-                }}
-            />
-        </Box>
-    );
-};
-
-const ChildChart = ({ date, data }: { date: string, data: DetailedDataPoint[] }) => {
-    const theme = useTheme();
-    const detailedLineChartsParams = {
-        series: [
-            {
-                id: 'numberOfFiles',
-                datakey: 'numberOfFiles',
-                label: 'Number of Files',
-                data: data.map(item => item.numberOfFiles)
-            },
-            {
-                id: 'sizeOfFilesBytes',
-                datakey: 'sizeOfFilesBytes',
-                label: 'Size of Files (Bytes)',
-                data: data.map(item => item.sizeOfFilesBytes)
-            }
-        ],
-        xAxis: [{
-            data: data.map(item => item.time),
-            id: 'axis2',
-            dataKey: 'time',
-            scaleType: "point",
-            label: "Collected Time on " + date,
-        } as AxisConfig<'point', string, ChartsXAxisProps>],
-        height: childChartHeight,
-        colors: theme.palette.distinctLightPalette
-    };
-
-    return (
-        <Box width="100%">
-            <LineChart {...detailedLineChartsParams} />
-        </Box>
-    );
-};
-
-const DailyTrend: React.FC = () => {
-    const theme = useTheme();
-    const [projectList, setProjectList] = useState<any[]>([]);
-    const [ucgSourceList, setUcgSourceList] = useState<{ id: number, name: string }[]>([]);
-    const [selectedProject, setSelectedProject] = useState<any>(null);
-    const [selectedUCGSource, setSelectedUCGSource] = useState<number>(0);
-    const [fromDate, setSelectedFromDate] = useState<Dayjs>(dayjs().subtract(1, 'month'));
-    const [toDate, setSelectedToDate] = useState<Dayjs | null>(dayjs());
-    const [loading, setLoading] = useState<boolean>(false);
-    const [ucgsourceLoading, setUcgsourceLoading] = useState<boolean>(false);
-    const [dataFetched, setDataFetched] = useState<boolean>(false);
-    const [responseData, setResponseData] = useState<DataPoint[]>([]);
-    const [viewStack, setViewStack] = useState<string[]>([]);
-    const [isChildChartDisplayed, setIsChildChartDisplayed] = useState(false);
-    const { showSnackbar } = useSnackbar();
-    const last10Dates = generateLast10Dates();
-
-    useEffect(() => {
-        const fetchProjectData = async () => {
-            try {
-                const projectResponse = await axios.post(__UCS_GRAPHQL_URL__, {
-                    query: UNIQUE_PROJECT_QUERY,
-                });
-                if (projectResponse.data?.data?.uniqueUCSPProjects && projectResponse.data.data.uniqueUCSPProjects.length > 0) {
-                    setProjectList(projectResponse.data.data.uniqueUCSPProjects);
-                }
-            } catch (error) {
-                showSnackbar('Error fetching project data!');
-                console.error('Error fetching project data', error);
-            }
-        };
-        fetchProjectData();
-    }, []);
-
-    const handleProjectChange = async (options: any) => {
-        setSelectedProject(options);
-        setUcgsourceLoading(true);
-        setSelectedUCGSource(0);
-        setUcgSourceList([]);
-        if (options && options.id) {
-            try {
-                const ucgSourcesResponse = await axios.post(__UCS_GRAPHQL_URL__, {
-                    query: UNIQUE_UGS_SOURCE_QUERY,
-                    variables: { projectId: options.id },
-                });
-                if (ucgSourcesResponse.data?.data?.uniqueUCGSourcesByProject && ucgSourcesResponse.data.data.uniqueUCGSourcesByProject.length > 0) {
-                    setUcgSourceList(ucgSourcesResponse.data.data.uniqueUCGSourcesByProject);
-                } else {
-                    showSnackbar('No UCGsource exists for this Project!');
-                }
-            } catch (error) {
-                showSnackbar('Error fetching UCGsource data!');
-                console.error('Error fetching UCG source:', error);
-            } finally {
-                setUcgsourceLoading(false);
-            }
-        }
-    };
-
-    const handleSelectChange = (setter: React.Dispatch<React.SetStateAction<number>>) => (
-        event: SelectChangeEvent<number>) => {
-        setter(event.target.value as number);
-    };
-
-    const handleReset = () => {
-        setSelectedProject(null);
-        setSelectedUCGSource(0);
-        setSelectedFromDate(dayjs().subtract(1, 'month'));
-        setSelectedToDate(dayjs());
-        setResponseData([]);
-        setViewStack([]);
-        setIsChildChartDisplayed(false);
-        setDataFetched(false);
-    };
-
-    const handleFetchClick = async () => {
-        setLoading(true);
-        setResponseData([]);
-        const formattedFromDate = dayjs(fromDate).format('YYYY-MM-DD');
-        const formattedToDate = dayjs(toDate).format('YYYY-MM-DD');
-
-        const data = {
-            ucgSourceID: selectedUCGSource,
-            fromDate: formattedFromDate,
-            toDate: formattedToDate
-        };
-
-        try {
-            const response = await axios.post(__UCS_GRAPHQL_URL__, {
-                query: GET_DAILY_TRENDS_DATA,
-                variables: data,
-            });
-
-            if (response.data?.data?.dailyTrends && response.data.data.dailyTrends.length > 0) {
-                let data = response.data.data.dailyTrends || [];
-                console.log(data);
-                setResponseData(data);
-            } else {
-                showSnackbar("No Data Found!");
-            }
-            setDataFetched(true);
-        } catch (error) {
-            showSnackbar("Error While fetching the Data from the Server");
-            console.error('Error fetching data', error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleDrillDown = (date: string) => {
-        setViewStack([...viewStack, date]);
-    };
-
-    const handleBreadcrumbClick = (index: number) => {
-        setViewStack(viewStack.slice(0, index + 1));
-    };
-
-    const currentView = viewStack[viewStack.length - 1];
-    const currentData = responseData.find(item => item.date === currentView)?.trendsDrillDownList || [];
+CREATE TABLE ucsp_collection_type (
+    type_id SERIAL PRIMARY KEY,
+    type VARCHAR(255) NOT NULL UNIQUE
+);
 
 
-    const isButtonDisabled = () => {
-        return !selectedProject || !selectedUCGSource || !fromDate || !toDate;
-    };
+Table:ucsp_alarm_inventory
 
-    return (
-        <Box sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            boxSizing: 'border-box',
-        }}>
-            <Grid container spacing={4} alignItems="flex-end">
-                <Grid item xs={12} sm={6} md>
-                    <Autocomplete
-                        value={selectedProject}
-                        onChange={(e, options) => handleProjectChange(options)}
-                        loading={loading}
-                        disablePortal
-                        options={projectList}
-                        getOptionLabel={(option) => option.name}
-                        renderInput={(params: any) => <TextField {...params} label="Project" placeholder="Project Name" />}
-                    />
-                </Grid>
-                <Grid item xs={12} sm={6} md>
-                    <FormControl variant="outlined" sx={{ width: '100%', height: '100%' }}>
-                        <InputLabel id="select-outlined-label">UCG Source</InputLabel>
-                        <Select
-                            labelId="select-outlined-label"
-                            id="select-outlined"
-                            label="UCG Source"
-                            value={selectedUCGSource}
-                            onChange={(event) => handleSelectChange(setSelectedUCGSource)(event)}
-                        >
-                            {ucgsourceLoading ? (
-                                <MenuItem disabled>
-                                    Loading…
-                                </MenuItem>
-                            ) : (
-                                ucgSourceList?.map((source, i) => (
-                                    <MenuItem
-                                        key={source.id}
-                                        id="dropDown"
-                                        value={source.id}
-                                    >
-                                        {source.name}
-                                    </MenuItem>
-                                ))
-                            )}
-                        </Select>
-                    </FormControl>
-                </Grid>
-                <Grid item xs={12} sm={6} md>
-                    <LocalizationProvider dateAdapter={AdapterDayjs}>
-                        <DatePicker
-                            label="Start Date"
-                            sx={{ width: '100%', height: '100%' }}
-                            value={fromDate}
-                            onChange={(newValue: Dayjs | null) => {
-                                setSelectedFromDate(newValue || dayjs());
-                                if (newValue && toDate && newValue.isAfter(toDate)) {
-                                    setSelectedToDate(null);
-                                }
-                            }}
-                        />
-                    </LocalizationProvider>
-                </Grid>
-                <Grid item xs={12} sm={6} md>
-                    <LocalizationProvider dateAdapter={AdapterDayjs}>
-                        <DatePicker
-                            label="End Date"
-                            sx={{ width: '100%', height: '100%' }}
-                            value={toDate}
-                            minDate={fromDate}
-                            onChange={(newValue) => setSelectedToDate(newValue)}
-                        />
-                    </LocalizationProvider>
-                </Grid>
-                <Grid item xs={2} sm={2} md={2} sx={{ display: 'flex' }}>
-                    <Button variant="contained" onClick={handleReset} color="primary" sx={{ marginRight: 2 }}>Reset</Button>
-                    <LoadingButton onClick={handleFetchClick} loading={loading} loadingIndicator="Fetching…" variant="contained"
-                        disabled={isButtonDisabled()}>
-                        <span>Fetch</span>
-                    </LoadingButton>
-                </Grid>
-            </Grid>
+CREATE TABLE ucsp_alarm_inventory (
+    id SERIAL PRIMARY KEY,
+    collection_type_id INT NOT NULL,
+    device_name VARCHAR(255) NOT NULL UNIQUE,
+    device_ip INET NOT NULL UNIQUE,
+    model VARCHAR(255),
+    vendor VARCHAR(255),
+    routerType VARCHAR(255),
+    status VARCHAR(255),
+    loopback VARCHAR(255),
+    network VARCHAR(255),
+    pollerCluster VARCHAR(255),
+    pollerInterval VARCHAR(255),
+    lastUpdate TIMESTAMP,
+    physIp INET,
+    CONSTRAINT fk_collection_type_id FOREIGN KEY (collection_type_id) REFERENCES ucsp_collection_type(type_id) ON DELETE CASCADE
+);
 
-            {dataFetched && !loading && (
-                <Box sx={{ mt: 4, width: '100%', borderRadius: 2, border: '1px solid #e0e0e0', bgcolor: 'white' }}>
-
-                    {isChildChartDisplayed && responseData.length > 0 && (
-                        <Breadcrumbs aria-label="breadcrumb" separator={<NavigateNextIcon fontSize="small" />} sx={{ padding: '1%' }}>
-                            <Link underline="hover" sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer', '&:hover': { textDecoration: 'underline !important', color: '#1976d2 !important' } }} color="primary" onClick={() => { setViewStack([]); setIsChildChartDisplayed(false); }} >
-                                <HomeIcon sx={{ mr: 0.4 }} fontSize="inherit" />
-                                Home
-                            </Link>
-                            {viewStack.map((view, index) => (
-                                <Link
-                                    key={view}
-                                    color="inherit"
-                                    sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}
-                                    underline="none"
-                                    onClick={() => handleBreadcrumbClick(index)}
-                                >
-                                    {view}
-                                </Link>
-                            ))}
-                        </Breadcrumbs>
-                    )}
-
-                    <Box mt={1} sx={{ width: '100%' }}>
-                        {responseData.length > 0 ? (
-                            <>
-                                {currentView ? (
-                                    <ChildChart date={currentView} data={currentData} />
-                                ) : (
-                                    <ParentChart data={responseData} onDrillDown={handleDrillDown} setIsChildChartDisplayed={setIsChildChartDisplayed} />
-                                )}
-                            </>
-                        ) : (
-                            <LineChart
-                                height={chartHeight}
-                                xAxis={[{ data: last10Dates, scaleType: 'point', }]}
-                                yAxis={[{ min: 0, max: 10 }]}
-                                series={[]}
-                            />
-                        )}
-                    </Box>
-                </Box>
-            )}
-        </Box>
-    );
-}
-
-export default DailyTrend;
-
-This is reference class please provide same like this
-
-export const UNIQUE_MODELS_QUERY = `
-    query{
-        uniqueModels
-    }
-`;
-
-export const UNIQUE_VENDORS_QUERY = `
-    query{
-        uniqueVendors
-    }
-`;
-
-export const UNIQUE_NETWORKS_QUERY = `
-    query{
-        uniqueNetworks
-    }
-`;
-export const UNIQUE_UGS_SOURCE_QUERY = `
-query GetUniqueUCGSourcesByProject($projectId: ID!) {
-  uniqueUCGSourcesByProject(projectId: $projectId) {
-    id
-    name
-  }
-}
-`;
-export const UNIQUE_PROJECT_QUERY = `
-query {
-    uniqueUCSPProjects {
-        id
-        name                            
-    }
-}
-`;
-
-export const GET_DAILY_TRENDS_DATA = `query GetDailyTrends($ucgSourceID: Int!, $fromDate: String!, $toDate: String!) {
-  dailyTrends(trendsRequest: { ucgSourceID: $ucgSourceID, fromDate: $fromDate, toDate: $toDate }) {
-    date
-    totalNumberOfFiles 
-    totalSizeOfFilesBytes
-    trendsDrillDownList{
-      time
-      sizeOfFilesBytes
-      numberOfFiles
-    }
-  }
-}`
-
-export const GET_DEVICE_DETAILS = (selectedDeviceName: string, selectedDeviceModel: string, selectedDeviceIp: string, selectedDeviceVendor: string, selectedDeviceNetwork: string) => `
-{
-  searchDevices(apiRequest:{
-		deviceName: "${selectedDeviceName}",
-        model: "${selectedDeviceModel}",
-        loopback: "${selectedDeviceIp}",
-        vendor: "${selectedDeviceVendor}",
-        network: "${selectedDeviceNetwork}"
-  }){
-    deviceName
-    model
-    vendor
-    routerType
-    status
-    loopback
+ Queries:
+1. Fetch Collection Types
+This query retrieves all collection types from the ucsp_collection_type table.
+SELECT type_id, type FROM ucsp_collection_type;
+2. Fetch Device Names and IPs by Collection Type
+This query retrieves device names and IPs based on the selected collection type.
+SELECT device_name, device_ip 
+FROM ucsp_alarm_inventory 
+WHERE collection_type_id = :type_id;
+3. Fetch Device Details Based on Filters
+This query retrieves detailed device information based on the selected collection type, device name, device IP, model, and vendor. The model and vendor filters are optional.
+SELECT 
+    id,
+    collection_type_id,
+    device_name,
+    device_ip,
+    model,
+    vendor,
     routerType,
-    network
-    pollerCluster
-    pollerInterval
-    lastUpdate
+    status,
+    loopback,
+    network,
+    pollerCluster,
+    pollerInterval,
+    lastUpdate,
     physIp
-  }
-}
-`;
+FROM 
+    ucsp_alarm_inventory 
+WHERE 
+    collection_type_id = :type_id 
+    AND device_name = :device_name 
+    AND device_ip = :device_ip 
+    AND (:model IS NULL OR :model = '' OR model = :model) 
+    AND (:vendor IS NULL OR :vendor = '' OR vendor = :vendor);
 
 
-export const UNIQUE_NETWORKS_BY_PROTOCOL_QUERY = `
-    query{
-        uniqueNetworksByProtocol
-    }
-`;
-
-export const AVG_NETWORK_BY_COVERAGE_QUERY = `
-query AvgNetworkByCoverage($network: String!,$fromDate: String!,$toDate: String!,$device: String) {
-  avgNetworkByCoverage(network: $network,fromDate:$fromDate,toDate: $toDate,device: $device) {
-    date
-    totalCoverage
-    coverageDrillDownList {
-      time
-      coverage
-    }
-  }
-}
-`;
-export const UNIQUE_DEVICES_BY_NETWORK_SNMP = `
-query uniqueDevicesByNetwork($network: String!) {
-  uniqueDevicesByNetwork(network: $network)
-}`;
-
-I want to develop a screen for the Overall Health Metrics dashboard that includes a scatter plot GUI and integrates the Metric API to show the scatter plot.
-The scatter plot will visualize the collection type based on the protocol, with different colors representing different protocols (SNMP perf, WSS, gRPC, TL1, syslog, etc.).
-The plot will dynamically update when selecting different data types, such as volume or usage.
-The screen will include a toggle bar to choose between Usage and Volume, a dropdown to select the Collection type, and legends for different collection types.
-Technical Details
-Endpoint: /api/metrics (Can be changed)
-Parameters:
-type: volume or usage
-protocols: Array of protocol names (e.g., <span class="error">["SNMP perf", "WSS", "gRPC", "TL1", "syslog"]</span>)
-Response: JSON object containing metrics for the specified type and protocols
-UI Components: Scatter plot visualization, toggle bar for data type selection, dropdown for collection type selection, legends for collection types
-Tasks
-Develop Scatter Plot GUI: Implement the scatter plot visualization with different colors for different protocols and legends for collection types.
-Integrate Metric API: Implement the API call to fetch metrics data and update the scatter plot.
-Implement Dynamic Updates: Implement the logic to dynamically update the scatter plot based on the selected data type (volume/usage).
-Implement Dropdown for Collection Type: Implement the dropdown to select the collection type and update the scatter plot accordingly.
-Test Integration: Write unit and integration tests to ensure the scatter plot GUI and API integration work as expected.
-10:32
-Here some of the reference code for backend API's
-10:33
-package com.verizon.ucs.restapi.repository;
-
-import com.verizon.ucs.restapi.model.ScatterPlotData;
-import com.verizon.ucs.restapi.model.UCSPAlarmMetrics;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
-import org.springframework.stereotype.Repository;
-
-import java.util.List;
-
-@Repository
-public interface UCSPAlarmMetricsRepository extends JpaRepository<UCSPAlarmMetrics, Long> {
-    Logger logger = LoggerFactory.getLogger(UCSPAlarmMetricsRepository.class);
-    // Query to get scatter plot data by protocol (aggregation based on protocol)
-    @Query(nativeQuery = true, value = "SELECT c.collection_name AS collectionName, " +
-            "TO_CHAR(m.last_updated, 'YYYY-MM-DD') AS date, " +
-            "m.size_of_msgs AS value " +
-            "FROM ucsp_alarm_inventory c " +
-            "JOIN ucsp_alarm_metrics m ON c.collection_name = m.collection_name " +
-            "WHERE c.ucg_source = :protocol")
-    List<ScatterPlotData> findScatterPlotDataByProtocol(@Param("protocol") String protocol);
-    default  List<ScatterPlotData> findScatterPlotDataWithLogging(String protocol) {
-        logger.info("Executing query for protocol: " +protocol) ;
-        List<ScatterPlotData> result = findScatterPlotDataByProtocol(protocol);
-        logger.info("Query result: " +result);
-        return result;
-    }
-}
-package com.verizon.ucs.restapi.repository;
-
-import com.verizon.ucs.restapi.model.UCSPAlarmInventory;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
-import org.springframework.stereotype.Repository;
-
-import java.util.ArrayList;
-import java.util.List;
-
-@Repository
-public interface UCSPAlarmInventoryRepository extends JpaRepository<UCSPAlarmInventory, Long> {
-
-    Logger logger = LoggerFactory.getLogger(UCSPAlarmInventoryRepository.class);
-
-    List<UCSPAlarmInventory> findByUcgSource(@Param("protocol") String protocol);
-
-    default List<UCSPAlarmInventory> findByUcgSourceDataWithLogging(String protocol) {
-        logger.info("Executing query for protocol: " + protocol);
-        List<UCSPAlarmInventory> result = new ArrayList<>();
-        try {
-            result = findByUcgSource(protocol);
-        } catch (Exception ex) {
-            logger.error("Exception occured :" + ex);
-        }
-        logger.info("Query result: " + result);
-        return result;
-    }
-
-    // Query to fetch distinct protocols
-    @Query("SELECT DISTINCT u.ucgSource FROM UCSPAlarmInventory u")
-    List<String> findDistinctProtocols();
-
-}
-public List<ScatterPlotData> getScatterPlotDataByProtocol(String protocol) {
-    logger.debug("Received request to fetch scatter plot data for protocol: " + protocol);
-    List<ScatterPlotData> scatterPlotData = metricsRepository.findScatterPlotDataByProtocol(protocol);
-    logger.debug("Returning scatter plot data: " + scatterPlotData);
-    return scatterPlotData;
-}
-
-// Fetch metrics by protocol
-// Fetch inventory data by protocol
-public List<UCSPAlarmInventory> filterInventoryByProtocol(String protocol) {
-    logger.info("Fetching inventory data for protocol: " + protocol);
-    return inventoryRepository.findByUcgSourceDataWithLogging(protocol);
-}
-
-// Fetch available protocols
-public List<String> getAvailableProtocols() {
-    logger.info("Fetching available protocols");
-    return inventoryRepository.findDistinctProtocols();
-}
+Based on this tables ucsp_alarm_metrics (Here change the last_updated to collection_date also change collection_name to collection_id and use foreign key constraint) 
