@@ -1,67 +1,93 @@
-Here is the updated schema for the ucsp_alarm_metrics table, incorporating the requested changes:
+Since the collection_id column is of type VARCHAR and contains non-integer values, we need to clean up the data and properly map it to integers before modifying the column type. Here's a step-by-step approach to handle this situation:
 
-Updated Table: ucsp_alarm_metrics
 
-CREATE TABLE ucsp_alarm_metrics (
-    id SERIAL PRIMARY KEY,
-    collection_id INT NOT NULL,
-    collection_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    number_of_msgs BIGINT NOT NULL,
-    size_of_msgs BIGINT NOT NULL,
-    CONSTRAINT fk_collection_id FOREIGN KEY (collection_id) REFERENCES ucsp_alarm_inventory(id) ON DELETE CASCADE
+---
+
+Step 1: Inspect the Data
+
+Run this query to view the current values in the collection_id column:
+
+SELECT DISTINCT collection_id FROM ucsp_alarm_metrics;
+
+This will show all unique values in the column, allowing you to identify non-numeric entries like collection1.
+
+
+---
+
+Step 2: Create a Mapping Table (Optional)
+
+If the collection_id values are descriptive (e.g., collection1, collection2), create a mapping table to assign unique integer IDs to these values:
+
+CREATE TABLE collection_id_mapping (
+    old_value VARCHAR(255) PRIMARY KEY,
+    new_id INT
 );
 
-Explanation of Changes:
-
-1. Column Changes:
-
-Renamed last_updated to collection_date.
-
-Renamed collection_name to collection_id and made it an INT type to reference the id column in the ucsp_alarm_inventory table.
-
+-- Populate the mapping table
+INSERT INTO collection_id_mapping (old_value, new_id)
+VALUES 
+    ('collection1', 1),
+    ('collection2', 2),
+    ('collection3', 3);
 
 
-2. Foreign Key Constraint:
+---
 
-Added a foreign key constraint to reference the id column in the ucsp_alarm_inventory table (ON DELETE CASCADE ensures that metrics are automatically deleted when a collection is removed).
+Step 3: Update the collection_id Column with Mapped Values
 
-
-
-
-Example Queries:
-
-Here are some queries you can use with the updated schema:
-
-1. Insert Metrics for a Collection
-
-INSERT INTO ucsp_alarm_metrics (collection_id, collection_date, number_of_msgs, size_of_msgs)
-VALUES (1, '2024-12-13 10:30:00', 1000, 204800);
-
-2. Fetch Metrics with Collection Details
-
-SELECT 
-    i.device_name,
-    i.device_ip,
-    m.collection_date,
-    m.number_of_msgs,
-    m.size_of_msgs
-FROM 
-    ucsp_alarm_metrics m
-JOIN 
-    ucsp_alarm_inventory i
-ON 
-    m.collection_id = i.id;
-
-3. Update Metrics for a Collection
+Use the mapping table to replace the collection_id values with their corresponding integer IDs:
 
 UPDATE ucsp_alarm_metrics
-SET number_of_msgs = 1200, size_of_msgs = 250000
-WHERE collection_id = 1;
+SET collection_id = m.new_id::VARCHAR
+FROM collection_id_mapping m
+WHERE ucsp_alarm_metrics.collection_id = m.old_value;
 
-4. Delete Collection and Related Metrics
 
-DELETE FROM ucsp_alarm_inventory
-WHERE id = 1;
+---
 
-Let me know if you need further refinements or additional queries!
+Step 4: Verify the Data
+
+Check that all values in the collection_id column are now numeric:
+
+SELECT DISTINCT collection_id FROM ucsp_alarm_metrics;
+
+
+---
+
+Step 5: Alter the Column Type
+
+Now you can safely change the column type to INT:
+
+ALTER TABLE ucsp_alarm_metrics
+ALTER COLUMN collection_id TYPE INT USING collection_id::INTEGER;
+
+
+---
+
+Step 6: Add the Foreign Key Constraint
+
+Finally, add the foreign key constraint:
+
+ALTER TABLE ucsp_alarm_metrics
+ADD CONSTRAINT fk_collection_id FOREIGN KEY (collection_id) REFERENCES ucsp_alarm_inventory(id) ON DELETE CASCADE;
+
+
+---
+
+Alternate Approach (Without Mapping)
+
+If the collection_id values are not important and can be replaced with arbitrary numeric IDs, use this query to directly assign integers:
+
+WITH cte AS (
+    SELECT collection_id, ROW_NUMBER() OVER () AS new_id
+    FROM ucsp_alarm_metrics
+)
+UPDATE ucsp_alarm_metrics
+SET collection_id = cte.new_id::VARCHAR
+FROM cte
+WHERE ucsp_alarm_metrics.collection_id = cte.collection_id;
+
+Then, proceed with Steps 5 and 6.
+
+Let me know if you need additional help!
 
