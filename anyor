@@ -1,4 +1,116 @@
-Endpoint: /api/device-details
-Method: GET
-Parameters: collection_type_id, device_name, device_ip, model (optional), vendor (optional)
-Description: Fetches detailed information about a specific device from the ucsp_alarm_inventory table based on the selected collection type, device name, device IP, model, and vendor.
+type Query {
+    allDevices: [Device]
+    availableProtocols: [String!]!
+    avgNetworkByCoverage(network: String,fromDate: String,toDate: String,device: String): [AvgNetworkCoverageDTO]
+    alarmMetrics(alarmMetricsRequest: AlarmMetricsRequest): [AlarmMetricsDTO]
+    dailyTrends(trendsRequest: TrendsRequest): [TrendsDTO]
+    getScatterPlotDataByProtocol(protocol: String!): [ScatterPlotData]!
+    searchDevices(apiRequest: ApiRequest): [Device]
+    uniqueDevicesByNetwork(network: String): [String]
+    uniqueModels: [String]
+    uniqueNetworks: [String]
+    uniqueNetworksByProtocol: [String]
+    uniqueUCSPProjects:[UcspProject]
+    uniqueUCGSources: [String]
+    uniqueUCGSourcesByProject(projectId: ID): [UcspProject]
+    uniqueVendors: [String]
+    filterInventoryByProtocol(protocol: String!): [UCSPAlarmInventory!]!
+}
+
+
+type TrendsDrillDownData{
+ 	time: String
+ 	sizeOfFilesBytes: Float
+ 	numberOfFiles: Int
+}
+type TrendsDTO{
+ 	date: String
+ 	totalSizeOfFilesBytes: Float
+ 	totalNumberOfFiles: Int
+ 	trendsDrillDownList: [TrendsDrillDownData]
+}
+
+type AlarmMetricsDrillDownData{
+    time: String
+    sizeOfFilesBytes: Float
+    numberOfFiles: Int
+}
+type AlarmMetricsDTO{
+    date: String
+    totalSizeOfFilesBytes: Float
+    totalNumberOfFiles: Int
+    alarmMetricsDrillDownList: [AlarmMetricsDrillDownData]
+}
+input AlarmMetricsRequest {
+    collectionType: String
+    fromDate: String
+    toDate: String
+}
+
+type AvgNetworkCovDrillDownData {
+    time: String
+    coverage: Float
+}
+
+type AvgNetworkCoverageDTO {
+    date: String
+    totalCoverage: Float
+    coverageDrillDownList: [AvgNetworkCovDrillDownData]
+}
+
+
+type Device {
+    deviceName: ID!
+    model: String
+    loopback: String
+    status: String
+    vendor: String
+    routerType: String
+    pollerCluster: String
+    pollerInterval: Int
+    network: String
+    lastUpdate: String
+    physIp: String
+}
+type UcspProject{
+    id:ID!
+    name:String!
+}
+
+
+input TrendsRequest {
+    ucgSourceID: Int
+    fromDate: String
+    toDate: String
+}
+
+type Trends {
+    id: ID!
+    ucgSourceID: Int
+    collectionDate: String
+    sizeOfFilesKB: Int
+    numberOfFiles: Int
+}
+
+input ApiRequest {
+    deviceName: String
+    model: String
+    loopback: String
+    vendor: String
+    network: String
+}
+type UCSPAlarmInventory {
+    id: ID!
+    collectionName: String!
+    deviceName: String!
+    ucgSource: String
+    vendor: String
+    deviceIp: String
+}
+
+# Represents a single data point for the scatter plot
+type ScatterPlotData {
+    collectionName: String!
+    date: String!
+    value: Int!
+}
