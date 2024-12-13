@@ -1,344 +1,243 @@
-To map the Java model classes to the database tables using JPA (Java Persistence API) and Hibernate, you can use annotations such as @Entity, @Table, @Id, and @ManyToOne (for foreign key relationships).
-
-Here's how you can update the model classes to be mapped to the ucsp_alarm_inventory and ucsp_alarm_metrics tables:
-
-
----
-
-UcspAlarmInventory Class with JPA Annotations
-
-package com.example.models;
-
-import javax.persistence.*;
-import java.net.InetAddress;
-import java.sql.Timestamp;
-
-@Entity
-@Table(name = "ucsp_alarm_inventory")
-public class UcspAlarmInventory {
-    
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "id")
-    private int id;
-
-    @ManyToOne
-    @JoinColumn(name = "collection_type_id", referencedColumnName = "type_id")
-    private UcspCollectionType collectionType; // Foreign Key to ucsp_collection_type
-
-    @Column(name = "device_name", unique = true, nullable = false)
-    private String deviceName;
-
-    @Column(name = "device_ip", unique = true, nullable = false)
-    private InetAddress deviceIp;
-
-    @Column(name = "model")
-    private String model;
-
-    @Column(name = "vendor")
-    private String vendor;
-
-    @Column(name = "routerType")
-    private String routerType;
-
-    @Column(name = "status")
-    private String status;
-
-    @Column(name = "loopback")
-    private String loopback;
-
-    @Column(name = "network")
-    private String network;
-
-    @Column(name = "pollerCluster")
-    private String pollerCluster;
-
-    @Column(name = "pollerInterval")
-    private String pollerInterval;
-
-    @Column(name = "lastUpdate")
-    private Timestamp lastUpdate;
-
-    @Column(name = "physIp")
-    private InetAddress physIp;
-
-    // Getters and Setters
-    public int getId() {
-        return id;
-    }
-
-    public void setId(int id) {
-        this.id = id;
-    }
-
-    public UcspCollectionType getCollectionType() {
-        return collectionType;
-    }
-
-    public void setCollectionType(UcspCollectionType collectionType) {
-        this.collectionType = collectionType;
-    }
-
-    public String getDeviceName() {
-        return deviceName;
-    }
-
-    public void setDeviceName(String deviceName) {
-        this.deviceName = deviceName;
-    }
-
-    public InetAddress getDeviceIp() {
-        return deviceIp;
-    }
-
-    public void setDeviceIp(InetAddress deviceIp) {
-        this.deviceIp = deviceIp;
-    }
-
-    public String getModel() {
-        return model;
-    }
-
-    public void setModel(String model) {
-        this.model = model;
-    }
-
-    public String getVendor() {
-        return vendor;
-    }
-
-    public void setVendor(String vendor) {
-        this.vendor = vendor;
-    }
-
-    public String getRouterType() {
-        return routerType;
-    }
-
-    public void setRouterType(String routerType) {
-        this.routerType = routerType;
-    }
-
-    public String getStatus() {
-        return status;
-    }
-
-    public void setStatus(String status) {
-        this.status = status;
-    }
-
-    public String getLoopback() {
-        return loopback;
-    }
-
-    public void setLoopback(String loopback) {
-        this.loopback = loopback;
-    }
-
-    public String getNetwork() {
-        return network;
-    }
-
-    public void setNetwork(String network) {
-        this.network = network;
-    }
-
-    public String getPollerCluster() {
-        return pollerCluster;
-    }
-
-    public void setPollerCluster(String pollerCluster) {
-        this.pollerCluster = pollerCluster;
-    }
-
-    public String getPollerInterval() {
-        return pollerInterval;
-    }
-
-    public void setPollerInterval(String pollerInterval) {
-        this.pollerInterval = pollerInterval;
-    }
-
-    public Timestamp getLastUpdate() {
-        return lastUpdate;
-    }
-
-    public void setLastUpdate(Timestamp lastUpdate) {
-        this.lastUpdate = lastUpdate;
-    }
-
-    public InetAddress getPhysIp() {
-        return physIp;
-    }
-
-    public void setPhysIp(InetAddress physIp) {
-        this.physIp = physIp;
-    }
-}
-
-
----
-
-UcspAlarmMetrics Class with JPA Annotations
-
-package com.example.models;
-
-import javax.persistence.*;
-import java.sql.Timestamp;
-
-@Entity
-@Table(name = "ucsp_alarm_metrics")
-public class UcspAlarmMetrics {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "id")
-    private int id;
-
-    @ManyToOne
-    @JoinColumn(name = "collection_id", referencedColumnName = "id")
-    private UcspAlarmInventory collection; // Foreign Key to ucsp_alarm_inventory
-
-    @Column(name = "collection_date")
-    private Timestamp collectionDate;
-
-    @Column(name = "number_of_msgs")
-    private long numberOfMsgs;
-
-    @Column(name = "size_of_msgs")
-    private long sizeOfMsgs;
-
-    // Getters and Setters
-    public int getId() {
-        return id;
-    }
-
-    public void setId(int id) {
-        this.id = id;
-    }
-
-    public UcspAlarmInventory getCollection() {
-        return collection;
-    }
-
-    public void setCollection(UcspAlarmInventory collection) {
-        this.collection = collection;
-    }
-
-    public Timestamp getCollectionDate() {
-        return collectionDate;
-    }
-
-    public void setCollectionDate(Timestamp collectionDate) {
-        this.collectionDate = collectionDate;
-    }
-
-    public long getNumberOfMsgs() {
-        return numberOfMsgs;
-    }
-
-    public void setNumberOfMsgs(long numberOfMsgs) {
-        this.numberOfMsgs = numberOfMsgs;
-    }
-
-    public long getSizeOfMsgs() {
-        return sizeOfMsgs;
-    }
-
-    public void setSizeOfMsgs(long sizeOfMsgs) {
-        this.sizeOfMsgs = sizeOfMsgs;
-    }
-}
-
-
----
-
-UcspCollectionType Class (for the collection type)
-
-package com.example.models;
-
-import javax.persistence.*;
+API to Fetch Collection Types
+
+Endpoint: /api/collection-types
+Method: GET
+Description: Fetches all collection types from the ucsp_collection_type table.
+
+Now please make sure to create the above api by using above models here the details:
+
+package com.verizon.ucs.restapi.controllers;
+
+import com.verizon.ucs.restapi.dto.AlarmMetricsRequest;
+import com.verizon.ucs.restapi.dto.ApiRequest;
+import com.verizon.ucs.restapi.dto.TrendsRequest;
+import com.verizon.ucs.restapi.model.*;
+
+import com.verizon.ucs.restapi.service.UCSPService;
+import graphql.GraphQLException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataAccessException;
+import org.springframework.graphql.data.method.annotation.Argument;
+import org.springframework.graphql.data.method.annotation.QueryMapping;
+import org.springframework.graphql.data.method.annotation.SchemaMapping;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.RequestParam;
+
+import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
-@Entity
-@Table(name = "ucsp_collection_type")
-public class UcspCollectionType {
+/**
+ * Controller interface for UCS Portal Application with JPA
+ */
+@Controller
+public class UCSPController {
+    private static final Logger logger = LoggerFactory.getLogger(UCSPController.class);
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "type_id")
-    private int typeId;
+    @Autowired
+    private UCSPService uCSPService;
 
-    @Column(name = "type", unique = true, nullable = false)
-    private String type;
 
-    @OneToMany(mappedBy = "collectionType")
-    private List<UcspAlarmInventory> alarmInventories;
 
-    // Getters and Setters
-    public int getTypeId() {
-        return typeId;
+    @QueryMapping(value = "searchDevices")
+    public List<Device> getFilteredDevices(@Argument ApiRequest apiRequest) {
+        return uCSPService.searchDevices(apiRequest);
     }
 
-    public void setTypeId(int typeId) {
-        this.typeId = typeId;
+    @QueryMapping(value = "allDevices")
+    public List<Device> getAllDevices() {
+        return uCSPService.getAllDevices();
     }
 
-    public String getType() {
-        return type;
+    @SchemaMapping(typeName = "Query", value = "uniqueModels")
+    public List<String> getUniqueModels() {
+        return uCSPService.getUniqueValues().get("models");
     }
 
-    public void setType(String type) {
-        this.type = type;
+    @QueryMapping(value = "uniqueVendors")
+    public List<String> getUniqueVendors() {
+        return uCSPService.getUniqueValues().get("vendors");
     }
 
-    public List<UcspAlarmInventory> getAlarmInventories() {
-        return alarmInventories;
+    @QueryMapping(value = "dailyTrends")
+    public List<TrendsDTO> getTrends(@Argument TrendsRequest trendsRequest) {
+        try {
+        	 Map<String, TrendsDTO> trendsDataMap = uCSPService.getDailyTrends(trendsRequest);
+             return trendsDataMap.values().stream()
+            		  .sorted(Comparator.comparing(TrendsDTO::getDate))
+            		 .collect(Collectors.toList());
+        } catch (DataAccessException e) {
+            logger.error("Database error occurred while fetching data", e);
+            throw new GraphQLException("Database error: Unable to fetch data");
+        } catch (RuntimeException e) {
+            logger.error("Runtime error occurred", e);
+            throw new GraphQLException("Runtime error: " + e.getMessage());
+        } catch (Exception e) {
+            logger.error("Unexpected error occurred", e);
+            throw new GraphQLException("Unexpected error: " + e.getMessage());
+        }
     }
 
-    public void setAlarmInventories(List<UcspAlarmInventory> alarmInventories) {
-        this.alarmInventories = alarmInventories;
+    @QueryMapping
+    public List<String> uniqueNetworks() {
+        return uCSPService.getUniqueValues().get("networks");
     }
+
+    @QueryMapping(value = "uniqueUCSPProjects")
+    public List<UcspProject> getUniqueProjects() {
+        List<UcspProject> ucgProjects = uCSPService.getUniqueProjects();
+        return ucgProjects;
+    }
+
+    @QueryMapping(value = "uniqueUCGSources")
+    public List<String> getUniqueUCGSources() {
+        List<String> ucgSources = uCSPService.getUniqueUCGSources();
+        return ucgSources;
+    }
+
+    @QueryMapping(value = "uniqueUCGSourcesByProject")
+    public List<UcspProject> getUniqueUCGSourcesByProject(@Argument Long projectId) {
+        try {
+            return uCSPService.getUniqueUCGSourcesByProject(projectId);
+        } catch (DataAccessException e) {
+            logger.error("Database error occurred while fetching UCG Sources", e);
+            throw new GraphQLException("Database error: Unable to fetch UCG Sources for project ID: " + projectId);
+        } catch (RuntimeException e) {
+            logger.error("Runtime error occurred", e);
+            throw new GraphQLException("Runtime error: " + e.getMessage());
+        } catch (Exception e) {
+            logger.error("Unexpected error occurred", e);
+            throw new GraphQLException("Unexpected error: " + e.getMessage());
+        }
+    }
+    
+    @QueryMapping
+    public List<String> uniqueNetworksByProtocol() {
+        return uCSPService.uniqueNetworksByProtocol().get("snmp");
+    }
+    
+    @QueryMapping
+    public List<String> uniqueDevicesByNetwork(@Argument String network) {
+        return uCSPService.uniqueDevicesByNetwork(network);
+    }
+    
+    @QueryMapping(value = "avgNetworkByCoverage")
+    public List<AvgNetworkCoverageDTO> avgNetworkByCoverage(@Argument String network,
+            @Argument String fromDate, @Argument String toDate, @Argument String device) {
+        try {
+            Map<String, AvgNetworkCoverageDTO> detailedData = uCSPService.avgNetworkByCoverage(network, fromDate, toDate, device);
+            return detailedData.values().stream()
+                    .map(dto -> {
+                        dto.setTotalCoverage(Double.parseDouble(dto.getFormattedTotalCoverage()));
+                        return dto;
+                    })
+                    .sorted(Comparator.comparing(AvgNetworkCoverageDTO::getDate))
+                    .collect(Collectors.toList());
+        } catch (DataAccessException e) {
+            logger.error("Database error occurred while fetching network coverage", e);
+            throw new GraphQLException("Database error: Unable to fetch network coverage for network: " + network);
+        } catch (RuntimeException e) {
+            logger.error("Runtime error occurred", e);
+            throw new GraphQLException("Runtime error: " + e.getMessage());
+        } catch (Exception e) {
+            logger.error("Unexpected error occurred", e);
+            throw new GraphQLException("Unexpected error: " + e.getMessage());
+        }
+    }
+
+    @QueryMapping
+    public List<UCSPAlarmInventory> filterInventoryByProtocol(@Argument String protocol) {
+        return uCSPService.filterInventoryByProtocol(protocol);
+    }
+
+    // Query to get available protocols
+    @QueryMapping
+    public List<String> availableProtocols() {
+        return uCSPService.getAvailableProtocols();
+    }
+
+
+    // Query to get scatter plot data by protocol
+
+    @QueryMapping(value = "alarmMetrics")
+    public List<AlarmMetricsDTO> getAlarmMetric(@Argument AlarmMetricsRequest alarmMetricstrendsRequest) {
+        try {
+            Map<String, AlarmMetricsDTO> alarmMetricsDataMap = uCSPService.getAlarmMetrics(alarmMetricstrendsRequest);
+            return alarmMetricsDataMap.values().stream()
+                    .sorted(Comparator.comparing(AlarmMetricsDTO::getDate))
+                    .collect(Collectors.toList());
+        } catch (DataAccessException e) {
+            logger.error("Database error occurred while fetching data", e);
+            throw new GraphQLException("Database error: Unable to fetch data");
+        } catch (RuntimeException e) {
+            logger.error("Runtime error occurred", e);
+            throw new GraphQLException("Runtime error: " + e.getMessage());
+        } catch (Exception e) {
+            logger.error("Unexpected error occurred", e);
+            throw new GraphQLException("Unexpected error: " + e.getMessage());
+        }
+    }
+//    @QueryMapping
+//    public List<ScatterPlotData> getScatterPlotDataByProtocol(@Argument String protocol) {
+//        return uCSPService.getScatterPlotDataByProtocol(protocol);
+//    }
 }
 
+Thisis the controller class already I have created the API plss implement service and repository 
 
----
+use reference this repository:
+package com.verizon.ucs.restapi.repository;
 
-Key Points:
+import com.verizon.ucs.restapi.model.Trends;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
 
-1. @Entity: Marks the class as an entity for JPA.
-
-
-2. @Table: Specifies the table name in the database.
-
-
-3. @Id: Marks the field as the primary key.
-
-
-4. @GeneratedValue: Automatically generates the primary key value.
-
-
-5. @ManyToOne: Specifies the many-to-one relationship between UcspAlarmMetrics and UcspAlarmInventory (i.e., each metric belongs to one inventory collection).
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
 
 
-6. @JoinColumn: Specifies the foreign key column name for the relationship.
+public interface UCSPTrendsRepository extends JpaRepository<Trends, Long> {
 
+//    @Query("SELECT t FROM Trends t WHERE t.ucgSourceID = ?1 AND t.collectionDate BETWEEN ?2 AND ?3")
+//    List<Trends> findDailyTrends( int ucgSourceId,  Date fromDate,  Date toDate);
+	
+	  @Query(nativeQuery = true, value = "SELECT CAST(collection_timestamp AS DATE) as date, TO_CHAR(collection_timestamp, 'HH24:MI') as time, " +
+	            "SUM(size_of_files_bytes) as sizeOfFilesBytes, SUM(number_of_files) as numberOfFiles " +
+	            "FROM ucsp_trends_raw " +
+	            "WHERE ucg_source_id = :ucgSourceId AND CAST(collection_timestamp AS DATE) BETWEEN :fromDate AND :toDate " +
+	            "GROUP BY CAST(collection_timestamp AS DATE), TO_CHAR(collection_timestamp, 'HH24:MI') " +
+	            "ORDER BY CAST(collection_timestamp AS DATE), TO_CHAR(collection_timestamp, 'HH24:MI')")
+	    List<Map<String, Object>> findDailyTrends(@Param("ucgSourceId") int ucgSourceId, @Param("fromDate") Date fromDate, @Param("toDate") Date toDate);
 
-7. @Column: Maps fields to database columns.
+}
 
+Service reference:
+public Map<String, TrendsDTO> getDailyTrends(TrendsRequest params) throws ParseException {
+	    SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+	    List<Map<String, Object>> results = uCSPTrendsRepository.findDailyTrends(params.getUcgSourceID(), params.getFromDate(), params.getToDate());
 
+	    Map<String, TrendsDTO> trendsData = new HashMap<>();
 
-Relationships:
+	    for (Map<String, Object> result : results) {
+	        String date = dateFormat.format(result.get("date"));
+	        String time = (String) result.get("time");
+	        double sizeOfFilesBytes = ((Number) result.get("sizeOfFilesBytes")).doubleValue();
+	        int numberOfFiles = ((Number) result.get("numberOfFiles")).intValue();
 
-UcspAlarmInventory to UcspCollectionType: Many-to-one (each UcspAlarmInventory references a UcspCollectionType).
+	        TrendsDrillDownData trendsDataPoint = new TrendsDrillDownData(time, sizeOfFilesBytes, numberOfFiles);
 
-UcspAlarmMetrics to UcspAlarmInventory: Many-to-one (each UcspAlarmMetrics references a UcspAlarmInventory).
+	        trendsData
+	            .computeIfAbsent(date, k -> new TrendsDTO(date))
+	            .addTrendsData(trendsDataPoint);
+	    }
 
-
-
----
-
-These classes can now be used with JPA to interact with the database, including performing CRUD operations, querying, and managing relationships.
-
-Let me know if you need further modifications or explanations!
-
+	    logger.debug("trendsData {}", trendsData);
+	    return trendsData;
+	}
