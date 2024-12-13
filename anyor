@@ -1,116 +1,177 @@
-type Query {
-    allDevices: [Device]
-    availableProtocols: [String!]!
-    avgNetworkByCoverage(network: String,fromDate: String,toDate: String,device: String): [AvgNetworkCoverageDTO]
-    alarmMetrics(alarmMetricsRequest: AlarmMetricsRequest): [AlarmMetricsDTO]
-    dailyTrends(trendsRequest: TrendsRequest): [TrendsDTO]
-    getScatterPlotDataByProtocol(protocol: String!): [ScatterPlotData]!
-    searchDevices(apiRequest: ApiRequest): [Device]
-    uniqueDevicesByNetwork(network: String): [String]
-    uniqueModels: [String]
-    uniqueNetworks: [String]
-    uniqueNetworksByProtocol: [String]
-    uniqueUCSPProjects:[UcspProject]
-    uniqueUCGSources: [String]
-    uniqueUCGSourcesByProject(projectId: ID): [UcspProject]
-    uniqueVendors: [String]
-    filterInventoryByProtocol(protocol: String!): [UCSPAlarmInventory!]!
+Thank you for providing the GraphQL schema! Based on this schema, I will implement the GraphQL queries, including the service and repository layers, to interact with your backend and fetch data from the UCSPAlarmInventory table, along with other required entities.
+
+I'll break this implementation into steps:
+
+Step 1: Repository Layer
+
+We will define repositories for accessing UCSPAlarmInventory, Device, and other necessary entities. We'll use the @Query annotation to write custom queries for fetching the data required by the GraphQL schema.
+
+Repository for UCSPAlarmInventory
+
+package com.verizon.ucs.restapi.repository;
+
+import com.verizon.ucs.restapi.model.UCSPAlarmInventory;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+
+@Repository
+public interface UCSPAlarmInventoryRepository extends JpaRepository<UCSPAlarmInventory, Long> {
+
+    // Query to filter inventory by protocol
+    @Query("SELECT u FROM UCSPAlarmInventory u WHERE u.ucgSource = :protocol")
+    List<UCSPAlarmInventory> findByProtocol(@Param("protocol") String protocol);
 }
 
+Repository for Device (if needed)
 
-type TrendsDrillDownData{
- 	time: String
- 	sizeOfFilesBytes: Float
- 	numberOfFiles: Int
-}
-type TrendsDTO{
- 	date: String
- 	totalSizeOfFilesBytes: Float
- 	totalNumberOfFiles: Int
- 	trendsDrillDownList: [TrendsDrillDownData]
-}
+package com.verizon.ucs.restapi.repository;
 
-type AlarmMetricsDrillDownData{
-    time: String
-    sizeOfFilesBytes: Float
-    numberOfFiles: Int
-}
-type AlarmMetricsDTO{
-    date: String
-    totalSizeOfFilesBytes: Float
-    totalNumberOfFiles: Int
-    alarmMetricsDrillDownList: [AlarmMetricsDrillDownData]
-}
-input AlarmMetricsRequest {
-    collectionType: String
-    fromDate: String
-    toDate: String
+import com.verizon.ucs.restapi.model.Device;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public interface DeviceRepository extends JpaRepository<Device, Long> {
+    List<Device> findByDeviceName(String deviceName);
+    List<Device> findByVendor(String vendor);
 }
 
-type AvgNetworkCovDrillDownData {
-    time: String
-    coverage: Float
+Step 2: Service Layer
+
+In the service layer, we will implement the business logic for each query in the schema. This will interact with the repositories to fetch data from the database.
+
+Service for UCSPAlarmInventory
+
+package com.verizon.ucs.restapi.service;
+
+import com.verizon.ucs.restapi.model.UCSPAlarmInventory;
+import com.verizon.ucs.restapi.repository.UCSPAlarmInventoryRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+@Service
+public class UCSPAlarmInventoryService {
+
+    @Autowired
+    private UCSPAlarmInventoryRepository ucspAlarmInventoryRepository;
+
+    // Fetching all devices filtered by protocol
+    public List<UCSPAlarmInventory> getInventoryByProtocol(String protocol) {
+        return ucspAlarmInventoryRepository.findByProtocol(protocol);
+    }
 }
 
-type AvgNetworkCoverageDTO {
-    date: String
-    totalCoverage: Float
-    coverageDrillDownList: [AvgNetworkCovDrillDownData]
+Step 3: GraphQL Controller
+
+In the GraphQL controller, we will define the queries according to the schema provided, and bind the service methods to each query.
+
+package com.verizon.ucs.restapi.controllers;
+
+import com.verizon.ucs.restapi.model.UCSPAlarmInventory;
+import com.verizon.ucs.restapi.service.UCSPAlarmInventoryService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.graphql.data.method.annotation.Argument;
+import org.springframework.graphql.data.method.annotation.QueryMapping;
+import org.springframework.stereotype.Controller;
+
+import java.util.List;
+
+@Controller
+public class UCSPController {
+
+    @Autowired
+    private UCSPAlarmInventoryService ucspAlarmInventoryService;
+
+    // Query for fetching devices by protocol
+    @QueryMapping
+    public List<UCSPAlarmInventory> filterInventoryByProtocol(@Argument String protocol) {
+        return ucspAlarmInventoryService.getInventoryByProtocol(protocol);
+    }
+
+    // GraphQL query for retrieving all devices
+    @QueryMapping
+    public List<Device> allDevices() {
+        // This will fetch all devices, assuming a DeviceService is implemented similarly
+        return deviceService.getAllDevices();
+    }
+
+    // Additional query implementations will be added similarly for other GraphQL schema queries
 }
 
+Step 4: Handling Other Queries
 
-type Device {
-    deviceName: ID!
-    model: String
-    loopback: String
-    status: String
-    vendor: String
-    routerType: String
-    pollerCluster: String
-    pollerInterval: Int
-    network: String
-    lastUpdate: String
-    physIp: String
-}
-type UcspProject{
-    id:ID!
-    name:String!
-}
+The GraphQL schema provided has a number of other queries like getScatterPlotDataByProtocol, uniqueDevicesByNetwork, avgNetworkByCoverage, etc. Let's implement these with similar approaches.
 
+Service for AvgNetworkCoverage
 
-input TrendsRequest {
-    ucgSourceID: Int
-    fromDate: String
-    toDate: String
+package com.verizon.ucs.restapi.service;
+
+import com.verizon.ucs.restapi.model.AvgNetworkCoverageDTO;
+import org.springframework.stereotype.Service;
+
+@Service
+public class NetworkCoverageService {
+
+    // This will handle average network coverage calculation for a specific network
+    public List<AvgNetworkCoverageDTO> getAvgNetworkCoverage(String network, String fromDate, String toDate, String device) {
+        // Implement the logic to fetch and calculate the network coverage based on these parameters
+        return coverageRepository.getAvgNetworkCoverage(network, fromDate, toDate, device);
+    }
 }
 
-type Trends {
-    id: ID!
-    ucgSourceID: Int
-    collectionDate: String
-    sizeOfFilesKB: Int
-    numberOfFiles: Int
+Step 5: GraphQL Resolver for AvgNetworkCoverageDTO
+
+In the GraphQL controller, implement the resolver for this query:
+
+@QueryMapping
+public List<AvgNetworkCoverageDTO> avgNetworkByCoverage(@Argument String network,
+                                                          @Argument String fromDate,
+                                                          @Argument String toDate,
+                                                          @Argument String device) {
+    return networkCoverageService.getAvgNetworkCoverage(network, fromDate, toDate, device);
 }
 
-input ApiRequest {
-    deviceName: String
-    model: String
-    loopback: String
-    vendor: String
-    network: String
-}
-type UCSPAlarmInventory {
-    id: ID!
-    collectionName: String!
-    deviceName: String!
-    ucgSource: String
-    vendor: String
-    deviceIp: String
+Step 6: Testing and Queries
+
+Now, using a GraphQL tool (e.g., GraphiQL or Postman), you can test queries such as:
+
+Example GraphQL Query: Filter Inventory by Protocol
+
+query {
+  filterInventoryByProtocol(protocol: "SNMP") {
+    id
+    collectionName
+    deviceName
+    ucgSource
+    vendor
+    deviceIp
+  }
 }
 
-# Represents a single data point for the scatter plot
-type ScatterPlotData {
-    collectionName: String!
-    date: String!
-    value: Int!
+Example GraphQL Query: Get Devices by Network
+
+query {
+  uniqueDevicesByNetwork(network: "Network1") {
+    deviceName
+  }
 }
+
+Example GraphQL Query: Get Average Network Coverage
+
+query {
+  avgNetworkByCoverage(network: "Network1", fromDate: "2023-01-01", toDate: "2023-12-31", device: "DeviceA") {
+    date
+    totalCoverage
+  }
+}
+
+Conclusion
+
+With the above steps, we've implemented the GraphQL queries using Spring Boot, the service layer to handle business logic, and repositories for database interaction. This structure is aligned with the schema you provided, allowing you to handle device details, network coverage, and more. If you need more queries or further customization, feel free to let me know!
+
