@@ -1,177 +1,537 @@
-Thank you for providing the GraphQL schema! Based on this schema, I will implement the GraphQL queries, including the service and repository layers, to interact with your backend and fetch data from the UCSPAlarmInventory table, along with other required entities.
+package com.verizon.ucs.restapi.model;
 
-I'll break this implementation into steps:
+import javax.persistence.*;
+import java.util.List;
 
-Step 1: Repository Layer
+@Entity
+@Table(name = "ucsp_collection_type")
+public class UCSPCollectionType {
 
-We will define repositories for accessing UCSPAlarmInventory, Device, and other necessary entities. We'll use the @Query annotation to write custom queries for fetching the data required by the GraphQL schema.
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "type_id")
+    private int typeId;
 
-Repository for UCSPAlarmInventory
+    @Column(name = "type", unique = true, nullable = false)
+    private String type;
+
+    @OneToMany(mappedBy = "collectionType")
+    private List<UCSPAlarmInventory> alarmInventories;
+
+    // Getters and Setters
+    public int getTypeId() {
+        return typeId;
+    }
+
+    public void setTypeId(int typeId) {
+        this.typeId = typeId;
+    }
+
+    public String getType() {
+        return type;
+    }
+
+    public void setType(String type) {
+        this.type = type;
+    }
+
+    public List<UCSPAlarmInventory> getAlarmInventories() {
+        return alarmInventories;
+    }
+
+    public void setAlarmInventories(List<UCSPAlarmInventory> alarmInventories) {
+        this.alarmInventories = alarmInventories;
+    }
+}
+
+
+package com.verizon.ucs.restapi.model;
+
+import javax.persistence.*;
+import java.sql.Timestamp;
+
+@Entity
+@Table(name = "ucsp_alarm_metrics")
+public class UCSPAlarmMetrics {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id")
+    private int id;
+
+    @ManyToOne
+    @JoinColumn(name = "collection_id", referencedColumnName = "id")
+    private UCSPAlarmInventory collection; // Foreign Key to ucsp_alarm_inventory
+
+    @Column(name = "collection_date")
+    private Timestamp collectionDate;
+
+    @Column(name = "number_of_msgs")
+    private long numberOfMsgs;
+
+    @Column(name = "size_of_msgs")
+    private long sizeOfMsgs;
+
+    // Getters and Setters
+    public int getId() {
+        return id;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
+
+    public UCSPAlarmInventory getCollection() {
+        return collection;
+    }
+
+    public void setCollection(UCSPAlarmInventory collection) {
+        this.collection = collection;
+    }
+
+    public Timestamp getCollectionDate() {
+        return collectionDate;
+    }
+
+    public void setCollectionDate(Timestamp collectionDate) {
+        this.collectionDate = collectionDate;
+    }
+
+    public long getNumberOfMsgs() {
+        return numberOfMsgs;
+    }
+
+    public void setNumberOfMsgs(long numberOfMsgs) {
+        this.numberOfMsgs = numberOfMsgs;
+    }
+
+    public long getSizeOfMsgs() {
+        return sizeOfMsgs;
+    }
+
+    public void setSizeOfMsgs(long sizeOfMsgs) {
+        this.sizeOfMsgs = sizeOfMsgs;
+    }
+}
+
+
+package com.verizon.ucs.restapi.model;
+
+import javax.persistence.*;
+import java.net.InetAddress;
+import java.sql.Timestamp;
+
+@Entity
+@Table(name = "ucsp_alarm_inventory_new")
+public class UCSPAlarmInventory {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id")
+    private int id;
+
+    @ManyToOne
+    @JoinColumn(name = "collection_type_id", referencedColumnName = "type_id")
+    private UCSPCollectionType collectionType; // Foreign Key to ucsp_collection_type
+
+    @Column(name = "device_name", unique = true, nullable = false)
+    private String deviceName;
+
+    @Column(name = "device_ip", unique = true, nullable = false)
+    private InetAddress deviceIp;
+
+    @Column(name = "model")
+    private String model;
+
+    @Column(name = "vendor")
+    private String vendor;
+
+    @Column(name = "routerType")
+    private String routerType;
+
+    @Column(name = "status")
+    private String status;
+
+    @Column(name = "loopback")
+    private String loopback;
+
+    @Column(name = "network")
+    private String network;
+
+    @Column(name = "pollerCluster")
+    private String pollerCluster;
+
+    @Column(name = "pollerInterval")
+    private String pollerInterval;
+
+    @Column(name = "lastUpdate")
+    private Timestamp lastUpdate;
+
+    @Column(name = "physIp")
+    private InetAddress physIp;
+
+    // Getters and Setters
+    public int getId() {
+        return id;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
+
+    public UCSPCollectionType getCollectionType() {
+        return collectionType;
+    }
+
+    public void setCollectionType(UCSPCollectionType collectionType) {
+        this.collectionType = collectionType;
+    }
+
+    public String getDeviceName() {
+        return deviceName;
+    }
+
+    public void setDeviceName(String deviceName) {
+        this.deviceName = deviceName;
+    }
+
+    public InetAddress getDeviceIp() {
+        return deviceIp;
+    }
+
+    public void setDeviceIp(InetAddress deviceIp) {
+        this.deviceIp = deviceIp;
+    }
+
+    public String getModel() {
+        return model;
+    }
+
+    public void setModel(String model) {
+        this.model = model;
+    }
+
+    public String getVendor() {
+        return vendor;
+    }
+
+    public void setVendor(String vendor) {
+        this.vendor = vendor;
+    }
+
+    public String getRouterType() {
+        return routerType;
+    }
+
+    public void setRouterType(String routerType) {
+        this.routerType = routerType;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    public String getLoopback() {
+        return loopback;
+    }
+
+    public void setLoopback(String loopback) {
+        this.loopback = loopback;
+    }
+
+    public String getNetwork() {
+        return network;
+    }
+
+    public void setNetwork(String network) {
+        this.network = network;
+    }
+
+    public String getPollerCluster() {
+        return pollerCluster;
+    }
+
+    public void setPollerCluster(String pollerCluster) {
+        this.pollerCluster = pollerCluster;
+    }
+
+    public String getPollerInterval() {
+        return pollerInterval;
+    }
+
+    public void setPollerInterval(String pollerInterval) {
+        this.pollerInterval = pollerInterval;
+    }
+
+    public Timestamp getLastUpdate() {
+        return lastUpdate;
+    }
+
+    public void setLastUpdate(Timestamp lastUpdate) {
+        this.lastUpdate = lastUpdate;
+    }
+
+    public InetAddress getPhysIp() {
+        return physIp;
+    }
+
+    public void setPhysIp(InetAddress physIp) {
+        this.physIp = physIp;
+    }
+}
+
+
+package com.verizon.ucs.restapi.service;
+
+import com.verizon.ucs.restapi.dto.AlarmMetricsRequest;
+import com.verizon.ucs.restapi.dto.ApiRequest;
+import com.verizon.ucs.restapi.dto.TrendsRequest;
+import com.verizon.ucs.restapi.model.*;
+import com.verizon.ucs.restapi.repository.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+@Service
+public class UCSPService {
+
+	private static final Logger logger = LoggerFactory.getLogger(UCSPService.class);
+
+	@Autowired
+	private UCSPRepository uCSPRepository;
+
+	@Autowired
+	private UCSPTrendsRepository uCSPTrendsRepository;
+
+	@Autowired
+	private UCSPProjectsRepository ucspProjectsRepository;
+
+	@Autowired
+	private UCSPAlarmInventoryRepository alarmInventoryRepository;
+
+	@Autowired
+	private UCSPAlarmMetricsRepository alarmMetricsRepository;
+
+	public List<UcspProject> getUniqueUCGSourcesByProject(Long projectId) {
+		try {
+			List<UcspProject> ucgSources = ucspProjectsRepository.findDistinctUCGSourcesByProject(projectId);
+			if (ucgSources == null || ucgSources.isEmpty()) {
+				throw new RuntimeException("No UCG Sources found for the given project ID: " + projectId);
+			}
+			return ucgSources;
+		} catch (Exception e) {
+			logger.error("Error in service method getUniqueUCGSourcesByProject", e);
+			throw e;
+		}
+	}
+
+	public List<Device> searchDevices(ApiRequest params) {
+		if (params.getDeviceName() != null && !params.getDeviceName().isEmpty()) {
+			return uCSPRepository.findByDeviceNameIgnoreCase(params.getDeviceName());
+		}
+		if (params.getLoopback() != null && !params.getLoopback().isEmpty()) {
+			return uCSPRepository.findByLoopbackIgnoreCase(params.getLoopback());
+		}
+		if (params.getNetwork() != null && !params.getNetwork().isEmpty()) {
+			return uCSPRepository.findByNetworkIgnoreCase(params.getNetwork());
+		}
+		if (params.getVendor() != null && !params.getVendor().isEmpty()) {
+			return uCSPRepository.findByVendorIgnoreCase(params.getVendor());
+		}
+		if (params.getModel() != null && !params.getModel().isEmpty()) {
+			return uCSPRepository.findByModelIgnoreCase(params.getModel());
+		}
+		return null;
+	}
+
+	public Map<String, TrendsDTO> getDailyTrends(TrendsRequest params) throws ParseException {
+	    SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+	    List<Map<String, Object>> results = uCSPTrendsRepository.findDailyTrends(params.getUcgSourceID(), params.getFromDate(), params.getToDate());
+
+	    Map<String, TrendsDTO> trendsData = new HashMap<>();
+
+	    for (Map<String, Object> result : results) {
+	        String date = dateFormat.format(result.get("date"));
+	        String time = (String) result.get("time");
+	        double sizeOfFilesBytes = ((Number) result.get("sizeOfFilesBytes")).doubleValue();
+	        int numberOfFiles = ((Number) result.get("numberOfFiles")).intValue();
+
+	        TrendsDrillDownData trendsDataPoint = new TrendsDrillDownData(time, sizeOfFilesBytes, numberOfFiles);
+
+	        trendsData
+	            .computeIfAbsent(date, k -> new TrendsDTO(date))
+	            .addTrendsData(trendsDataPoint);
+	    }
+
+	    logger.debug("trendsData {}", trendsData);
+	    return trendsData;
+	}
+
+
+	public Map<String, List<String>> getUniqueValues() {
+		Map<String, List<String>> uniqueValues = new HashMap<>();
+		uniqueValues.put("models", uCSPRepository.findDistinctModels());
+		uniqueValues.put("vendors", uCSPRepository.findDistinctVendors());
+		uniqueValues.put("networks", uCSPRepository.findDistinctNetworks());
+		return uniqueValues;
+	}
+	public List<String> getUniqueUCGSources(){
+		return uCSPRepository.findDistinctUCGSources();
+	}
+	public List<Device> getAllDevices() {
+		return uCSPRepository.findAll();
+	}
+
+	public List<UcspProject> getUniqueProjects() {
+		return ucspProjectsRepository.findUniqueProjects();
+	}
+	public Map<String, List<String>> uniqueNetworksByProtocol() {
+		Map<String, List<String>> uniqueValues = new HashMap<>();
+		uniqueValues.put("snmp", uCSPRepository.uniqueNetworksBySNMPprotocol());
+		return uniqueValues;
+	}
+	
+	public List<String> uniqueDevicesByNetwork(String network) {
+		return uCSPRepository.getUniqueDevicesByNetwork(network);
+	}
+	
+	public Map<String, AvgNetworkCoverageDTO> avgNetworkByCoverage(String networkName,String fromDate,String toDate,String device) throws ParseException {
+        Map<String, AvgNetworkCoverageDTO> detailedData = new HashMap<>();
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+
+        List<Map<String, Object>> results = uCSPRepository.avgNetworkByCoverage(networkName,dateFormat.parse(fromDate),dateFormat.parse(toDate),device);
+
+        for (Map<String, Object> result : results) {
+            String date = dateFormat.format(result.get("date"));
+            String time = (String) result.get("time");
+            double sumOfCoverage = ((Number) result.get("sumOfCoverage")).doubleValue();
+
+            AvgNetworkCovDrillDownData coverageData = new AvgNetworkCovDrillDownData(time, sumOfCoverage);
+
+            detailedData
+                .computeIfAbsent(date, k -> new AvgNetworkCoverageDTO(date))
+                .addCoverageData(coverageData);
+            /*detaileddata
+                .computeifabsent(date, k -> new avgnetworkcoveragedto(date, 0.0, new arraylist<>()))
+                .getCoveragedatalist().add(coveragedata);
+            detaileddata.get(date).setTotalcoverage(detaileddata.get(date).getTotalcoverage() + sumofcoverage);
+            */
+        }
+        logger.debug("detailedData {}",detailedData);
+        return detailedData;
+    }
+
+//	public List<ScatterPlotData> getScatterPlotDataByProtocol(String protocol) {
+//		logger.debug("Received request to fetch scatter plot data for protocol: " + protocol);
+//		List<ScatterPlotData> scatterPlotData = alarmMetricsRepository.findScatterPlotDataByProtocol(protocol);
+//		logger.debug("Returning scatter plot data: " + scatterPlotData);
+//		return scatterPlotData;
+//	}
+
+	public Map<String, AlarmMetricsDTO> getAlarmMetrics(AlarmMetricsRequest params) throws ParseException {
+		SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+		List<Map<String, Object>> results = uCSPTrendsRepository.findDailyTrends(params.getUcgSourceID(), params.getFromDate(), params.getToDate());
+
+		Map<String, TrendsDTO> trendsData = new HashMap<>();
+
+		for (Map<String, Object> result : results) {
+			String date = dateFormat.format(result.get("date"));
+			String time = (String) result.get("time");
+			double sizeOfFilesBytes = ((Number) result.get("sizeOfFilesBytes")).doubleValue();
+			int numberOfFiles = ((Number) result.get("numberOfFiles")).intValue();
+
+			TrendsDrillDownData trendsDataPoint = new TrendsDrillDownData(time, sizeOfFilesBytes, numberOfFiles);
+
+			trendsData
+					.computeIfAbsent(date, k -> new TrendsDTO(date))
+					.addTrendsData(trendsDataPoint);
+		}
+
+		logger.debug("trendsData {}", trendsData);
+		return trendsData;
+	}
+
+	// Fetch metrics by protocol
+	// Fetch inventory data by protocol
+	public List<UCSPAlarmInventory> filterInventoryByProtocol(String protocol) {
+		logger.info("Fetching inventory data for protocol: " + protocol);
+		return alarmInventoryRepository.findByUcgSourceDataWithLogging(protocol);
+	}
+
+	// Fetch available protocols
+	public List<String> getAvailableProtocols() {
+		logger.info("Fetching available protocols");
+		return alarmInventoryRepository.findDistinctProtocols();
+	}
+
+
+}
 
 package com.verizon.ucs.restapi.repository;
 
-import com.verizon.ucs.restapi.model.UCSPAlarmInventory;
+import com.verizon.ucs.restapi.model.ScatterPlotData;
+import com.verizon.ucs.restapi.model.UCSPAlarmMetrics;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
 
 @Repository
-public interface UCSPAlarmInventoryRepository extends JpaRepository<UCSPAlarmInventory, Long> {
-
-    // Query to filter inventory by protocol
-    @Query("SELECT u FROM UCSPAlarmInventory u WHERE u.ucgSource = :protocol")
-    List<UCSPAlarmInventory> findByProtocol(@Param("protocol") String protocol);
-}
-
-Repository for Device (if needed)
-
-package com.verizon.ucs.restapi.repository;
-
-import com.verizon.ucs.restapi.model.Device;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
-
-@Repository
-public interface DeviceRepository extends JpaRepository<Device, Long> {
-    List<Device> findByDeviceName(String deviceName);
-    List<Device> findByVendor(String vendor);
-}
-
-Step 2: Service Layer
-
-In the service layer, we will implement the business logic for each query in the schema. This will interact with the repositories to fetch data from the database.
-
-Service for UCSPAlarmInventory
-
-package com.verizon.ucs.restapi.service;
-
-import com.verizon.ucs.restapi.model.UCSPAlarmInventory;
-import com.verizon.ucs.restapi.repository.UCSPAlarmInventoryRepository;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-
-import java.util.List;
-
-@Service
-public class UCSPAlarmInventoryService {
-
-    @Autowired
-    private UCSPAlarmInventoryRepository ucspAlarmInventoryRepository;
-
-    // Fetching all devices filtered by protocol
-    public List<UCSPAlarmInventory> getInventoryByProtocol(String protocol) {
-        return ucspAlarmInventoryRepository.findByProtocol(protocol);
+public interface UCSPAlarmMetricsRepository extends JpaRepository<UCSPAlarmMetrics, Long> {
+    Logger logger = LoggerFactory.getLogger(UCSPAlarmMetricsRepository.class);
+    // Query to get scatter plot data by protocol (aggregation based on protocol)
+    @Query(nativeQuery = true, value = "SELECT c.collection_name AS collectionName, " +
+            "TO_CHAR(m.last_updated, 'YYYY-MM-DD') AS date, " +
+            "m.size_of_msgs AS value " +
+            "FROM ucsp_alarm_inventory c " +
+            "JOIN ucsp_alarm_metrics m ON c.collection_name = m.collection_name " +
+            "WHERE c.ucg_source = :protocol")
+    List<ScatterPlotData> findScatterPlotDataByProtocol(@Param("protocol") String protocol);
+    default  List<ScatterPlotData> findScatterPlotDataWithLogging(String protocol) {
+        logger.info("Executing query for protocol: " +protocol) ;
+        List<ScatterPlotData> result = findScatterPlotDataByProtocol(protocol);
+        logger.info("Query result: " +result);
+        return result;
     }
 }
 
-Step 3: GraphQL Controller
 
-In the GraphQL controller, we will define the queries according to the schema provided, and bind the service methods to each query.
+This is the Information based on the trends repository means follow that repository and implement this 3 api's
 
-package com.verizon.ucs.restapi.controllers;
+API to Fetch Collection Types
 
-import com.verizon.ucs.restapi.model.UCSPAlarmInventory;
-import com.verizon.ucs.restapi.service.UCSPAlarmInventoryService;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.graphql.data.method.annotation.Argument;
-import org.springframework.graphql.data.method.annotation.QueryMapping;
-import org.springframework.stereotype.Controller;
+Endpoint: /api/collection-types
+Method: GET
+Description: Fetches all collection types from the ucsp_collection_type table.
 
-import java.util.List;
+API to Fetch Devices by Collection Type
 
-@Controller
-public class UCSPController {
+Endpoint: /api/devices
+Method: GET
+Parameters: collection_type_id
+Description: Fetches device_name, device_ip from the ucsp_alarm_inventory table based on the selected collection type.
 
-    @Autowired
-    private UCSPAlarmInventoryService ucspAlarmInventoryService;
+API to Fetch Device Details
 
-    // Query for fetching devices by protocol
-    @QueryMapping
-    public List<UCSPAlarmInventory> filterInventoryByProtocol(@Argument String protocol) {
-        return ucspAlarmInventoryService.getInventoryByProtocol(protocol);
-    }
-
-    // GraphQL query for retrieving all devices
-    @QueryMapping
-    public List<Device> allDevices() {
-        // This will fetch all devices, assuming a DeviceService is implemented similarly
-        return deviceService.getAllDevices();
-    }
-
-    // Additional query implementations will be added similarly for other GraphQL schema queries
-}
-
-Step 4: Handling Other Queries
-
-The GraphQL schema provided has a number of other queries like getScatterPlotDataByProtocol, uniqueDevicesByNetwork, avgNetworkByCoverage, etc. Let's implement these with similar approaches.
-
-Service for AvgNetworkCoverage
-
-package com.verizon.ucs.restapi.service;
-
-import com.verizon.ucs.restapi.model.AvgNetworkCoverageDTO;
-import org.springframework.stereotype.Service;
-
-@Service
-public class NetworkCoverageService {
-
-    // This will handle average network coverage calculation for a specific network
-    public List<AvgNetworkCoverageDTO> getAvgNetworkCoverage(String network, String fromDate, String toDate, String device) {
-        // Implement the logic to fetch and calculate the network coverage based on these parameters
-        return coverageRepository.getAvgNetworkCoverage(network, fromDate, toDate, device);
-    }
-}
-
-Step 5: GraphQL Resolver for AvgNetworkCoverageDTO
-
-In the GraphQL controller, implement the resolver for this query:
-
-@QueryMapping
-public List<AvgNetworkCoverageDTO> avgNetworkByCoverage(@Argument String network,
-                                                          @Argument String fromDate,
-                                                          @Argument String toDate,
-                                                          @Argument String device) {
-    return networkCoverageService.getAvgNetworkCoverage(network, fromDate, toDate, device);
-}
-
-Step 6: Testing and Queries
-
-Now, using a GraphQL tool (e.g., GraphiQL or Postman), you can test queries such as:
-
-Example GraphQL Query: Filter Inventory by Protocol
-
-query {
-  filterInventoryByProtocol(protocol: "SNMP") {
-    id
-    collectionName
-    deviceName
-    ucgSource
-    vendor
-    deviceIp
-  }
-}
-
-Example GraphQL Query: Get Devices by Network
-
-query {
-  uniqueDevicesByNetwork(network: "Network1") {
-    deviceName
-  }
-}
-
-Example GraphQL Query: Get Average Network Coverage
-
-query {
-  avgNetworkByCoverage(network: "Network1", fromDate: "2023-01-01", toDate: "2023-12-31", device: "DeviceA") {
-    date
-    totalCoverage
-  }
-}
-
-Conclusion
-
-With the above steps, we've implemented the GraphQL queries using Spring Boot, the service layer to handle business logic, and repositories for database interaction. This structure is aligned with the schema you provided, allowing you to handle device details, network coverage, and more. If you need more queries or further customization, feel free to let me know!
-
+Endpoint: /api/device-details
+Method: GET
+Parameters: collection_type_id, device_name, device_ip, model (optional), vendor (optional)
+Description: Fetches detailed information about a specific device from the ucsp_alarm_inventory table based on the selected collection type, device name, device IP, model, and vendor.
+ using graphql same 
