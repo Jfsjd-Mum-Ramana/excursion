@@ -1,66 +1,198 @@
-export const UNIQUE_MODELS_QUERY = `
-    query{
-        uniqueModels
+import React, { useState } from 'react';
+import { useQuery } from '@apollo/client';
+import {
+  AVAILABLE_ALARM_COLLECTION_TYPES_QUERY,
+  SEARCH_ALARM_INVENTORY_QUERY,
+  ALARM_METRICS_QUERY
+} from './graphqlQueries';
+import { Grid, Button, TextField, Typography } from '@mui/material';
+
+const PAGE_SIZE = 10;
+
+const Dashboard = () => {
+  // State to handle pagination for each section
+  const [pageCollectionTypes, setPageCollectionTypes] = useState(1);
+  const [pageInventory, setPageInventory] = useState(1);
+  const [pageMetrics, setPageMetrics] = useState(1);
+
+  // State to handle filter values for searching alarm inventory and metrics
+  const [filters, setFilters] = useState({
+    deviceName: '',
+    collectionType: '',
+    model: '',
+    vendor: '',
+    deviceIp: '',
+    fromDate: '',
+    toDate: ''
+  });
+
+  // Query for available alarm collection types
+  const { data: collectionTypesData, loading: loadingCollectionTypes, error: errorCollectionTypes } = useQuery(AVAILABLE_ALARM_COLLECTION_TYPES_QUERY);
+
+  // Query for searching alarm inventory
+  const { data: inventoryData, loading: loadingInventory, error: errorInventory } = useQuery(SEARCH_ALARM_INVENTORY_QUERY, {
+    variables: filters,
+  });
+
+  // Query for alarm metrics
+  const { data: metricsData, loading: loadingMetrics, error: errorMetrics } = useQuery(ALARM_METRICS_QUERY, {
+    variables: filters,
+  });
+
+  // Handle the change of filter inputs
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFilters((prev) => ({ ...prev, [name]: value }));
+  };
+
+  // Function to handle pagination
+  const handlePagination = (section: string, action: string) => {
+    if (section === 'collectionTypes') {
+      setPageCollectionTypes(action === 'next' ? pageCollectionTypes + 1 : pageCollectionTypes - 1);
+    } else if (section === 'inventory') {
+      setPageInventory(action === 'next' ? pageInventory + 1 : pageInventory - 1);
+    } else if (section === 'metrics') {
+      setPageMetrics(action === 'next' ? pageMetrics + 1 : pageMetrics - 1);
+    }
+  };
+
+  // Get the paginated data for each section
+  const paginatedCollectionTypes = collectionTypesData?.availableAlarmCollectionTypes.slice((pageCollectionTypes - 1) * PAGE_SIZE, pageCollectionTypes * PAGE_SIZE) || [];
+  const paginatedInventory = inventoryData?.searchAlarmInventory.slice((pageInventory - 1) * PAGE_SIZE, pageInventory * PAGE_SIZE) || [];
+  const paginatedMetrics = metricsData?.alarmMetrics.slice((pageMetrics - 1) * PAGE_SIZE, pageMetrics * PAGE_SIZE) || [];
+
+  return (
+    <div>
+      <Typography variant="h3" gutterBottom>
+        Dashboard
+      </Typography>
+
+      {/* Section 1: Available Alarm Collection Types */}
+      <Grid container spacing={3} direction="column" style={{ marginBottom: '20px' }}>
+        <Grid item>
+          <Typography variant="h5">Available Alarm Collection Types</Typography>
+          {loadingCollectionTypes ? (
+            <div>Loading...</div>
+          ) : errorCollectionTypes ? (
+            <div>Error: {errorCollectionTypes.message}</div>
+          ) : (
+            <Grid container spacing={2}>
+              {paginatedCollectionTypes.map((item) => (
+                <Grid item xs={12} sm={6} md={4} key={item.typeId}>
+                  <div className="collection-type">{item.type}</div>
+                </Grid>
+              ))}
+            </Grid>
+          )}
+          <div>
+            <Button disabled={pageCollectionTypes === 1} onClick={() => handlePagination('collectionTypes', 'prev')}>Previous</Button>
+            <span>Page {pageCollectionTypes}</span>
+            <Button disabled={pageCollectionTypes * PAGE_SIZE >= collectionTypesData?.availableAlarmCollectionTypes.length} onClick={() => handlePagination('collectionTypes', 'next')}>Next</Button>
+          </div>
+        </Grid>
+      </Grid>
+
+      {/* Section 2: Search Alarm Inventory */}
+      <Grid container spacing={3} direction="column" style={{ marginBottom: '20px' }}>
+        <Grid item>
+          <Typography variant="h5">Search Alarm Inventory</Typography>
+          <div>
+            <TextField label="Device Name" name="deviceName" value={filters.deviceName} onChange={handleChange} />
+            <TextField label="Collection Type" name="collectionType" value={filters.collectionType} onChange={handleChange} />
+            <TextField label="Model" name="model" value={filters.model} onChange={handleChange} />
+            <TextField label="Vendor" name="vendor" value={filters.vendor} onChange={handleChange} />
+            <TextField label="Device IP" name="deviceIp" value={filters.deviceIp} onChange={handleChange} />
+          </div>
+          {loadingInventory ? (
+            <div>Loading...</div>
+          ) : errorInventory ? (
+            <div>Error: {errorInventory.message}</div>
+          ) : (
+            <Grid container spacing={2}>
+              {paginatedInventory.map((item) => (
+                <Grid item xs={12} sm={6} md={4} key={item.id}>
+                  <div className="inventory-item">
+                    {item.deviceName} - {item.collectionType} - {item.model}
+                  </div>
+                </Grid>
+              ))}
+            </Grid>
+          )}
+          <div>
+            <Button disabled={pageInventory === 1} onClick={() => handlePagination('inventory', 'prev')}>Previous</Button>
+            <span>Page {pageInventory}</span>
+            <Button disabled={pageInventory * PAGE_SIZE >= inventoryData?.searchAlarmInventory.length} onClick={() => handlePagination('inventory', 'next')}>Next</Button>
+          </div>
+        </Grid>
+      </Grid>
+
+      {/* Section 3: Alarm Metrics */}
+      <Grid container spacing={3} direction="column">
+        <Grid item>
+          <Typography variant="h5">Alarm Metrics</Typography>
+          <div>
+            <TextField label="Collection Type" name="collectionType" value={filters.collectionType} onChange={handleChange} />
+            <TextField type="date" label="From Date" name="fromDate" value={filters.fromDate} onChange={handleChange} />
+            <TextField type="date" label="To Date" name="toDate" value={filters.toDate} onChange={handleChange} />
+          </div>
+          {loadingMetrics ? (
+            <div>Loading...</div>
+          ) : errorMetrics ? (
+            <div>Error: {errorMetrics.message}</div>
+          ) : (
+            <Grid container spacing={2}>
+              {paginatedMetrics.map((metric) => (
+                <Grid item xs={12} sm={6} md={4} key={metric.date}>
+                  <div className="metric-item">
+                    {metric.date} - {metric.totalNumberOfFiles} files - {metric.totalSizeOfFilesBytes}
+                  </div>
+                </Grid>
+              ))}
+            </Grid>
+          )}
+          <div>
+            <Button disabled={pageMetrics === 1} onClick={() => handlePagination('metrics', 'prev')}>Previous</Button>
+            <span>Page {pageMetrics}</span>
+            <Button disabled={pageMetrics * PAGE_SIZE >= metricsData?.alarmMetrics.length} onClick={() => handlePagination('metrics', 'next')}>Next</Button>
+          </div>
+        </Grid>
+      </Grid>
+    </div>
+  );
+};
+
+export default Dashboard;
+
+
+
+
+export const AVAILABLE_ALARM_COLLECTION_TYPES_QUERY = `
+    query {
+        availableAlarmCollectionTypes {
+            typeId
+            type
+        }
     }
 `;
 
-export const UNIQUE_VENDORS_QUERY = `
-    query{
-        uniqueVendors
-    }
-`;
-
-export const UNIQUE_NETWORKS_QUERY = `
-    query{
-        uniqueNetworks
-    }
-`;
-export const UNIQUE_UGS_SOURCE_QUERY = `
-query GetUniqueUCGSourcesByProject($projectId: ID!) {
-  uniqueUCGSourcesByProject(projectId: $projectId) {
+export const SEARCH_ALARM_INVENTORY_QUERY = `
+query SearchAlarmInventory($deviceName: String, $collectionType: String, $model: String, $vendor: String, $deviceIp: String) {
+  searchAlarmInventory(alarmInventorySearchRequest: {
+    deviceName: $deviceName,
+    collectionType: $collectionType,
+    model: $model,
+    vendor: $vendor,
+    deviceIp: $deviceIp
+  }) {
     id
-    name
-  }
-}
-`;
-export const UNIQUE_PROJECT_QUERY = `
-query {
-    uniqueUCSPProjects {
-        id
-        name                            
-    }
-}
-`;
-
-export const GET_DAILY_TRENDS_DATA = `query GetDailyTrends($ucgSourceID: Int!, $fromDate: String!, $toDate: String!) {
-  dailyTrends(trendsRequest: { ucgSourceID: $ucgSourceID, fromDate: $fromDate, toDate: $toDate }) {
-    date
-    totalNumberOfFiles 
-    totalSizeOfFilesBytes
-    trendsDrillDownList{
-      time
-      sizeOfFilesBytes
-      numberOfFiles
-    }
-  }
-}`
-
-export const GET_DEVICE_DETAILS = (selectedDeviceName: string, selectedDeviceModel: string, selectedDeviceIp: string, selectedDeviceVendor: string, selectedDeviceNetwork: string) => `
-{
-  searchDevices(apiRequest:{
-		deviceName: "${selectedDeviceName}",
-        model: "${selectedDeviceModel}",
-        loopback: "${selectedDeviceIp}",
-        vendor: "${selectedDeviceVendor}",
-        network: "${selectedDeviceNetwork}"
-  }){
+    collectionType
     deviceName
+    deviceIp
     model
     vendor
     routerType
     status
     loopback
-    routerType,
     network
     pollerCluster
     pollerInterval
@@ -70,161 +202,21 @@ export const GET_DEVICE_DETAILS = (selectedDeviceName: string, selectedDeviceMod
 }
 `;
 
-
-export const UNIQUE_NETWORKS_BY_PROTOCOL_QUERY = `
-    query{
-        uniqueNetworksByProtocol
-    }
-`;
-
-export const AVG_NETWORK_BY_COVERAGE_QUERY = `
-query AvgNetworkByCoverage($network: String!,$fromDate: String!,$toDate: String!,$device: String) {
-  avgNetworkByCoverage(network: $network,fromDate:$fromDate,toDate: $toDate,device: $device) {
+export const ALARM_METRICS_QUERY = `
+query AlarmMetrics($collectionType: String, $fromDate: String, $toDate: String) {
+  alarmMetrics(alarmMetricsRequest: {
+    collectionType: $collectionType,
+    fromDate: $fromDate,
+    toDate: $toDate
+  }) {
     date
-    totalCoverage
-    coverageDrillDownList {
+    totalSizeOfFilesBytes
+    totalNumberOfFiles
+    alarmMetricsDrillDownList {
       time
-      coverage
+      sizeOfFilesBytes
+      numberOfFiles
     }
   }
 }
 `;
-export const UNIQUE_DEVICES_BY_NETWORK_SNMP = `
-query uniqueDevicesByNetwork($network: String!) {
-  uniqueDevicesByNetwork(network: $network)
-}`;
-
-
-Here the backend schema follow exact steps and provide me full code 
-
-type Query {
-    allDevices: [Device]
-    availableAlarmCollectionTypes: [AlarmCollectionType!]!
-    avgNetworkByCoverage(network: String,fromDate: String,toDate: String,device: String): [AvgNetworkCoverageDTO]
-    alarmMetrics(alarmMetricsRequest: AlarmMetricsRequest): [AlarmMetricsDTO]
-    dailyTrends(trendsRequest: TrendsRequest): [TrendsDTO]
-    searchAlarmInventory(alarmInventorySearchRequest:AlarmInventorySearchRequest): [UCSPAlarmInventory]
-    searchDevices(apiRequest: ApiRequest): [Device]
-    uniqueDevicesByNetwork(network: String): [String]
-    uniqueModels: [String]
-    uniqueNetworks: [String]
-    uniqueNetworksByProtocol: [String]
-    uniqueUCSPProjects:[UcspProject]
-    uniqueUCGSources: [String]
-    uniqueUCGSourcesByProject(projectId: ID): [UcspProject]
-    uniqueVendors: [String]
-    uniqueAlarmVendors: [String]
-    uniqueAlarmModels: [String]
-}
-type AlarmCollectionType {
-    typeId: Int
-    type: String
-}
-
-type TrendsDrillDownData{
- 	time: String
- 	sizeOfFilesBytes: Float
- 	numberOfFiles: Int
-}
-type TrendsDTO{
- 	date: String
- 	totalSizeOfFilesBytes: Float
- 	totalNumberOfFiles: Int
- 	trendsDrillDownList: [TrendsDrillDownData]
-}
-
-type AlarmMetricsDrillDownData{
-    time: String
-    sizeOfFilesBytes: Float
-    numberOfFiles: Int
-}
-type AlarmMetricsDTO{
-    date: String
-    totalSizeOfFilesBytes: Float
-    totalNumberOfFiles: Int
-    alarmMetricsDrillDownList: [AlarmMetricsDrillDownData]
-}
-input AlarmMetricsRequest {
-    collectionType: String
-    fromDate: String
-    toDate: String
-}
-
-type AvgNetworkCovDrillDownData {
-    time: String
-    coverage: Float
-}
-
-type AvgNetworkCoverageDTO {
-    date: String
-    totalCoverage: Float
-    coverageDrillDownList: [AvgNetworkCovDrillDownData]
-}
-
-
-type Device {
-    deviceName: ID!
-    model: String
-    loopback: String
-    status: String
-    vendor: String
-    routerType: String
-    pollerCluster: String
-    pollerInterval: Int
-    network: String
-    lastUpdate: String
-    physIp: String
-}
-type UcspProject{
-    id:ID!
-    name:String!
-}
-
-
-input TrendsRequest {
-    ucgSourceID: Int
-    fromDate: String
-    toDate: String
-}
-
-type Trends {
-    id: ID!
-    ucgSourceID: Int
-    collectionDate: String
-    sizeOfFilesKB: Int
-    numberOfFiles: Int
-}
-
-input ApiRequest {
-    deviceName: String
-    model: String
-    loopback: String
-    vendor: String
-    network: String
-}
-
-input AlarmInventorySearchRequest {
-    deviceName: String
-    collectionType: String
-    model: String
-    vendor: String
-    deviceIp: String
-}
-type UCSPAlarmInventory {
-    id: Int 
-    collectionType: String
-    deviceName: String 
-    deviceIp: String 
-    model: String 
-    vendor: String 
-    routerType: String 
-    status: String 
-    loopback: String 
-    network: String 
-    pollerCluster: String 
-    pollerInterval: String 
-    lastUpdate: String 
-    physIp: String 
-}
-
-please make usre that the page size and all the grida and everything same as dailytrend page
