@@ -1,354 +1,192 @@
-import React, { useEffect, useState } from 'react';
-import axios from 'axios';
-import { LineChart } from '@mui/x-charts/LineChart';
-import { AxisConfig, ChartsXAxisProps } from '@mui/x-charts';
-import { Box, Grid, TextField, Autocomplete, Button, Breadcrumbs, Link, Typography } from '@mui/material';
-import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import dayjs, { Dayjs } from 'dayjs';
-import { DatePicker } from "@mui/x-date-pickers/DatePicker";
-import { useTheme } from "@mui/material/styles";
-import { useSnackbar } from '../../utils/SnackbarContext';
-import NavigateNextIcon from '@mui/icons-material/NavigateNext';
-import HomeIcon from '@mui/icons-material/Home';
-import LoadingButton from "@mui/lab/LoadingButton";
+API List:
+availableAlarmCollectionTypes 
+{
+    availableAlarmCollectionTypes {
+        typeId
+        type
+    }
+}
+2.  uniqueAlarmModels
+{
+    uniqueAlarmModels
+}
+3. uniqueAlarmVendors
+{
+    uniqueAlarmVendors
 
-interface DataPoint {
-    date: string;
-    totalUsage: number;
-    totalVolume: number;
-    drillDownList: DetailedDataPoint[];
+}
+4. searchAlarmInventory
+{
+    searchAlarmInventory(alarmInventorySearchRequest:{
+        collectionType:"mcp"
+    }) {
+        id
+        collectionType
+        deviceIp
+        deviceName
+        model
+        vendor
+        loopback
+        network
+        pollerCluster
+        pollerInterval
+        lastUpdate
+        physIp
+    }
+}
+5. availableAlarmCollectionTypes 
+{
+    availableAlarmCollectionTypes {
+        typeId
+        type
+    } 
+}
+6. alarmMetrics 
+{
+  alarmMetrics(alarmMetricsRequest:{
+    collectionType:"MCP",
+    fromDate:"2024-12-1",
+    toDate:"2024-12-3"
+  }){
+    date
+    totalSizeOfFilesBytes
+    totalNumberOfFiles
+    alarmMetricsDrillDownList {
+      time
+      sizeOfFilesBytes
+      numberOfFiles
+    }
+  }
 }
 
-interface DetailedDataPoint {
-    time: string;
-    usage: number;
-    volume: number;
+and also here the graphql schema for backend:
+type Query {
+    allDevices: [Device]
+    availableAlarmCollectionTypes: [AlarmCollectionType!]!
+    avgNetworkByCoverage(network: String,fromDate: String,toDate: String,device: String): [AvgNetworkCoverageDTO]
+    alarmMetrics(alarmMetricsRequest: AlarmMetricsRequest): [AlarmMetricsDTO]
+    dailyTrends(trendsRequest: TrendsRequest): [TrendsDTO]
+    searchAlarmInventory(alarmInventorySearchRequest:AlarmInventorySearchRequest): [UCSPAlarmInventory]
+    searchDevices(apiRequest: ApiRequest): [Device]
+    uniqueDevicesByNetwork(network: String): [String]
+    uniqueModels: [String]
+    uniqueNetworks: [String]
+    uniqueNetworksByProtocol: [String]
+    uniqueUCSPProjects:[UcspProject]
+    uniqueUCGSources: [String]
+    uniqueUCGSourcesByProject(projectId: ID): [UcspProject]
+    uniqueVendors: [String]
+    uniqueAlarmVendors: [String]
+    uniqueAlarmModels: [String]
+}
+type AlarmCollectionType {
+    typeId: Int
+    type: String
 }
 
-const chartHeight = 450;
-const childChartHeight = 410;
-
-const ParentChart = ({ data, onDrillDown, setIsChildChartDisplayed }: { data: DataPoint[], onDrillDown: (date: string) => void, setIsChildChartDisplayed: (value: boolean) => void }) => {
-    const theme = useTheme();
-
-    const transformedData = data.map(item => ({
-        collectionDate: item.date,
-        totalUsage: item.totalUsage,
-        totalVolume: item.totalVolume,
-    }));
-
-    const lineChartParams = {
-        series: [
-            {
-                id: 'totalUsage',
-                datakey: 'totalUsage',
-                label: 'Usage',
-                data: transformedData.map(item => item.totalUsage),
-            },
-            {
-                id: 'totalVolume',
-                datakey: 'totalVolume',
-                label: 'Volume',
-                data: transformedData.map(item => item.totalVolume),
-            }
-        ],
-        xAxis: [{
-            data: transformedData.map(item => item.collectionDate),
-            id: 'axis1',
-            dataKey: 'collectionDate',
-            scaleType: "point",
-            label: "Collected Date",
-            tickLabelStyle: {
-                angle: -25,
-                textAnchor: 'end',
-                fontSize: 10,
-            },
-            labelStyle: { transform: "translateY(30px)" },
-            tickPlacement: 'middle', tickLabelPlacement: 'middle',
-        } as AxisConfig<'point', string, ChartsXAxisProps>],
-        height: chartHeight,
-        margin: {
-            left: 60,
-            right: 10,
-            top: 20,
-            bottom: 80,
-        },
-        colors: theme.palette.distinctLightPalette
-    };
-
-    return (
-        <Box width="100%">
-            <LineChart
-                {...lineChartParams}
-                onAxisClick={(event, d) => {
-                    if (d && d.axisValue) {
-                        setIsChildChartDisplayed(true);
-                        onDrillDown(String(d.axisValue));
-                    } else {
-                        console.error('collectionDate not found in data point');
-                    }
-                }}
-            />
-        </Box>
-    );
-};
-
-const ChildChart = ({ date, data }: { date: string, data: DetailedDataPoint[] }) => {
-    const theme = useTheme();
-    const detailedLineChartsParams = {
-        series: [
-            {
-                id: 'usage',
-                datakey: 'usage',
-                label: 'Usage',
-                data: data.map(item => item.usage)
-            },
-            {
-                id: 'volume',
-                datakey: 'volume',
-                label: 'Volume',
-                data: data.map(item => item.volume)
-            }
-        ],
-        xAxis: [{
-            data: data.map(item => item.time),
-            id: 'axis2',
-            dataKey: 'time',
-            scaleType: "point",
-            label: "Collected Time on " + date,
-        } as AxisConfig<'point', string, ChartsXAxisProps>],
-        height: childChartHeight,
-        colors: theme.palette.distinctLightPalette
-    };
-
-    return (
-        <Box width="100%">
-            <LineChart {...detailedLineChartsParams} />
-        </Box>
-    );
-};
-
-const OverallHealthMetrics: React.FC = () => {
-    const theme = useTheme();
-    const [collectionTypeList, setCollectionTypeList] = useState<any[]>([
-        { id: '1', name: 'Collection Type 1' },
-        { id: '2', name: 'Collection Type 2' },
-        { id: '3', name: 'Collection Type 3' },
-    ]);
-    const [selectedCollectionType, setSelectedCollectionType] = useState<any>(null);
-    const [fromDate, setSelectedFromDate] = useState<Dayjs>(dayjs().subtract(1, 'month'));
-    const [toDate, setSelectedToDate] = useState<Dayjs | null>(dayjs());
-    const [loading, setLoading] = useState<boolean>(false);
-    const [dataFetched, setDataFetched] = useState<boolean>(false);
-    const [responseData, setResponseData] = useState<DataPoint[]>([
-        {
-            date: '2023-01-01',
-            totalUsage: 100,
-            totalVolume: 200,
-            drillDownList: [
-                { time: '10:00', usage: 10, volume: 20 },
-                { time: '11:00', usage: 15, volume: 25 },
-                { time: '12:00', usage: 20, volume: 30 },
-            ],
-        },
-        {
-            date: '2023-01-02',
-            totalUsage: 150,
-            totalVolume: 250,
-            drillDownList: [
-                { time: '10:00', usage: 20, volume: 30 },
-                { time: '11:00', usage: 25, volume: 35 },
-                { time: '12:00', usage: 30, volume: 40 },
-            ],
-        },
-        {
-            date: '2023-01-03',
-            totalUsage: 200,
-            totalVolume: 300,
-            drillDownList: [
-                { time: '10:00', usage: 30, volume: 40 },
-                { time: '11:00', usage: 35, volume: 45 },
-                { time: '12:00', usage: 40, volume: 50 },
-            ],
-        },
-    ]);
-    const [viewStack, setViewStack] = useState<string[]>([]);
-    const [isChildChartDisplayed, setIsChildChartDisplayed] = useState(false);
-    const { showSnackbar } = useSnackbar();
-
-    useEffect(() => {
-        // Fetch collection types from a dummy API
-        const fetchCollectionTypes = async () => {
-            try {
-                const response = await axios.get('/api/collection-types');
-                setCollectionTypeList(response.data);
-            } catch (error) {
-                showSnackbar('Error fetching collection types!');
-                console.error('Error fetching collection types', error);
-            }
-        };
-        fetchCollectionTypes();
-    }, []);
-
-    const handleCollectionTypeChange = (event: any, value: any) => {
-        setSelectedCollectionType(value);
-    };
-
-    const handleReset = () => {
-        setSelectedCollectionType(null);
-        setSelectedFromDate(dayjs().subtract(1, 'month'));
-        setSelectedToDate(dayjs());
-        setResponseData([]);
-        setViewStack([]);
-        setIsChildChartDisplayed(false);
-        setDataFetched(false);
-    };
-
-    const handleFetchClick = async () => {
-        setLoading(true);
-        setResponseData([]);
-        const formattedFromDate = dayjs(fromDate).format('YYYY-MM-DD');
-        const formattedToDate = dayjs(toDate).format('YYYY-MM-DD');
-
-        const data = {
-            collectionType: selectedCollectionType?.id,
-            fromDate: formattedFromDate,
-            toDate: formattedToDate
-        };
-
-        try {
-            /*const response = await axios.post('/api/fetch-data', data);
-
-            if (response.data && response.data.length > 0) {
-                setResponseData(response.data);
-            } else {
-                showSnackbar("No Data Found!");
-            }*/
-            setResponseData(responseData);
-            setDataFetched(true);
-        } catch (error) {
-            showSnackbar("Error While fetching the Data from the Server");
-            console.error('Error fetching data', error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleDrillDown = (date: string) => {
-        setViewStack([...viewStack, date]);
-    };
-
-    const handleBreadcrumbClick = (index: number) => {
-        setViewStack(viewStack.slice(0, index + 1));
-    };
-
-    const currentView = viewStack[viewStack.length - 1];
-    const currentData = responseData.find(item => item.date === currentView)?.drillDownList || [];
-
-    const isButtonDisabled = () => {
-        return !selectedCollectionType || !fromDate || !toDate;
-    };
-
-    return (
-        <Box sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            boxSizing: 'border-box',
-        }}>
-            <Grid container spacing={4} alignItems="flex-end">
-                <Grid item xs={12} sm={6} md>
-                    <Autocomplete
-                        value={selectedCollectionType}
-                        onChange={handleCollectionTypeChange}
-                        loading={loading}
-                        disablePortal
-                        options={collectionTypeList}
-                        getOptionLabel={(option) => option.name}
-                        renderInput={(params: any) => <TextField {...params} label="Collection Type" placeholder="Collection Type" />}
-                    />
-                </Grid>
-                <Grid item xs={12} sm={6} md>
-                    <LocalizationProvider dateAdapter={AdapterDayjs}>
-                        <DatePicker
-                            label="Start Date"
-                            sx={{ width: '100%', height: '100%' }}
-                            value={fromDate}
-                            onChange={(newValue: Dayjs | null) => {
-                                setSelectedFromDate(newValue || dayjs());
-                                if (newValue && toDate && newValue.isAfter(toDate)) {
-                                    setSelectedToDate(null);
-                                }
-                            }}
-                        />
-                    </LocalizationProvider>
-                </Grid>
-                <Grid item xs={12} sm={6} md>
-                    <LocalizationProvider dateAdapter={AdapterDayjs}>
-                        <DatePicker
-                            label="End Date"
-                            sx={{ width: '100%', height: '100%' }}
-                            value={toDate}
-                            minDate={fromDate}
-                            onChange={(newValue) => setSelectedToDate(newValue)}
-                        />
-                    </LocalizationProvider>
-                </Grid>
-                <Grid item xs={2} sm={2} md={2} sx={{ display: 'flex' }}>
-                    <Button variant="contained" onClick={handleReset} color="primary" sx={{ marginRight: 2 }}>Reset</Button>
-                    <LoadingButton onClick={handleFetchClick} loading={loading} loadingIndicator="Fetching…" variant="contained"
-                        disabled={isButtonDisabled()}>
-                        <span>Fetch</span>
-                    </LoadingButton>
-                </Grid>
-            </Grid>
-
-            {dataFetched && !loading && (
-                <Box sx={{ mt: 4, width: '100%', borderRadius: 2, border: '1px solid #e0e0e0', bgcolor: 'white' }}>
-
-                    {isChildChartDisplayed && responseData.length > 0 && (
-                        <Breadcrumbs aria-label="breadcrumb" separator={<NavigateNextIcon fontSize="small" />} sx={{ padding: '1%' }}>
-                            <Link underline="hover" sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer', '&:hover': { textDecoration: 'underline !important', color: '#1976d2 !important' } }} color="primary" onClick={() => { setViewStack([]); setIsChildChartDisplayed(false); }} >
-                                <HomeIcon sx={{ mr: 0.4 }} fontSize="inherit" />
-                                Home
-                            </Link>
-                            {viewStack.map((view, index) => (
-                                <Link
-                                    key={view}
-                                    color="inherit"
-                                    sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}
-                                    underline="none"
-                                    onClick={() => handleBreadcrumbClick(index)}
-                                >
-                                    {view}
-                                </Link>
-                            ))}
-                        </Breadcrumbs>
-                    )}
-
-                    <Box mt={1} sx={{ width: '100%' }}>
-                        {responseData.length > 0 ? (
-                            <>
-                                {currentView ? (
-                                    <ChildChart date={currentView} data={currentData} />
-                                ) : (
-                                    <ParentChart data={responseData} onDrillDown={handleDrillDown} setIsChildChartDisplayed={setIsChildChartDisplayed} />
-                                )}
-                            </>
-                        ) : (
-                            <LineChart
-                                height={chartHeight}
-                                xAxis={[{ data: [], scaleType: 'point', }]}
-                                yAxis={[{ min: 0, max: 10 }]}
-                                series={[]}
-                            />
-                        )}
-                    </Box>
-                </Box>
-            )}
-        </Box>
-    );
+type TrendsDrillDownData{
+ 	time: String
+ 	sizeOfFilesBytes: Float
+ 	numberOfFiles: Int
+}
+type TrendsDTO{
+ 	date: String
+ 	totalSizeOfFilesBytes: Float
+ 	totalNumberOfFiles: Int
+ 	trendsDrillDownList: [TrendsDrillDownData]
 }
 
-export default OverallHealthMetrics;
+type AlarmMetricsDrillDownData{
+    time: String
+    sizeOfFilesBytes: Float
+    numberOfFiles: Int
+}
+type AlarmMetricsDTO{
+    date: String
+    totalSizeOfFilesBytes: Float
+    totalNumberOfFiles: Int
+    alarmMetricsDrillDownList: [AlarmMetricsDrillDownData]
+}
+input AlarmMetricsRequest {
+    collectionType: String
+    fromDate: String
+    toDate: String
+}
+
+type AvgNetworkCovDrillDownData {
+    time: String
+    coverage: Float
+}
+
+type AvgNetworkCoverageDTO {
+    date: String
+    totalCoverage: Float
+    coverageDrillDownList: [AvgNetworkCovDrillDownData]
+}
+
+
+type Device {
+    deviceName: ID!
+    model: String
+    loopback: String
+    status: String
+    vendor: String
+    routerType: String
+    pollerCluster: String
+    pollerInterval: Int
+    network: String
+    lastUpdate: String
+    physIp: String
+}
+type UcspProject{
+    id:ID!
+    name:String!
+}
+
+
+input TrendsRequest {
+    ucgSourceID: Int
+    fromDate: String
+    toDate: String
+}
+
+type Trends {
+    id: ID!
+    ucgSourceID: Int
+    collectionDate: String
+    sizeOfFilesKB: Int
+    numberOfFiles: Int
+}
+
+input ApiRequest {
+    deviceName: String
+    model: String
+    loopback: String
+    vendor: String
+    network: String
+}
+
+input AlarmInventorySearchRequest {
+    deviceName: String
+    collectionType: String
+    model: String
+    vendor: String
+    deviceIp: String
+}
+type UCSPAlarmInventory {
+    id: Int 
+    collectionType: String
+    deviceName: String 
+    deviceIp: String 
+    model: String 
+    vendor: String 
+    routerType: String 
+    status: String 
+    loopback: String 
+    network: String 
+    pollerCluster: String 
+    pollerInterval: String 
+    lastUpdate: String 
+    physIp: String 
+}
+
