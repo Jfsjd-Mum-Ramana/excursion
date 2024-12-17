@@ -1,115 +1,51 @@
-Here’s the graphqlQueries.ts file containing the GraphQL queries for your use case. This file defines the queries for fetching protocols, scatter plot data, and detailed data for a specific date.
-
-
----
-
-graphqlQueries.ts
-
-import { gql } from '@apollo/client';
-
-// Query to fetch available protocols
-export const GET_PROTOCOLS = gql`
-  query GetProtocols {
-    protocols {
-      id
-      name
+{
+    searchAlarmInventory(alarmInventorySearchRequest:{
+        collectionType:"syslog"
+    }) {
+        id
+        collectionType
+        deviceIp
+        deviceName
+        model
+        vendor
+        loopback
+        network
+        pollerCluster
+        pollerInterval
+        lastUpdate
+        physIp
     }
-  }
-`;
+}
 
-// Query to fetch scatter plot data based on protocol and date range
-export const GET_SCATTER_PLOT_DATA = gql`
-  query GetScatterPlotData($protocol: String!, $fromDate: String!, $toDate: String!) {
-    scatterPlotData(protocol: $protocol, fromDate: $fromDate, toDate: $toDate) {
-      date
-      totalUsage
-      totalVolume
-      detailedData {
-        time
-        usage
-        volume
-      }
+
+
+{
+    availableAlarmCollectionTypes {
+        typeId
+        type
     }
-  }
-`;
+}
 
-// Query to fetch detailed data for a specific date
-export const GET_DETAILED_DATA = gql`
-  query GetDetailedData($protocol: String!, $date: String!) {
-    detailedData(protocol: $protocol, date: $date) {
+
+{
+  alarmMetrics(alarmMetricsRequest:{
+    collectionType:"MCP",
+    fromDate:"2024-12-1",
+    toDate:"2024-12-3"
+  }){
+    date
+    totalSizeOfFilesBytes
+    totalNumberOfFiles
+    alarmMetricsDrillDownList {
       time
-      usage
-      volume
+      sizeOfFilesBytes
+      numberOfFiles
     }
-  }
-`;
+  } 
+}
 
+This are the 3 api's for that implementation here the frontend code inside ths code only implement this 3 API's 
 
----
-
-Explanation of Queries:
-
-1. GET_PROTOCOLS:
-
-Fetches a list of protocols (e.g., SNMP, WSS) for filtering.
-
-Returns the id and name of each protocol.
-
-
-
-2. GET_SCATTER_PLOT_DATA:
-
-Fetches scatter plot data based on the selected protocol and date range.
-
-Returns:
-
-date: The collection date.
-
-totalUsage and totalVolume for each date.
-
-detailedData: An array containing the time, usage, and volume for each drill-down data point.
-
-
-
-
-3. GET_DETAILED_DATA:
-
-Fetches detailed data for a specific date.
-
-Returns an array of time, usage, and volume values for the selected date.
-
-
-
-
-
----
-
-Example Usage in a Component:
-
-import { useQuery } from '@apollo/client';
-import { GET_SCATTER_PLOT_DATA, GET_PROTOCOLS } from './graphqlQueries';
-
-const ExampleComponent = () => {
-  const { data: protocolsData, loading: loadingProtocols } = useQuery(GET_PROTOCOLS);
-  const { data: scatterPlotData, loading: loadingScatterPlot } = useQuery(GET_SCATTER_PLOT_DATA, {
-    variables: { protocol: "SNMP", fromDate: "2024-11-01", toDate: "2024-12-01" },
-  });
-
-  if (loadingProtocols || loadingScatterPlot) return <div>Loading...</div>;
-
-  console.log('Protocols:', protocolsData?.protocols);
-  console.log('Scatter Plot Data:', scatterPlotData?.scatterPlotData);
-
-  return <div>Data Loaded</div>;
-};
-
-This should help you seamlessly integrate GraphQL queries into your React application. Let me know if you need help setting up the Apollo Client!
-
-
-
-Here's the complete code with the APIs integrated for data fetching, filtering, and fetching protocols. The existing frontend grid layout has been preserved, and only the logic for fetching data has been added.
-
-Complete Code:
 
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
@@ -244,32 +180,64 @@ const ChildChart = ({ date, data }: { date: string, data: DetailedDataPoint[] })
 
 const OverallHealthMetrics: React.FC = () => {
     const theme = useTheme();
-    const [collectionTypeList, setCollectionTypeList] = useState<any[]>([]);
+    const [collectionTypeList, setCollectionTypeList] = useState<any[]>([
+        { id: '1', name: 'Collection Type 1' },
+        { id: '2', name: 'Collection Type 2' },
+        { id: '3', name: 'Collection Type 3' },
+    ]);
     const [selectedCollectionType, setSelectedCollectionType] = useState<any>(null);
     const [fromDate, setSelectedFromDate] = useState<Dayjs>(dayjs().subtract(1, 'month'));
     const [toDate, setSelectedToDate] = useState<Dayjs | null>(dayjs());
     const [loading, setLoading] = useState<boolean>(false);
     const [dataFetched, setDataFetched] = useState<boolean>(false);
-    const [responseData, setResponseData] = useState<DataPoint[]>([]);
+    const [responseData, setResponseData] = useState<DataPoint[]>([
+        {
+            date: '2023-01-01',
+            totalUsage: 100,
+            totalVolume: 200,
+            drillDownList: [
+                { time: '10:00', usage: 10, volume: 20 },
+                { time: '11:00', usage: 15, volume: 25 },
+                { time: '12:00', usage: 20, volume: 30 },
+            ],
+        },
+        {
+            date: '2023-01-02',
+            totalUsage: 150,
+            totalVolume: 250,
+            drillDownList: [
+                { time: '10:00', usage: 20, volume: 30 },
+                { time: '11:00', usage: 25, volume: 35 },
+                { time: '12:00', usage: 30, volume: 40 },
+            ],
+        },
+        {
+            date: '2023-01-03',
+            totalUsage: 200,
+            totalVolume: 300,
+            drillDownList: [
+                { time: '10:00', usage: 30, volume: 40 },
+                { time: '11:00', usage: 35, volume: 45 },
+                { time: '12:00', usage: 40, volume: 50 },
+            ],
+        },
+    ]);
     const [viewStack, setViewStack] = useState<string[]>([]);
     const [isChildChartDisplayed, setIsChildChartDisplayed] = useState(false);
     const { showSnackbar } = useSnackbar();
 
     useEffect(() => {
-        // Fetch protocols for filtering
-        const fetchProtocols = async () => {
+        // Fetch collection types from a dummy API
+        const fetchCollectionTypes = async () => {
             try {
-                const response = await axios.get('/api/alarms/protocols');
-                setCollectionTypeList(response.data.protocols.map((protocol: string) => ({
-                    id: protocol,
-                    name: protocol,
-                })));
+                const response = await axios.get('/api/collection-types');
+                setCollectionTypeList(response.data);
             } catch (error) {
-                showSnackbar('Error fetching protocols!');
-                console.error('Error fetching protocols', error);
+                showSnackbar('Error fetching collection types!');
+                console.error('Error fetching collection types', error);
             }
         };
-        fetchProtocols();
+        fetchCollectionTypes();
     }, []);
 
     const handleCollectionTypeChange = (event: any, value: any) => {
@@ -292,28 +260,22 @@ const OverallHealthMetrics: React.FC = () => {
         const formattedFromDate = dayjs(fromDate).format('YYYY-MM-DD');
         const formattedToDate = dayjs(toDate).format('YYYY-MM-DD');
 
+        const data = {
+            collectionType: selectedCollectionType?.id,
+            fromDate: formattedFromDate,
+            toDate: formattedToDate
+        };
+
         try {
-            const response = await axios.get('/api/alarms/scatter-plot-data', {
-                params: {
-                    protocol: selectedCollectionType?.id,
-                    fromDate: formattedFromDate,
-                    toDate: formattedToDate,
-                }
-            });
+            /*const response = await axios.post('/api/fetch-data', data);
 
-            if (response.data.scatter_plot_data.length > 0) {
-                const transformedData = response.data.scatter_plot_data.map((item: any) => ({
-                    date: item.date,
-                    totalUsage: item.totalUsage,
-                    totalVolume: item.totalVolume,
-                    drillDownList: item.detailedData || [],
-                }));
-
-                setResponseData(transformedData);
-                setDataFetched(true);
+            if (response.data && response.data.length > 0) {
+                setResponseData(response.data);
             } else {
                 showSnackbar("No Data Found!");
-            }
+            }*/
+            setResponseData(responseData);
+            setDataFetched(true);
         } catch (error) {
             showSnackbar("Error While fetching the Data from the Server");
             console.error('Error fetching data', error);
@@ -441,36 +403,137 @@ const OverallHealthMetrics: React.FC = () => {
 export default OverallHealthMetrics;
 
 
----
-
-Key Changes:
-
-1. API Integrations:
-
-Protocol list fetched via /api/alarms/protocols.
-
-Data fetched via /api/alarms/scatter-plot-data with protocol, fromDate, and toDate parameters.
 
 
+Here the backend schema:
 
-2. Preserved Frontend Grid Layout:
+type Query {
+    allDevices: [Device]
+    availableAlarmCollectionTypes: [AlarmCollectionType!]!
+    avgNetworkByCoverage(network: String,fromDate: String,toDate: String,device: String): [AvgNetworkCoverageDTO]
+    alarmMetrics(alarmMetricsRequest: AlarmMetricsRequest): [AlarmMetricsDTO]
+    dailyTrends(trendsRequest: TrendsRequest): [TrendsDTO]
+    searchAlarmInventory(alarmInventorySearchRequest:AlarmInventorySearchRequest): [UCSPAlarmInventory]
+    searchDevices(apiRequest: ApiRequest): [Device]
+    uniqueDevicesByNetwork(network: String): [String]
+    uniqueModels: [String]
+    uniqueNetworks: [String]
+    uniqueNetworksByProtocol: [String]
+    uniqueUCSPProjects:[UcspProject]
+    uniqueUCGSources: [String]
+    uniqueUCGSourcesByProject(projectId: ID): [UcspProject]
+    uniqueVendors: [String]
+    uniqueAlarmVendors: [String]
+    uniqueAlarmModels: [String]
+}
+type AlarmCollectionType {
+    typeId: Int
+    type: String
+}
 
-No changes made to the grid or component structure.
+type TrendsDrillDownData{
+ 	time: String
+ 	sizeOfFilesBytes: Float
+ 	numberOfFiles: Int
+}
+type TrendsDTO{
+ 	date: String
+ 	totalSizeOfFilesBytes: Float
+ 	totalNumberOfFiles: Int
+ 	trendsDrillDownList: [TrendsDrillDownData]
+}
+
+type AlarmMetricsDrillDownData{
+    time: String
+    sizeOfFilesBytes: Float
+    numberOfFiles: Int
+}
+type AlarmMetricsDTO{
+    date: String
+    totalSizeOfFilesBytes: Float
+    totalNumberOfFiles: Int
+    alarmMetricsDrillDownList: [AlarmMetricsDrillDownData]
+}
+input AlarmMetricsRequest {
+    collectionType: String
+    fromDate: String
+    toDate: String
+}
+
+type AvgNetworkCovDrillDownData {
+    time: String
+    coverage: Float
+}
+
+type AvgNetworkCoverageDTO {
+    date: String
+    totalCoverage: Float
+    coverageDrillDownList: [AvgNetworkCovDrillDownData]
+}
 
 
+type Device {
+    deviceName: ID!
+    model: String
+    loopback: String
+    status: String
+    vendor: String
+    routerType: String
+    pollerCluster: String
+    pollerInterval: Int
+    network: String
+    lastUpdate: String
+    physIp: String
+}
+type UcspProject{
+    id:ID!
+    name:String!
+}
 
-3. Dynamic Data Transformation:
 
-Transforms API responses to fit the ParentChart and ChildChart components.
+input TrendsRequest {
+    ucgSourceID: Int
+    fromDate: String
+    toDate: String
+}
 
+type Trends {
+    id: ID!
+    ucgSourceID: Int
+    collectionDate: String
+    sizeOfFilesKB: Int
+    numberOfFiles: Int
+}
 
+input ApiRequest {
+    deviceName: String
+    model: String
+    loopback: String
+    vendor: String
+    network: String
+}
 
-4. Error Handling:
-
-Snackbar notifications for API errors.
-
-
-
-
-Let me know if additional functionality or changes are required!
+input AlarmInventorySearchRequest {
+    deviceName: String
+    collectionType: String
+    model: String
+    vendor: String
+    deviceIp: String
+}
+type UCSPAlarmInventory {
+    id: Int 
+    collectionType: String
+    deviceName: String 
+    deviceIp: String 
+    model: String 
+    vendor: String 
+    routerType: String 
+    status: String 
+    loopback: String 
+    network: String 
+    pollerCluster: String 
+    pollerInterval: String 
+    lastUpdate: String 
+    physIp: String 
+}
 
