@@ -1,170 +1,432 @@
-To ensure the filterDataByProtocol and availableProtocols APIs work like the getScatterPlotData API, I will modify the implementation to follow the same pattern. Here's how you can achieve this:
+To implement the Health Metrics Dashboard using the given APIs and backend GraphQL schema, we can adapt the provided React code for the "Daily Trends" chart to align with your backend data structure and APIs.
+
+Here’s how we can implement it step by step:
 
 
 ---
 
-Updated Implementation
+Frontend Implementation
 
-Controller
+1. Parent Chart (Aggregate View)
 
-Update the controller to ensure consistent behavior across APIs.
+This will fetch and display daily alarm metrics (e.g., totalSizeOfFilesBytes, totalNumberOfFiles).
 
-@RestController
-public class UCSPAlarmController {
+2. Child Chart (Drill-Down View)
 
-    @Autowired
-    private UCSPAlarmService alarmService;
+This will show hourly metrics (sizeOfFilesBytes, numberOfFiles) for a specific date when a user clicks on a point in the parent chart.
 
-    // Query to get data by protocol (Inventory)
-    @QueryMapping
-    public List<UCSPAlarmInventory> filterDataByProtocol(@Argument String protocol) {
-        return alarmService.getInventoryByProtocol(protocol);
-    }
+3. API Integration
 
-    // Query to get available protocols
-    @QueryMapping
-    public List<String> availableProtocols() {
-        return alarmService.getAvailableProtocols();
-    }
-
-    // Existing scatter plot data API (unchanged)
-    @QueryMapping
-    public List<ScatterPlotData> getScatterPlotDataByProtocol(@Argument String protocol) {
-        return alarmService.getScatterPlotDataByProtocol(protocol);
-    }
-}
+Use the alarmMetrics API to fetch data for both the parent and child charts.
 
 
 ---
 
-Service
+Updated Code
 
-Update the service to fetch data for the new APIs.
+import React, { useEffect, useState } from 'react';
+import axios from 'axios';
+import { LineChart } from '@mui/x-charts/LineChart';
+import { Box, Grid, TextField, Autocomplete, Button, Breadcrumbs, Link, Typography } from '@mui/material';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import dayjs, { Dayjs } from 'dayjs';
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import NavigateNextIcon from '@mui/icons-material/NavigateNext';
+import LoadingButton from "@mui/lab/LoadingButton";
 
-@Service
-public class UCSPAlarmService {
-
-    Logger logger = LoggerFactory.getLogger(UCSPAlarmService.class);
-
-    @Autowired
-    private UCSPAlarmInventoryRepository inventoryRepository;
-
-    @Autowired
-    private UCSPAlarmMetricsRepository metricsRepository;
-
-    // Fetch inventory data by protocol
-    public List<UCSPAlarmInventory> getInventoryByProtocol(String protocol) {
-        logger.info("Fetching inventory data for protocol: " + protocol);
-        return inventoryRepository.findByProtocol(protocol);
-    }
-
-    // Fetch available protocols
-    public List<String> getAvailableProtocols() {
-        logger.info("Fetching available protocols");
-        return inventoryRepository.findDistinctProtocols();
-    }
-
-    // Existing scatter plot data API (unchanged)
-    public List<ScatterPlotData> getScatterPlotDataByProtocol(String protocol) {
-        logger.info("Fetching scatter plot data for protocol: " + protocol);
-        return metricsRepository.findScatterPlotDataByProtocol(protocol);
-    }
+interface ParentData {
+  date: string;
+  totalSizeOfFilesBytes: number;
+  totalNumberOfFiles: number;
+  alarmMetricsDrillDownList: ChildData[];
 }
 
-
----
-
-Repository
-
-Add the required repository methods for availableProtocols.
-
-@Repository
-public interface UCSPAlarmInventoryRepository extends JpaRepository<UCSPAlarmInventory, Long> {
-
-    // Query to filter collections by protocol
-    @Query("SELECT u FROM UCSPAlarmInventory u WHERE u.ucgSource = :protocol")
-    List<UCSPAlarmInventory> findByProtocol(@Param("protocol") String protocol);
-
-    // Query to fetch distinct protocols
-    @Query("SELECT DISTINCT u.ucgSource FROM UCSPAlarmInventory u")
-    List<String> findDistinctProtocols();
+interface ChildData {
+  time: string;
+  sizeOfFilesBytes: number;
+  numberOfFiles: number;
 }
 
+const chartHeight = 450;
 
----
+const ParentChart = ({ data, onDrillDown }: { data: ParentData[], onDrillDown: (date: string) => void }) => {
+  const transformedData = data.map(item => ({
+    collectionDate: item.date,
+    totalSize: item.totalSizeOfFilesBytes,
+    totalFiles: item.totalNumberOfFiles,
+  }));
 
-GraphQL Queries
-
-1. Query: filterDataByProtocol
-
-To fetch inventory data by protocol:
-
-query {
-  filterDataByProtocol(protocol: "SNMP") {
-    id
-    collectionName
-    deviceName
-    deviceIp
-    ucgSource
-    vendor
-  }
-}
-
-2. Query: availableProtocols
-
-To fetch the list of available protocols:
-
-query {
-  availableProtocols
-}
-
-
----
-
-Expected Output
-
-Output for filterDataByProtocol
-
-{
-  "data": {
-    "filterDataByProtocol": [
+  const lineChartParams = {
+    series: [
       {
-        "id": 1,
-        "collectionName": "Collection1",
-        "deviceName": "DeviceA",
-        "deviceIp": "192.168.1.1",
-        "ucgSource": "SNMP",
-        "vendor": "VendorX"
-      }
-    ]
-  }
-}
+        id: 'totalSize',
+        datakey: 'totalSize',
+        label: 'Total Size (Bytes)',
+        data: transformedData.map(item => item.totalSize),
+      },
+      {
+        id: 'totalFiles',
+        datakey: 'totalFiles',
+        label: 'Total Files',
+        data: transformedData.map(item => item.totalFiles),
+      },
+    ],
+    xAxis: [
+      {
+        data: transformedData.map(item => item.collectionDate),
+        scaleType: "point",
+        label: "Date",
+      },
+    ],
+    height: chartHeight,
+  };
 
-Output for availableProtocols
+  return (
+    <Box width="100%">
+      <LineChart
+        {...lineChartParams}
+        onAxisClick={(event, d) => {
+          if (d && d.axisValue) onDrillDown(String(d.axisValue));
+        }}
+      />
+    </Box>
+  );
+};
 
-{
-  "data": {
-    "availableProtocols": ["SNMP", "WSS", "gRPC", "TL1", "syslog"]
-  }
-}
+const ChildChart = ({ data }: { data: ChildData[] }) => {
+  const detailedChartParams = {
+    series: [
+      {
+        id: 'size',
+        datakey: 'size',
+        label: 'File Size (Bytes)',
+        data: data.map(item => item.sizeOfFilesBytes),
+      },
+      {
+        id: 'files',
+        datakey: 'files',
+        label: 'Number of Files',
+        data: data.map(item => item.numberOfFiles),
+      },
+    ],
+    xAxis: [
+      {
+        data: data.map(item => item.time),
+        scaleType: "point",
+        label: "Time",
+      },
+    ],
+    height: chartHeight,
+  };
+
+  return <LineChart {...detailedChartParams} />;
+};
+
+const HealthMetricsDashboard: React.FC = () => {
+  const [collectionTypes, setCollectionTypes] = useState<any[]>([]);
+  const [selectedType, setSelectedType] = useState<any>(null);
+  const [fromDate, setFromDate] = useState<Dayjs>(dayjs().subtract(7, 'days'));
+  const [toDate, setToDate] = useState<Dayjs>(dayjs());
+  const [loading, setLoading] = useState(false);
+  const [parentData, setParentData] = useState<ParentData[]>([]);
+  const [childData, setChildData] = useState<ChildData[]>([]);
+  const [drillDownDate, setDrillDownDate] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Fetch collection types
+    axios.post('/graphql', {
+      query: `
+        query {
+          availableAlarmCollectionTypes {
+            typeId
+            type
+          }
+        }
+      `,
+    }).then((response) => {
+      setCollectionTypes(response.data.data.availableAlarmCollectionTypes);
+    });
+  }, []);
+
+  const fetchParentData = async () => {
+    setLoading(true);
+    const formattedFromDate = fromDate.format('YYYY-MM-DD');
+    const formattedToDate = toDate.format('YYYY-MM-DD');
+
+    const response = await axios.post('/graphql', {
+      query: `
+        query {
+          alarmMetrics(alarmMetricsRequest: {
+            collectionType: "${selectedType?.type}",
+            fromDate: "${formattedFromDate}",
+            toDate: "${formattedToDate}"
+          }) {
+            date
+            totalSizeOfFilesBytes
+            totalNumberOfFiles
+            alarmMetricsDrillDownList {
+              time
+              sizeOfFilesBytes
+              numberOfFiles
+            }
+          }
+        }
+      `,
+    });
+
+    setParentData(response.data.data.alarmMetrics);
+    setLoading(false);
+  };
+
+  const handleDrillDown = (date: string) => {
+    const dataForDate = parentData.find(item => item.date === date)?.alarmMetricsDrillDownList || [];
+    setChildData(dataForDate);
+    setDrillDownDate(date);
+  };
+
+  return (
+    <Box>
+      <Grid container spacing={4}>
+        <Grid item xs={12} sm={4}>
+          <Autocomplete
+            options={collectionTypes}
+            getOptionLabel={(option) => option.type}
+            onChange={(e, value) => setSelectedType(value)}
+            renderInput={(params) => <TextField {...params} label="Collection Type" />}
+          />
+        </Grid>
+        <Grid item xs={12} sm={4}>
+          <LocalizationProvider dateAdapter={AdapterDayjs}>
+            <DatePicker value={fromDate} onChange={setFromDate} label="From Date" />
+          </LocalizationProvider>
+        </Grid>
+        <Grid item xs={12} sm={4}>
+          <LocalizationProvider dateAdapter={AdapterDayjs}>
+            <DatePicker value={toDate} onChange={setToDate} label="To Date" />
+          </LocalizationProvider>
+        </Grid>
+        <Grid item xs={12}>
+          <LoadingButton
+            loading={loading}
+            onClick={fetchParentData}
+            variant="contained"
+            disabled={!selectedType}
+          >
+            Fetch Data
+          </LoadingButton>
+        </Grid>
+      </Grid>
+
+      {drillDownDate ? (
+        <ChildChart data={childData} />
+      ) : (
+        <ParentChart data={parentData} onDrillDown={handleDrillDown} />
+      )}
+    </Box>
+  );
+};
+
+export default HealthMetricsDashboard;
 
 
 ---
 
-Testing Steps
+Backend API Integration
 
-1. Start Your Application: Ensure the Spring Boot application is running on the default port (e.g., http://localhost:8080/graphql).
-
-
-2. Use GraphQL Client: Open your preferred GraphQL client (e.g., GraphQL Playground or Postman).
+This code queries the availableAlarmCollectionTypes and alarmMetrics APIs using GraphQL. Replace /graphql with your actual GraphQL endpoint.
 
 
-3. Run the Queries: Copy and paste the queries above into the client, then execute them.
+---
+
+Features
+
+1. Parent chart shows daily trends (totalSizeOfFilesBytes, totalNumberOfFiles).
 
 
-4. Verify the Results: Check the responses against the expected output.
+2. Clicking on a date drills down into hourly metrics.
+
+
+3. Date pickers and dropdown allow filtering by date and collection type.
 
 
 
-Let me know if any issues persist, and I'll assist further!
+Let me know if further enhancements are needed!
+
+
+
+
+Yes, you need to add or modify a file (e.g., graphqlQueries.ts) to include the necessary GraphQL queries and mutations required for your application. This will help streamline the GraphQL requests in your React components. Here's how you can organize and modify your graphqlQueries.ts file:
+
+
+---
+
+graphqlQueries.ts
+
+import { gql } from '@apollo/client';
+
+// Fetch available alarm collection types
+export const GET_AVAILABLE_ALARM_COLLECTION_TYPES = gql`
+  query GetAvailableAlarmCollectionTypes {
+    availableAlarmCollectionTypes {
+      typeId
+      type
+    }
+  }
+`;
+
+// Fetch unique alarm vendors
+export const GET_UNIQUE_ALARM_VENDORS = gql`
+  query GetUniqueAlarmVendors {
+    uniqueAlarmVendors
+  }
+`;
+
+// Fetch unique alarm models
+export const GET_UNIQUE_ALARM_MODELS = gql`
+  query GetUniqueAlarmModels {
+    uniqueAlarmModels
+  }
+`;
+
+// Search alarm inventory by collection type
+export const SEARCH_ALARM_INVENTORY = gql`
+  query SearchAlarmInventory($collectionType: String!) {
+    searchAlarmInventory(alarmInventorySearchRequest: { collectionType: $collectionType }) {
+      id
+      collectionType
+      deviceIp
+      deviceName
+      model
+      vendor
+      loopback
+      network
+      pollerCluster
+      pollerInterval
+      lastUpdate
+      physIp
+    }
+  }
+`;
+
+// Fetch alarm metrics (for parent and drill-down charts)
+export const GET_ALARM_METRICS = gql`
+  query GetAlarmMetrics($collectionType: String!, $fromDate: String!, $toDate: String!) {
+    alarmMetrics(alarmMetricsRequest: { collectionType: $collectionType, fromDate: $fromDate, toDate: $toDate }) {
+      date
+      totalSizeOfFilesBytes
+      totalNumberOfFiles
+      alarmMetricsDrillDownList {
+        time
+        sizeOfFilesBytes
+        numberOfFiles
+      }
+    }
+  }
+`;
+
+// Example query for daily trends (if needed)
+export const GET_DAILY_TRENDS = gql`
+  query GetDailyTrends($ucgSourceID: Int, $fromDate: String!, $toDate: String!) {
+    dailyTrends(trendsRequest: { ucgSourceID: $ucgSourceID, fromDate: $fromDate, toDate: $toDate }) {
+      date
+      totalSizeOfFilesBytes
+      totalNumberOfFiles
+      trendsDrillDownList {
+        time
+        sizeOfFilesBytes
+        numberOfFiles
+      }
+    }
+  }
+`;
+
+
+---
+
+Changes to the Main File
+
+Integrating the Queries
+
+1. Install the @apollo/client library if not already done:
+
+npm install @apollo/client graphql
+
+
+2. Update your main file (OverallHealthMetrics.tsx) to import and use the queries:
+
+import { useQuery } from '@apollo/client';
+import { GET_AVAILABLE_ALARM_COLLECTION_TYPES, GET_ALARM_METRICS } from './graphqlQueries';
+
+
+
+Fetching Data with Apollo Client
+
+Replace the axios calls in your useEffect and event handlers with useQuery or useLazyQuery hooks from Apollo.
+
+Example for Fetching Collection Types:
+
+const { data: collectionTypesData, loading: collectionTypesLoading, error: collectionTypesError } = useQuery(GET_AVAILABLE_ALARM_COLLECTION_TYPES);
+
+useEffect(() => {
+  if (collectionTypesData) {
+    setCollectionTypeList(collectionTypesData.availableAlarmCollectionTypes);
+  }
+  if (collectionTypesError) {
+    showSnackbar('Error fetching collection types!');
+    console.error('Error fetching collection types', collectionTypesError);
+  }
+}, [collectionTypesData, collectionTypesError]);
+
+Example for Fetching Alarm Metrics:
+
+const [fetchAlarmMetrics, { data: alarmMetricsData, loading: alarmMetricsLoading, error: alarmMetricsError }] = useLazyQuery(GET_ALARM_METRICS);
+
+const handleFetchClick = async () => {
+  fetchAlarmMetrics({
+    variables: {
+      collectionType: selectedCollectionType?.type,
+      fromDate: dayjs(fromDate).format('YYYY-MM-DD'),
+      toDate: dayjs(toDate).format('YYYY-MM-DD'),
+    },
+  });
+
+  if (alarmMetricsData) {
+    setResponseData(alarmMetricsData.alarmMetrics);
+    setDataFetched(true);
+  }
+  if (alarmMetricsError) {
+    showSnackbar("Error while fetching the data from the server");
+    console.error('Error fetching data', alarmMetricsError);
+  }
+};
+
+
+---
+
+File Structure
+
+Organize your files as follows:
+
+src/
+  components/
+    OverallHealthMetrics.tsx
+  graphql/
+    graphqlQueries.ts
+  utils/
+    SnackbarContext.tsx
+
+
+---
+
+Advantages of Using graphqlQueries.ts
+
+Reusability: Centralizes all your GraphQL queries/mutations, making them reusable across components.
+
+Maintainability: Easier to update and manage query changes.
+
+Readability: Keeps your main component clean and focused on UI and logic.
+
+
+Let me know if you need further assistance!
 
