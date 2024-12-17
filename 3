@@ -1,222 +1,396 @@
-import React, { useState } from 'react';
-import { useQuery } from '@apollo/client';
-import {
-  AVAILABLE_ALARM_COLLECTION_TYPES_QUERY,
-  SEARCH_ALARM_INVENTORY_QUERY,
-  ALARM_METRICS_QUERY
-} from './graphqlQueries';
-import { Grid, Button, TextField, Typography } from '@mui/material';
+import React, { useEffect, useState } from 'react';
+import axios from 'axios';
+import { __UCS_GRAPHQL_URL__ } from '../../api-endpoints';
+import { UNIQUE_UGS_SOURCE_QUERY, UNIQUE_PROJECT_QUERY, GET_DAILY_TRENDS_DATA } from '../../graphQL/graphqlQueries';
+import LoadingButton from "@mui/lab/LoadingButton";
+import { LineChart } from '@mui/x-charts/LineChart';
+import { AxisConfig, ChartsXAxisProps } from '@mui/x-charts';
+import { Box, FormControl, Grid, InputLabel, MenuItem, Select, SelectChangeEvent, TextField, Autocomplete, Button, Breadcrumbs, Link, Typography } from '@mui/material';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import dayjs, { Dayjs } from 'dayjs';
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import { useTheme } from "@mui/material/styles";
+import { useSnackbar } from '../../utils/SnackbarContext';
+import NavigateNextIcon from '@mui/icons-material/NavigateNext';
+import HomeIcon from '@mui/icons-material/Home';
 
-const PAGE_SIZE = 10;
-
-const Dashboard = () => {
-  // State to handle pagination for each section
-  const [pageCollectionTypes, setPageCollectionTypes] = useState(1);
-  const [pageInventory, setPageInventory] = useState(1);
-  const [pageMetrics, setPageMetrics] = useState(1);
-
-  // State to handle filter values for searching alarm inventory and metrics
-  const [filters, setFilters] = useState({
-    deviceName: '',
-    collectionType: '',
-    model: '',
-    vendor: '',
-    deviceIp: '',
-    fromDate: '',
-    toDate: ''
-  });
-
-  // Query for available alarm collection types
-  const { data: collectionTypesData, loading: loadingCollectionTypes, error: errorCollectionTypes } = useQuery(AVAILABLE_ALARM_COLLECTION_TYPES_QUERY);
-
-  // Query for searching alarm inventory
-  const { data: inventoryData, loading: loadingInventory, error: errorInventory } = useQuery(SEARCH_ALARM_INVENTORY_QUERY, {
-    variables: filters,
-  });
-
-  // Query for alarm metrics
-  const { data: metricsData, loading: loadingMetrics, error: errorMetrics } = useQuery(ALARM_METRICS_QUERY, {
-    variables: filters,
-  });
-
-  // Handle the change of filter inputs
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFilters((prev) => ({ ...prev, [name]: value }));
-  };
-
-  // Function to handle pagination
-  const handlePagination = (section: string, action: string) => {
-    if (section === 'collectionTypes') {
-      setPageCollectionTypes(action === 'next' ? pageCollectionTypes + 1 : pageCollectionTypes - 1);
-    } else if (section === 'inventory') {
-      setPageInventory(action === 'next' ? pageInventory + 1 : pageInventory - 1);
-    } else if (section === 'metrics') {
-      setPageMetrics(action === 'next' ? pageMetrics + 1 : pageMetrics - 1);
+const generateLast10Dates = () => {
+    const dates = [];
+    for (let i = 0; i < 10; i++) {
+        dates.push(dayjs().subtract(i, 'day').format('YYYY-MM-DD'));
     }
-  };
-
-  // Get the paginated data for each section
-  const paginatedCollectionTypes = collectionTypesData?.availableAlarmCollectionTypes.slice((pageCollectionTypes - 1) * PAGE_SIZE, pageCollectionTypes * PAGE_SIZE) || [];
-  const paginatedInventory = inventoryData?.searchAlarmInventory.slice((pageInventory - 1) * PAGE_SIZE, pageInventory * PAGE_SIZE) || [];
-  const paginatedMetrics = metricsData?.alarmMetrics.slice((pageMetrics - 1) * PAGE_SIZE, pageMetrics * PAGE_SIZE) || [];
-
-  return (
-    <div>
-      <Typography variant="h3" gutterBottom>
-        Dashboard
-      </Typography>
-
-      {/* Section 1: Available Alarm Collection Types */}
-      <Grid container spacing={3} direction="column" style={{ marginBottom: '20px' }}>
-        <Grid item>
-          <Typography variant="h5">Available Alarm Collection Types</Typography>
-          {loadingCollectionTypes ? (
-            <div>Loading...</div>
-          ) : errorCollectionTypes ? (
-            <div>Error: {errorCollectionTypes.message}</div>
-          ) : (
-            <Grid container spacing={2}>
-              {paginatedCollectionTypes.map((item) => (
-                <Grid item xs={12} sm={6} md={4} key={item.typeId}>
-                  <div className="collection-type">{item.type}</div>
-                </Grid>
-              ))}
-            </Grid>
-          )}
-          <div>
-            <Button disabled={pageCollectionTypes === 1} onClick={() => handlePagination('collectionTypes', 'prev')}>Previous</Button>
-            <span>Page {pageCollectionTypes}</span>
-            <Button disabled={pageCollectionTypes * PAGE_SIZE >= collectionTypesData?.availableAlarmCollectionTypes.length} onClick={() => handlePagination('collectionTypes', 'next')}>Next</Button>
-          </div>
-        </Grid>
-      </Grid>
-
-      {/* Section 2: Search Alarm Inventory */}
-      <Grid container spacing={3} direction="column" style={{ marginBottom: '20px' }}>
-        <Grid item>
-          <Typography variant="h5">Search Alarm Inventory</Typography>
-          <div>
-            <TextField label="Device Name" name="deviceName" value={filters.deviceName} onChange={handleChange} />
-            <TextField label="Collection Type" name="collectionType" value={filters.collectionType} onChange={handleChange} />
-            <TextField label="Model" name="model" value={filters.model} onChange={handleChange} />
-            <TextField label="Vendor" name="vendor" value={filters.vendor} onChange={handleChange} />
-            <TextField label="Device IP" name="deviceIp" value={filters.deviceIp} onChange={handleChange} />
-          </div>
-          {loadingInventory ? (
-            <div>Loading...</div>
-          ) : errorInventory ? (
-            <div>Error: {errorInventory.message}</div>
-          ) : (
-            <Grid container spacing={2}>
-              {paginatedInventory.map((item) => (
-                <Grid item xs={12} sm={6} md={4} key={item.id}>
-                  <div className="inventory-item">
-                    {item.deviceName} - {item.collectionType} - {item.model}
-                  </div>
-                </Grid>
-              ))}
-            </Grid>
-          )}
-          <div>
-            <Button disabled={pageInventory === 1} onClick={() => handlePagination('inventory', 'prev')}>Previous</Button>
-            <span>Page {pageInventory}</span>
-            <Button disabled={pageInventory * PAGE_SIZE >= inventoryData?.searchAlarmInventory.length} onClick={() => handlePagination('inventory', 'next')}>Next</Button>
-          </div>
-        </Grid>
-      </Grid>
-
-      {/* Section 3: Alarm Metrics */}
-      <Grid container spacing={3} direction="column">
-        <Grid item>
-          <Typography variant="h5">Alarm Metrics</Typography>
-          <div>
-            <TextField label="Collection Type" name="collectionType" value={filters.collectionType} onChange={handleChange} />
-            <TextField type="date" label="From Date" name="fromDate" value={filters.fromDate} onChange={handleChange} />
-            <TextField type="date" label="To Date" name="toDate" value={filters.toDate} onChange={handleChange} />
-          </div>
-          {loadingMetrics ? (
-            <div>Loading...</div>
-          ) : errorMetrics ? (
-            <div>Error: {errorMetrics.message}</div>
-          ) : (
-            <Grid container spacing={2}>
-              {paginatedMetrics.map((metric) => (
-                <Grid item xs={12} sm={6} md={4} key={metric.date}>
-                  <div className="metric-item">
-                    {metric.date} - {metric.totalNumberOfFiles} files - {metric.totalSizeOfFilesBytes}
-                  </div>
-                </Grid>
-              ))}
-            </Grid>
-          )}
-          <div>
-            <Button disabled={pageMetrics === 1} onClick={() => handlePagination('metrics', 'prev')}>Previous</Button>
-            <span>Page {pageMetrics}</span>
-            <Button disabled={pageMetrics * PAGE_SIZE >= metricsData?.alarmMetrics.length} onClick={() => handlePagination('metrics', 'next')}>Next</Button>
-          </div>
-        </Grid>
-      </Grid>
-    </div>
-  );
+    return dates;
 };
 
-export default Dashboard;
+interface DataPoint {
+    date: string;
+    totalNumberOfFiles: number;
+    totalSizeOfFilesBytes: number;
+    trendsDrillDownList: DetailedDataPoint[];
+}
 
+interface DetailedDataPoint {
+    time: string;
+    sizeOfFilesBytes: number;
+    numberOfFiles: number;
+}
 
+const chartHeight = 450;
+const childChartHeight = 410;
 
+const ParentChart = ({ data, onDrillDown, setIsChildChartDisplayed }: { data: DataPoint[], onDrillDown: (date: string) => void, setIsChildChartDisplayed: (value: boolean) => void }) => {
+    const theme = useTheme();
 
-export const AVAILABLE_ALARM_COLLECTION_TYPES_QUERY = `
-    query {
-        availableAlarmCollectionTypes {
-            typeId
-            type
+    const transformedData = data.map(item => ({
+        collectionDate: item.date,
+        totalNumberOfFiles: item.totalNumberOfFiles,
+        totalSizeOfFilesBytes: item.totalSizeOfFilesBytes,
+    }));
+
+    const lineChartParams = {
+        series: [
+            {
+                id: 'totalNumberOfFiles',
+                datakey: 'totalNumberOfFiles',
+                label: 'Number of Files',
+                data: transformedData.map(item => item.totalNumberOfFiles),
+            },
+            {
+                id: 'totalSizeOfFilesBytes',
+                datakey: 'totalSizeOfFilesBytes',
+                label: 'Size of Files (Bytes)',
+                data: transformedData.map(item => item.totalSizeOfFilesBytes),
+            }
+        ],
+        xAxis: [{
+            data: transformedData.map(item => item.collectionDate),
+            id: 'axis1',
+            dataKey: 'collectionDate',
+            scaleType: "point",
+            label: "Collected Date",
+            tickLabelStyle: {
+                angle: -25,
+                textAnchor: 'end',
+                fontSize: 10,
+            },
+            labelStyle: { transform: "translateY(30px)" },
+            tickPlacement: 'middle', tickLabelPlacement: 'middle',
+        } as AxisConfig<'point', string, ChartsXAxisProps>],
+        height: chartHeight,
+        margin: {
+            left: 60,
+            right: 10,
+            top: 20,
+            bottom: 80,
+        },
+        colors: theme.palette.distinctLightPalette
+    };
+
+    return (
+        <Box width="100%">
+            <LineChart
+                {...lineChartParams}
+                onAxisClick={(event, d) => {
+                    if (d && d.axisValue) {
+                        setIsChildChartDisplayed(true);
+                        onDrillDown(String(d.axisValue));
+                    } else {
+                        console.error('collectionDate not found in data point');
+                    }
+                }}
+            />
+        </Box>
+    );
+};
+
+const ChildChart = ({ date, data }: { date: string, data: DetailedDataPoint[] }) => {
+    const theme = useTheme();
+    const detailedLineChartsParams = {
+        series: [
+            {
+                id: 'numberOfFiles',
+                datakey: 'numberOfFiles',
+                label: 'Number of Files',
+                data: data.map(item => item.numberOfFiles)
+            },
+            {
+                id: 'sizeOfFilesBytes',
+                datakey: 'sizeOfFilesBytes',
+                label: 'Size of Files (Bytes)',
+                data: data.map(item => item.sizeOfFilesBytes)
+            }
+        ],
+        xAxis: [{
+            data: data.map(item => item.time),
+            id: 'axis2',
+            dataKey: 'time',
+            scaleType: "point",
+            label: "Collected Time on " + date,
+        } as AxisConfig<'point', string, ChartsXAxisProps>],
+        height: childChartHeight,
+        colors: theme.palette.distinctLightPalette
+    };
+
+    return (
+        <Box width="100%">
+            <LineChart {...detailedLineChartsParams} />
+        </Box>
+    );
+};
+
+const DailyTrend: React.FC = () => {
+    const theme = useTheme();
+    const [projectList, setProjectList] = useState<any[]>([]);
+    const [ucgSourceList, setUcgSourceList] = useState<{ id: number, name: string }[]>([]);
+    const [selectedProject, setSelectedProject] = useState<any>(null);
+    const [selectedUCGSource, setSelectedUCGSource] = useState<number>(0);
+    const [fromDate, setSelectedFromDate] = useState<Dayjs>(dayjs().subtract(1, 'month'));
+    const [toDate, setSelectedToDate] = useState<Dayjs | null>(dayjs());
+    const [loading, setLoading] = useState<boolean>(false);
+    const [ucgsourceLoading, setUcgsourceLoading] = useState<boolean>(false);
+    const [dataFetched, setDataFetched] = useState<boolean>(false);
+    const [responseData, setResponseData] = useState<DataPoint[]>([]);
+    const [viewStack, setViewStack] = useState<string[]>([]);
+    const [isChildChartDisplayed, setIsChildChartDisplayed] = useState(false);
+    const { showSnackbar } = useSnackbar();
+    const last10Dates = generateLast10Dates();
+
+    useEffect(() => {
+        const fetchProjectData = async () => {
+            try {
+                const projectResponse = await axios.post(__UCS_GRAPHQL_URL__, {
+                    query: UNIQUE_PROJECT_QUERY,
+                });
+                if (projectResponse.data?.data?.uniqueUCSPProjects && projectResponse.data.data.uniqueUCSPProjects.length > 0) {
+                    setProjectList(projectResponse.data.data.uniqueUCSPProjects);
+                }
+            } catch (error) {
+                showSnackbar('Error fetching project data!');
+                console.error('Error fetching project data', error);
+            }
+        };
+        fetchProjectData();
+    }, []);
+
+    const handleProjectChange = async (options: any) => {
+        setSelectedProject(options);
+        setUcgsourceLoading(true);
+        setSelectedUCGSource(0);
+        setUcgSourceList([]);
+        if (options && options.id) {
+            try {
+                const ucgSourcesResponse = await axios.post(__UCS_GRAPHQL_URL__, {
+                    query: UNIQUE_UGS_SOURCE_QUERY,
+                    variables: { projectId: options.id },
+                });
+                if (ucgSourcesResponse.data?.data?.uniqueUCGSourcesByProject && ucgSourcesResponse.data.data.uniqueUCGSourcesByProject.length > 0) {
+                    setUcgSourceList(ucgSourcesResponse.data.data.uniqueUCGSourcesByProject);
+                } else {
+                    showSnackbar('No UCGsource exists for this Project!');
+                }
+            } catch (error) {
+                showSnackbar('Error fetching UCGsource data!');
+                console.error('Error fetching UCG source:', error);
+            } finally {
+                setUcgsourceLoading(false);
+            }
         }
-    }
-`;
+    };
 
-export const SEARCH_ALARM_INVENTORY_QUERY = `
-query SearchAlarmInventory($deviceName: String, $collectionType: String, $model: String, $vendor: String, $deviceIp: String) {
-  searchAlarmInventory(alarmInventorySearchRequest: {
-    deviceName: $deviceName,
-    collectionType: $collectionType,
-    model: $model,
-    vendor: $vendor,
-    deviceIp: $deviceIp
-  }) {
-    id
-    collectionType
-    deviceName
-    deviceIp
-    model
-    vendor
-    routerType
-    status
-    loopback
-    network
-    pollerCluster
-    pollerInterval
-    lastUpdate
-    physIp
-  }
-}
-`;
+    const handleSelectChange = (setter: React.Dispatch<React.SetStateAction<number>>) => (
+        event: SelectChangeEvent<number>) => {
+        setter(event.target.value as number);
+    };
 
-export const ALARM_METRICS_QUERY = `
-query AlarmMetrics($collectionType: String, $fromDate: String, $toDate: String) {
-  alarmMetrics(alarmMetricsRequest: {
-    collectionType: $collectionType,
-    fromDate: $fromDate,
-    toDate: $toDate
-  }) {
-    date
-    totalSizeOfFilesBytes
-    totalNumberOfFiles
-    alarmMetricsDrillDownList {
-      time
-      sizeOfFilesBytes
-      numberOfFiles
-    }
-  }
+    const handleReset = () => {
+        setSelectedProject(null);
+        setSelectedUCGSource(0);
+        setSelectedFromDate(dayjs().subtract(1, 'month'));
+        setSelectedToDate(dayjs());
+        setResponseData([]);
+        setViewStack([]);
+        setIsChildChartDisplayed(false);
+        setDataFetched(false);
+    };
+
+    const handleFetchClick = async () => {
+        setLoading(true);
+        setResponseData([]);
+        const formattedFromDate = dayjs(fromDate).format('YYYY-MM-DD');
+        const formattedToDate = dayjs(toDate).format('YYYY-MM-DD');
+
+        const data = {
+            ucgSourceID: selectedUCGSource,
+            fromDate: formattedFromDate,
+            toDate: formattedToDate
+        };
+
+        try {
+            const response = await axios.post(__UCS_GRAPHQL_URL__, {
+                query: GET_DAILY_TRENDS_DATA,
+                variables: data,
+            });
+
+            if (response.data?.data?.dailyTrends && response.data.data.dailyTrends.length > 0) {
+                let data = response.data.data.dailyTrends || [];
+                console.log(data);
+                setResponseData(data);
+            } else {
+                showSnackbar("No Data Found!");
+            }
+            setDataFetched(true);
+        } catch (error) {
+            showSnackbar("Error While fetching the Data from the Server");
+            console.error('Error fetching data', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDrillDown = (date: string) => {
+        setViewStack([...viewStack, date]);
+    };
+
+    const handleBreadcrumbClick = (index: number) => {
+        setViewStack(viewStack.slice(0, index + 1));
+    };
+
+    const currentView = viewStack[viewStack.length - 1];
+    const currentData = responseData.find(item => item.date === currentView)?.trendsDrillDownList || [];
+
+
+    const isButtonDisabled = () => {
+        return !selectedProject || !selectedUCGSource || !fromDate || !toDate;
+    };
+
+    return (
+        <Box sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            boxSizing: 'border-box',
+        }}>
+            <Grid container spacing={4} alignItems="flex-end">
+                <Grid item xs={12} sm={6} md>
+                    <Autocomplete
+                        value={selectedProject}
+                        onChange={(e, options) => handleProjectChange(options)}
+                        loading={loading}
+                        disablePortal
+                        options={projectList}
+                        getOptionLabel={(option) => option.name}
+                        renderInput={(params: any) => <TextField {...params} label="Project" placeholder="Project Name" />}
+                    />
+                </Grid>
+                <Grid item xs={12} sm={6} md>
+                    <FormControl variant="outlined" sx={{ width: '100%', height: '100%' }}>
+                        <InputLabel id="select-outlined-label">UCG Source</InputLabel>
+                        <Select
+                            labelId="select-outlined-label"
+                            id="select-outlined"
+                            label="UCG Source"
+                            value={selectedUCGSource}
+                            onChange={(event) => handleSelectChange(setSelectedUCGSource)(event)}
+                        >
+                            {ucgsourceLoading ? (
+                                <MenuItem disabled>
+                                    Loading…
+                                </MenuItem>
+                            ) : (
+                                ucgSourceList?.map((source, i) => (
+                                    <MenuItem
+                                        key={source.id}
+                                        id="dropDown"
+                                        value={source.id}
+                                    >
+                                        {source.name}
+                                    </MenuItem>
+                                ))
+                            )}
+                        </Select>
+                    </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6} md>
+                    <LocalizationProvider dateAdapter={AdapterDayjs}>
+                        <DatePicker
+                            label="Start Date"
+                            sx={{ width: '100%', height: '100%' }}
+                            value={fromDate}
+                            onChange={(newValue: Dayjs | null) => {
+                                setSelectedFromDate(newValue || dayjs());
+                                if (newValue && toDate && newValue.isAfter(toDate)) {
+                                    setSelectedToDate(null);
+                                }
+                            }}
+                        />
+                    </LocalizationProvider>
+                </Grid>
+                <Grid item xs={12} sm={6} md>
+                    <LocalizationProvider dateAdapter={AdapterDayjs}>
+                        <DatePicker
+                            label="End Date"
+                            sx={{ width: '100%', height: '100%' }}
+                            value={toDate}
+                            minDate={fromDate}
+                            onChange={(newValue) => setSelectedToDate(newValue)}
+                        />
+                    </LocalizationProvider>
+                </Grid>
+                <Grid item xs={2} sm={2} md={2} sx={{ display: 'flex' }}>
+                    <Button variant="contained" onClick={handleReset} color="primary" sx={{ marginRight: 2 }}>Reset</Button>
+                    <LoadingButton onClick={handleFetchClick} loading={loading} loadingIndicator="Fetching…" variant="contained"
+                        disabled={isButtonDisabled()}>
+                        <span>Fetch</span>
+                    </LoadingButton>
+                </Grid>
+            </Grid>
+
+            {dataFetched && !loading && (
+                <Box sx={{ mt: 4, width: '100%', borderRadius: 2, border: '1px solid #e0e0e0', bgcolor: 'white' }}>
+
+                    {isChildChartDisplayed && responseData.length > 0 && (
+                        <Breadcrumbs aria-label="breadcrumb" separator={<NavigateNextIcon fontSize="small" />} sx={{ padding: '1%' }}>
+                            <Link underline="hover" sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer', '&:hover': { textDecoration: 'underline !important', color: '#1976d2 !important' } }} color="primary" onClick={() => { setViewStack([]); setIsChildChartDisplayed(false); }} >
+                                <HomeIcon sx={{ mr: 0.4 }} fontSize="inherit" />
+                                Home
+                            </Link>
+                            {viewStack.map((view, index) => (
+                                <Link
+                                    key={view}
+                                    color="inherit"
+                                    sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}
+                                    underline="none"
+                                    onClick={() => handleBreadcrumbClick(index)}
+                                >
+                                    {view}
+                                </Link>
+                            ))}
+                        </Breadcrumbs>
+                    )}
+
+                    <Box mt={1} sx={{ width: '100%' }}>
+                        {responseData.length > 0 ? (
+                            <>
+                                {currentView ? (
+                                    <ChildChart date={currentView} data={currentData} />
+                                ) : (
+                                    <ParentChart data={responseData} onDrillDown={handleDrillDown} setIsChildChartDisplayed={setIsChildChartDisplayed} />
+                                )}
+                            </>
+                        ) : (
+                            <LineChart
+                                height={chartHeight}
+                                xAxis={[{ data: last10Dates, scaleType: 'point', }]}
+                                yAxis={[{ min: 0, max: 10 }]}
+                                series={[]}
+                            />
+                        )}
+                    </Box>
+                </Box>
+            )}
+        </Box>
+    );
 }
-`;
+
+export default DailyTrend;
