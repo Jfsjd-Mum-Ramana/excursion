@@ -1,491 +1,230 @@
-Here is the graphqlQueries.ts file that defines the GraphQL queries used in your React component:
-
-// graphqlQueries.ts
-
-// GraphQL query to fetch available alarm collection types
-export const AVAILABLE_ALARM_COLLECTION_TYPES_QUERY = `
-  query AvailableAlarmCollectionTypes {
-    availableAlarmCollectionTypes
-  }
+export const UNIQUE_MODELS_QUERY = `
+    query{
+        uniqueModels
+    }
 `;
 
-// GraphQL query to search alarm inventory based on collection type
-export const SEARCH_ALARM_INVENTORY_QUERY = `
-  query SearchAlarmInventory($collectionType: String!) {
-    searchAlarmInventory(collectionType: $collectionType) {
-      device_name
-      collection_name
-      device_ip
-      ucg_source
-      vendor
+export const UNIQUE_VENDORS_QUERY = `
+    query{
+        uniqueVendors
     }
-  }
 `;
 
-// GraphQL query to fetch alarm metrics for a given collection type and date range
-export const ALARM_METRICS_QUERY = `
-  query AlarmMetrics($collectionType: String!, $fromDate: String!, $toDate: String!) {
-    alarmMetrics(
-      collectionType: $collectionType,
-      fromDate: $fromDate,
-      toDate: $toDate
-    ) {
-      date
-      totalNumberOfFiles
-      totalSizeOfFilesBytes
-      alarmMetricsDrillDownList {
-        time
-        sizeOfFilesBytes
-        numberOfFiles
-      }
+export const UNIQUE_NETWORKS_QUERY = `
+    query{
+        uniqueNetworks
     }
+`;
+export const UNIQUE_UGS_SOURCE_QUERY = `
+query GetUniqueUCGSourcesByProject($projectId: ID!) {
+  uniqueUCGSourcesByProject(projectId: $projectId) {
+    id
+    name
   }
+}
+`;
+export const UNIQUE_PROJECT_QUERY = `
+query {
+    uniqueUCSPProjects {
+        id
+        name                            
+    }
+}
 `;
 
-Explanation of the Queries:
-
-1. AVAILABLE_ALARM_COLLECTION_TYPES_QUERY:
-
-This query fetches the list of available alarm collection types from the backend.
-
-
-
-2. SEARCH_ALARM_INVENTORY_QUERY:
-
-This query retrieves the alarm inventory data for the selected collection type. It takes a collectionType variable and returns a list of devices with their metadata.
-
-
-
-3. ALARM_METRICS_QUERY:
-
-This query fetches alarm metrics for a specific collection type within a date range. It requires collectionType, fromDate, and toDate as variables. It returns the total number of files, the total size of files, and a drill-down list of metrics for each time point.
-
-
-
-
-Usage in React Component:
-
-AVAILABLE_ALARM_COLLECTION_TYPES_QUERY: Used to get the list of collection types when the component loads.
-
-SEARCH_ALARM_INVENTORY_QUERY: Used to get the
-
-
-
-
-
-Apologies for the partial response. Here is the full code for your React component implementing the charting and filtering based on the APIs for your "Overall Health Metric":
-
-import React, { useEffect, useState } from 'react';
-import axios from 'axios';
-import { __UCS_GRAPHQL_URL__ } from '../../api-endpoints';
-import { ALARM_METRICS_QUERY, AVAILABLE_ALARM_COLLECTION_TYPES_QUERY, SEARCH_ALARM_INVENTORY_QUERY } from '../../graphQL/graphqlQueries';
-import LoadingButton from "@mui/lab/LoadingButton";
-import { LineChart } from '@mui/x-charts/LineChart';
-import { AxisConfig, ChartsXAxisProps } from '@mui/x-charts';
-import { Box, FormControl, Grid, InputLabel, MenuItem, Select, SelectChangeEvent, TextField, Autocomplete, Button, Breadcrumbs, Link, Typography } from '@mui/material';
-import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import dayjs, { Dayjs } from 'dayjs';
-import { DatePicker } from "@mui/x-date-pickers/DatePicker";
-import { useTheme } from "@mui/material/styles";
-import { useSnackbar } from '../../utils/SnackbarContext';
-import NavigateNextIcon from '@mui/icons-material/NavigateNext';
-import HomeIcon from '@mui/icons-material/Home';
-
-const generateLast10Dates = () => {
-    const dates = [];
-    for (let i = 0; i < 10; i++) {
-        dates.push(dayjs().subtract(i, 'day').format('YYYY-MM-DD'));
+export const GET_DAILY_TRENDS_DATA = `query GetDailyTrends($ucgSourceID: Int!, $fromDate: String!, $toDate: String!) {
+  dailyTrends(trendsRequest: { ucgSourceID: $ucgSourceID, fromDate: $fromDate, toDate: $toDate }) {
+    date
+    totalNumberOfFiles 
+    totalSizeOfFilesBytes
+    trendsDrillDownList{
+      time
+      sizeOfFilesBytes
+      numberOfFiles
     }
-    return dates;
-};
+  }
+}`
 
-interface DataPoint {
-    date: string;
-    totalNumberOfFiles: number;
-    totalSizeOfFilesBytes: number;
-    alarmMetricsDrillDownList: DetailedDataPoint[];
+export const GET_DEVICE_DETAILS = (selectedDeviceName: string, selectedDeviceModel: string, selectedDeviceIp: string, selectedDeviceVendor: string, selectedDeviceNetwork: string) => `
+{
+  searchDevices(apiRequest:{
+		deviceName: "${selectedDeviceName}",
+        model: "${selectedDeviceModel}",
+        loopback: "${selectedDeviceIp}",
+        vendor: "${selectedDeviceVendor}",
+        network: "${selectedDeviceNetwork}"
+  }){
+    deviceName
+    model
+    vendor
+    routerType
+    status
+    loopback
+    routerType,
+    network
+    pollerCluster
+    pollerInterval
+    lastUpdate
+    physIp
+  }
+}
+`;
+
+
+export const UNIQUE_NETWORKS_BY_PROTOCOL_QUERY = `
+    query{
+        uniqueNetworksByProtocol
+    }
+`;
+
+export const AVG_NETWORK_BY_COVERAGE_QUERY = `
+query AvgNetworkByCoverage($network: String!,$fromDate: String!,$toDate: String!,$device: String) {
+  avgNetworkByCoverage(network: $network,fromDate:$fromDate,toDate: $toDate,device: $device) {
+    date
+    totalCoverage
+    coverageDrillDownList {
+      time
+      coverage
+    }
+  }
+}
+`;
+export const UNIQUE_DEVICES_BY_NETWORK_SNMP = `
+query uniqueDevicesByNetwork($network: String!) {
+  uniqueDevicesByNetwork(network: $network)
+}`;
+
+
+Here the backend schema follow exact steps and provide me full code 
+
+type Query {
+    allDevices: [Device]
+    availableAlarmCollectionTypes: [AlarmCollectionType!]!
+    avgNetworkByCoverage(network: String,fromDate: String,toDate: String,device: String): [AvgNetworkCoverageDTO]
+    alarmMetrics(alarmMetricsRequest: AlarmMetricsRequest): [AlarmMetricsDTO]
+    dailyTrends(trendsRequest: TrendsRequest): [TrendsDTO]
+    searchAlarmInventory(alarmInventorySearchRequest:AlarmInventorySearchRequest): [UCSPAlarmInventory]
+    searchDevices(apiRequest: ApiRequest): [Device]
+    uniqueDevicesByNetwork(network: String): [String]
+    uniqueModels: [String]
+    uniqueNetworks: [String]
+    uniqueNetworksByProtocol: [String]
+    uniqueUCSPProjects:[UcspProject]
+    uniqueUCGSources: [String]
+    uniqueUCGSourcesByProject(projectId: ID): [UcspProject]
+    uniqueVendors: [String]
+    uniqueAlarmVendors: [String]
+    uniqueAlarmModels: [String]
+}
+type AlarmCollectionType {
+    typeId: Int
+    type: String
 }
 
-interface DetailedDataPoint {
-    time: string;
-    sizeOfFilesBytes: number;
-    numberOfFiles: number;
+type TrendsDrillDownData{
+ 	time: String
+ 	sizeOfFilesBytes: Float
+ 	numberOfFiles: Int
+}
+type TrendsDTO{
+ 	date: String
+ 	totalSizeOfFilesBytes: Float
+ 	totalNumberOfFiles: Int
+ 	trendsDrillDownList: [TrendsDrillDownData]
 }
 
-const chartHeight = 450;
-const childChartHeight = 410;
+type AlarmMetricsDrillDownData{
+    time: String
+    sizeOfFilesBytes: Float
+    numberOfFiles: Int
+}
+type AlarmMetricsDTO{
+    date: String
+    totalSizeOfFilesBytes: Float
+    totalNumberOfFiles: Int
+    alarmMetricsDrillDownList: [AlarmMetricsDrillDownData]
+}
+input AlarmMetricsRequest {
+    collectionType: String
+    fromDate: String
+    toDate: String
+}
 
-const ParentChart = ({ data, onDrillDown, setIsChildChartDisplayed }: { data: DataPoint[], onDrillDown: (date: string) => void, setIsChildChartDisplayed: (value: boolean) => void }) => {
-    const theme = useTheme();
+type AvgNetworkCovDrillDownData {
+    time: String
+    coverage: Float
+}
 
-    const transformedData = data.map(item => ({
-        collectionDate: item.date,
-        totalNumberOfFiles: item.totalNumberOfFiles,
-        totalSizeOfFilesBytes: item.totalSizeOfFilesBytes,
-    }));
-
-    const lineChartParams = {
-        series: [
-            {
-                id: 'totalNumberOfFiles',
-                datakey: 'totalNumberOfFiles',
-                label: 'Number of Files',
-                data: transformedData.map(item => item.totalNumberOfFiles),
-            },
-            {
-                id: 'totalSizeOfFilesBytes',
-                datakey: 'totalSizeOfFilesBytes',
-                label: 'Size of Files (Bytes)',
-                data: transformedData.map(item => item.totalSizeOfFilesBytes),
-            }
-        ],
-        xAxis: [{
-            data: transformedData.map(item => item.collectionDate),
-            id: 'axis1',
-            dataKey: 'collectionDate',
-            scaleType: "point",
-            label: "Collected Date",
-            tickLabelStyle: {
-                angle: -25,
-                textAnchor: 'end',
-                fontSize: 10,
-            },
-            labelStyle: { transform: "translateY(30px)" },
-            tickPlacement: 'middle', tickLabelPlacement: 'middle',
-        } as AxisConfig<'point', string, ChartsXAxisProps>],
-        height: chartHeight,
-        margin: {
-            left: 60,
-            right: 10,
-            top: 20,
-            bottom: 80,
-        },
-        colors: theme.palette.distinctLightPalette
-    };
-
-    return (
-        <Box width="100%">
-            <LineChart
-                {...lineChartParams}
-                onAxisClick={(event, d) => {
-                    if (d && d.axisValue) {
-                        setIsChildChartDisplayed(true);
-                        onDrillDown(String(d.axisValue));
-                    } else {
-                        console.error('collectionDate not found in data point');
-                    }
-                }}
-            />
-        </Box>
-    );
-};
-
-const ChildChart = ({ date, data }: { date: string, data: DetailedDataPoint[] }) => {
-    const theme = useTheme();
-    const detailedLineChartsParams = {
-        series: [
-            {
-                id: 'numberOfFiles',
-                datakey: 'numberOfFiles',
-                label: 'Number of Files',
-                data: data.map(item => item.numberOfFiles)
-            },
-            {
-                id: 'sizeOfFilesBytes',
-                datakey: 'sizeOfFilesBytes',
-                label: 'Size of Files (Bytes)',
-                data: data.map(item => item.sizeOfFilesBytes)
-            }
-        ],
-        xAxis: [{
-            data: data.map(item => item.time),
-            id: 'axis2',
-            dataKey: 'time',
-            scaleType: "point",
-            label: "Collected Time on " + date,
-        } as AxisConfig<'point', string, ChartsXAxisProps>],
-        height: childChartHeight,
-        colors: theme.palette.distinctLightPalette
-    };
-
-    return (
-        <Box width="100%">
-            <LineChart {...detailedLineChartsParams} />
-        </Box>
-    );
-};
-
-const OverallHealthMetric: React.FC = () => {
-    const theme = useTheme();
-    const [collectionTypeList, setCollectionTypeList] = useState<any[]>([]);
-    const [alarmInventoryList, setAlarmInventoryList] = useState<any[]>([]);
-    const [selectedCollectionType, setSelectedCollectionType] = useState<string>('');
-    const [selectedDevice, setSelectedDevice] = useState<any>(null);
-    const [fromDate, setSelectedFromDate] = useState<Dayjs>(dayjs().subtract(1, 'month'));
-    const [toDate, setSelectedToDate] = useState<Dayjs | null>(dayjs());
-    const [loading, setLoading] = useState<boolean>(false);
-    const [collectionTypeLoading, setCollectionTypeLoading] = useState<boolean>(false);
-    const [dataFetched, setDataFetched] = useState<boolean>(false);
-    const [responseData, setResponseData] = useState<DataPoint[]>([]);
-    const [viewStack, setViewStack] = useState<string[]>([]);
-    const [isChildChartDisplayed, setIsChildChartDisplayed] = useState(false);
-    const { showSnackbar } = useSnackbar();
-    const last10Dates = generateLast10Dates();
-
-    useEffect(() => {
-        const fetchCollectionTypes = async () => {
-            try {
-                const collectionTypeResponse = await axios.post(__UCS_GRAPHQL_URL__, {
-                    query: AVAILABLE_ALARM_COLLECTION_TYPES_QUERY,
-                });
-                if (collectionTypeResponse.data?.data?.availableAlarmCollectionTypes) {
-                    setCollectionTypeList(collectionTypeResponse.data.data.availableAlarmCollectionTypes);
-                }
-            } catch (error) {
-                showSnackbar('Error fetching collection types!');
-                console.error('Error fetching collection types', error);
-            }
-        };
-        fetchCollectionTypes();
-    }, []);
-
-    const handleCollectionTypeChange = async (event: SelectChangeEvent<string>) => {
-        setSelectedCollectionType(event.target.value);
-        setCollectionTypeLoading(true);
-        setAlarmInventoryList([]);
-        try {
-            const alarmInventoryResponse = await axios.post(__UCS_GRAPHQL_URL__, {
-                query: SEARCH_ALARM_INVENTORY_QUERY,
-                variables: { collectionType: event.target.value },
-            });
-            setAlarmInventoryList(alarmInventoryResponse.data.data.searchAlarmInventory);
-        } catch (error) {
-            showSnackbar('Error fetching alarm inventory data!');
-            console.error('Error fetching alarm inventory:', error);
-        } finally {
-            setCollectionTypeLoading(false);
-        }
-    };
-
-    const handleSelectDevice = (device: any) => {
-        setSelectedDevice(device);
-    };
-
-    const handleReset = () => {
-        setSelectedCollectionType('');
-        setSelectedDevice(null);
-        setSelectedFromDate(dayjs().subtract(1, 'month'));
-        setSelectedToDate(dayjs());
-        setResponseData([]);
-        setViewStack([]);
-        setIsChildChartDisplayed(false);
-        setDataFetched(false);
-    };
-
-    const handleFetchClick = async () => {
-        setLoading(true);
-        setResponseData([]);
-        const formattedFromDate = dayjs(fromDate).format('YYYY-MM-DD');
-        const formattedToDate = dayjs(toDate).format('YYYY-MM-DD');
-
-        const data = {
-            collectionType: selectedCollectionType,
-            fromDate: formattedFromDate,
-            toDate: formattedToDate,
-        };
-
-        try {
-            const response = await axios.post(__UCS_GRAPHQL_URL__, {
-                query: ALARM_METRICS_QUERY,
-                variables: data,
-            });
-
-            if (response.data?.data?.alarmMetrics && response.data.data.alarmMetrics.length > 0) {
-                setResponseData(response.data.data.alarmMetrics);
-                setDataFetched(true);
-            } else {
-                showSnackbar("No Data Found!");
-            }
-        } catch (error) {
-            showSnackbar("Error While fetching the Data from the Server");
-            console.error('Error fetching data', error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleDrillDown = (date: string) => {
-        setViewStack([...viewStack, date]);
-    };
-
-    const handleBreadcrumbClick = (index: number) => {
-        setViewStack(viewStack.slice(0, index + 1));
-    };
-
-    const currentView = viewStack.length === 0 ? 'Main View' : viewStack[viewStack.length - 1];
-
-    return (
-        <Box>
-            <Breadcrumbs
-                separator={<NavigateNextIcon fontSize="small" />}
-                aria-label="breadcrumb"
-            >
-                <Link color="inherit" href="/" onClick={() => handleBreadcrumbClick(0)}>
-                    <HomeIcon />
-                </Link>
-                {viewStack.map((view, index) => (
-                    <Link
-                        key={index}
-                        color="inherit"
-                        onClick={() => handleBreadcrumbClick(index)}
-                    >
-                        {view}
-                    </Link>
-                ))}
-            </Breadcrumbs>
-
-            {/* Form inputs for filtering */}
-            <Grid container spacing={3}>
-                <Grid item xs={12} sm={6}>
-                    <FormControl fullWidth>
-                        <InputLabel>Collection Type</InputLabel>
-                        <Select
-                            value={selectedCollectionType}
-                            label="Collection Type"
-                            onChange={handleCollectionTypeChange}
-                            disabled={collectionTypeLoading}
-                        >
-                            {collectionTypeList.map((type) => (
-                                <MenuItem key={type} value={type}>
-                                    {type}
-                                </MenuItem>
-                            ))}
-                        </Select>
-                    </FormControl>
-                </Grid>
-
-                <Grid item xs={12} sm={6}>
-                    <Autocomplete
-                        options={alarmInventoryList}
-                        getOptionLabel={(option) => option.device_name}
-                        onChange={(event, newValue) => handleSelectDevice(newValue)}
-                        renderInput={(params) => (
-                            <TextField
-                                {...params}
-                                label="Select Device"
-                                variant="outlined"
-                            />
-                        )}
-                    />
-                </Grid>
-
-                <Grid item xs={12} sm={6}>
-                    <LocalizationProvider dateAdapter={AdapterDayjs}>
-                        <DatePicker
-                            label="From Date"
-                            value={fromDate}
-                            onChange={(newValue) => setSelectedFromDate(newValue)}
-                        />
-                    </LocalizationProvider>
-                </Grid>
-
-                <Grid item xs={12} sm={6}>
-                    <LocalizationProvider dateAdapter={AdapterDayjs}>
-                        <DatePicker
-                            label="To Date"
-                            value={toDate}
-                            onChange={(newValue) => setSelectedToDate(newValue)}
-                        />
-                    </LocalizationProvider>
-                </Grid>
-
-                <Grid item xs={12}>
-                    <LoadingButton
-                        loading={loading}
-                        variant="contained"
-                        onClick={handleFetchClick}
-                        fullWidth
-                    >
-                        Fetch Data
-                    </LoadingButton>
-                </Grid>
-            </Grid>
-
-            {/* Charts */}
-            {dataFetched && !isChildChartDisplayed ? (
-                <ParentChart
-                    data={responseData}
-                    onDrillDown={handleDrillDown}
-                    setIsChildChartDisplayed={setIsChildChartDisplayed}
-                />
-            ) : null}
-
-            {isChildChartDisplayed ? (
-                <ChildChart
-                    date={currentView}
-                    data={responseData.find(item => item.date === currentView)?.alarmMetricsDrillDownList || []}
-                />
-            ) : null}
-
-            {/* Reset Button */}
-            <Grid container justifyContent="center" style={{ marginTop: 20 }}>
-                <Grid item>
-                    <Button variant="outlined" onClick={handleReset}>Reset</Button>
-                </Grid>
-            </Grid>
-        </Box>
-    );
-};
-
-export default OverallHealthMetric;
-
-Key Features of the Code:
-
-1. Collection Type and Device Filtering:
-
-Dropdowns allow the user to select the collection type and device.
-
-A date picker filters data by the start and end dates.
+type AvgNetworkCoverageDTO {
+    date: String
+    totalCoverage: Float
+    coverageDrillDownList: [AvgNetworkCovDrillDownData]
+}
 
 
-
-2. GraphQL Integration:
-
-Fetch collection types using AVAILABLE_ALARM_COLLECTION_TYPES_QUERY.
-
-Fetch alarm inventory using SEARCH_ALARM_INVENTORY_QUERY.
-
-Fetch alarm metrics for the selected parameters using ALARM_METRICS_QUERY.
-
-
-
-3. Charts:
-
-Displays a LineChart for the overall data (number of files and their size).
-
-On clicking a data point, it drills down into detailed data (another LineChart for a more granular time-based view).
-
-
-
-4. Breadcrumb Navigation:
-
-Tracks the user's navigation in a stack for easy back-navigation.
+type Device {
+    deviceName: ID!
+    model: String
+    loopback: String
+    status: String
+    vendor: String
+    routerType: String
+    pollerCluster: String
+    pollerInterval: Int
+    network: String
+    lastUpdate: String
+    physIp: String
+}
+type UcspProject{
+    id:ID!
+    name:String!
+}
 
 
+input TrendsRequest {
+    ucgSourceID: Int
+    fromDate: String
+    toDate: String
+}
 
-5. Reset Button:
+type Trends {
+    id: ID!
+    ucgSourceID: Int
+    collectionDate: String
+    sizeOfFilesKB: Int
+    numberOfFiles: Int
+}
 
-Resets all filters and displayed charts, providing a fresh start.
+input ApiRequest {
+    deviceName: String
+    model: String
+    loopback: String
+    vendor: String
+    network: String
+}
 
+input AlarmInventorySearchRequest {
+    deviceName: String
+    collectionType: String
+    model: String
+    vendor: String
+    deviceIp: String
+}
+type UCSPAlarmInventory {
+    id: Int 
+    collectionType: String
+    deviceName: String 
+    deviceIp: String 
+    model: String 
+    vendor: String 
+    routerType: String 
+    status: String 
+    loopback: String 
+    network: String 
+    pollerCluster: String 
+    pollerInterval: String 
+    lastUpdate: String 
+    physIp: String 
+}
 
-
-6. Loading States:
-
-Loading states are shown during data fetching.
-
-
-
-
-This code assumes that __UCS_GRAPHQL_URL__, ALARM_METRICS_QUERY, AVAILABLE_ALARM_COLLECTION_TYPES_QUERY, and SEARCH_ALARM_INVENTORY_QUERY are properly defined elsewhere in your application.
-
+please make usre that the page size and all the grida and everything same as dailytrend page
