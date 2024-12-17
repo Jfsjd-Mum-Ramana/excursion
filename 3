@@ -393,4 +393,183 @@ const DailyTrend: React.FC = () => {
     );
 }
 
-export default DailyTrend;
+export default OverallHealthMetric;
+
+In this dashboard Implement 3 API's instead of the remaining Api's means need to remove the other API's and replace this API's and the grid values accordingly here the backend schema and API details:
+
+searchAlarmInventory
+{
+    searchAlarmInventory(alarmInventorySearchRequest:{
+        collectionType:"mcp"
+    }) {
+        id
+        collectionType
+        deviceIp
+        deviceName
+        model
+        vendor
+        loopback
+        network
+        pollerCluster
+        pollerInterval
+        lastUpdate
+        physIp
+    }
+}
+
+availableAlarmCollectionTypes 
+{
+    availableAlarmCollectionTypes {
+        typeId
+        type
+    } 
+}
+
+ alarmMetrics 
+{
+  alarmMetrics(alarmMetricsRequest:{
+    collectionType:"MCP",
+    fromDate:"2024-12-1",
+    toDate:"2024-12-3"
+  }){
+    date
+    totalSizeOfFilesBytes
+    totalNumberOfFiles
+    alarmMetricsDrillDownList {
+      time
+      sizeOfFilesBytes
+      numberOfFiles
+    }
+  }
+}
+
+type Query {
+    allDevices: [Device]
+    availableAlarmCollectionTypes: [AlarmCollectionType!]!
+    avgNetworkByCoverage(network: String,fromDate: String,toDate: String,device: String): [AvgNetworkCoverageDTO]
+    alarmMetrics(alarmMetricsRequest: AlarmMetricsRequest): [AlarmMetricsDTO]
+    dailyTrends(trendsRequest: TrendsRequest): [TrendsDTO]
+    searchAlarmInventory(alarmInventorySearchRequest:AlarmInventorySearchRequest): [UCSPAlarmInventory]
+    searchDevices(apiRequest: ApiRequest): [Device]
+    uniqueDevicesByNetwork(network: String): [String]
+    uniqueModels: [String]
+    uniqueNetworks: [String]
+    uniqueNetworksByProtocol: [String]
+    uniqueUCSPProjects:[UcspProject]
+    uniqueUCGSources: [String]
+    uniqueUCGSourcesByProject(projectId: ID): [UcspProject]
+    uniqueVendors: [String]
+    uniqueAlarmVendors: [String]
+    uniqueAlarmModels: [String]
+}
+type AlarmCollectionType {
+    typeId: Int
+    type: String
+}
+
+type TrendsDrillDownData{
+ 	time: String
+ 	sizeOfFilesBytes: Float
+ 	numberOfFiles: Int
+}
+type TrendsDTO{
+ 	date: String
+ 	totalSizeOfFilesBytes: Float
+ 	totalNumberOfFiles: Int
+ 	trendsDrillDownList: [TrendsDrillDownData]
+}
+
+type AlarmMetricsDrillDownData{
+    time: String
+    sizeOfFilesBytes: Float
+    numberOfFiles: Int
+}
+type AlarmMetricsDTO{
+    date: String
+    totalSizeOfFilesBytes: Float
+    totalNumberOfFiles: Int
+    alarmMetricsDrillDownList: [AlarmMetricsDrillDownData]
+}
+input AlarmMetricsRequest {
+    collectionType: String
+    fromDate: String
+    toDate: String
+}
+
+type AvgNetworkCovDrillDownData {
+    time: String
+    coverage: Float
+}
+
+type AvgNetworkCoverageDTO {
+    date: String
+    totalCoverage: Float
+    coverageDrillDownList: [AvgNetworkCovDrillDownData]
+}
+
+
+type Device {
+    deviceName: ID!
+    model: String
+    loopback: String
+    status: String
+    vendor: String
+    routerType: String
+    pollerCluster: String
+    pollerInterval: Int
+    network: String
+    lastUpdate: String
+    physIp: String
+}
+type UcspProject{
+    id:ID!
+    name:String!
+}
+
+
+input TrendsRequest {
+    ucgSourceID: Int
+    fromDate: String
+    toDate: String
+}
+
+type Trends {
+    id: ID!
+    ucgSourceID: Int
+    collectionDate: String
+    sizeOfFilesKB: Int
+    numberOfFiles: Int
+}
+
+input ApiRequest {
+    deviceName: String
+    model: String
+    loopback: String
+    vendor: String
+    network: String
+}
+
+input AlarmInventorySearchRequest {
+    deviceName: String
+    collectionType: String
+    model: String
+    vendor: String
+    deviceIp: String
+}
+type UCSPAlarmInventory {
+    id: Int 
+    collectionType: String
+    deviceName: String 
+    deviceIp: String 
+    model: String 
+    vendor: String 
+    routerType: String 
+    status: String 
+    loopback: String 
+    network: String 
+    pollerCluster: String 
+    pollerInterval: String 
+    lastUpdate: String 
+    physIp: String 
+}
+
