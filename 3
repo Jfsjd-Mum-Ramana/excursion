@@ -1,57 +1,13 @@
-{
-    searchAlarmInventory(alarmInventorySearchRequest:{
-        collectionType:"syslog"
-    }) {
-        id
-        collectionType
-        deviceIp
-        deviceName
-        model
-        vendor
-        loopback
-        network
-        pollerCluster
-        pollerInterval
-        lastUpdate
-        physIp
-    }
-}
-
-
-
-{
-    availableAlarmCollectionTypes {
-        typeId
-        type
-    }
-}
-
-
-{
-  alarmMetrics(alarmMetricsRequest:{
-    collectionType:"MCP",
-    fromDate:"2024-12-1",
-    toDate:"2024-12-3"
-  }){
-    date
-    totalSizeOfFilesBytes
-    totalNumberOfFiles
-    alarmMetricsDrillDownList {
-      time
-      sizeOfFilesBytes
-      numberOfFiles
-    }
-  } 
-}
-
-This are the 3 api's for that implementation here the frontend code inside ths code only implement this 3 API's 
-
+Please implement 3 API's inside the frontend code take the reference of this code and use this same like this implement like this 
 
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
+import { __UCS_GRAPHQL_URL__ } from '../../api-endpoints';
+import { UNIQUE_UGS_SOURCE_QUERY, UNIQUE_PROJECT_QUERY, GET_DAILY_TRENDS_DATA } from '../../graphQL/graphqlQueries';
+import LoadingButton from "@mui/lab/LoadingButton";
 import { LineChart } from '@mui/x-charts/LineChart';
 import { AxisConfig, ChartsXAxisProps } from '@mui/x-charts';
-import { Box, Grid, TextField, Autocomplete, Button, Breadcrumbs, Link, Typography } from '@mui/material';
+import { Box, FormControl, Grid, InputLabel, MenuItem, Select, SelectChangeEvent, TextField, Autocomplete, Button, Breadcrumbs, Link, Typography } from '@mui/material';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import dayjs, { Dayjs } from 'dayjs';
@@ -60,19 +16,26 @@ import { useTheme } from "@mui/material/styles";
 import { useSnackbar } from '../../utils/SnackbarContext';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import HomeIcon from '@mui/icons-material/Home';
-import LoadingButton from "@mui/lab/LoadingButton";
+
+const generateLast10Dates = () => {
+    const dates = [];
+    for (let i = 0; i < 10; i++) {
+        dates.push(dayjs().subtract(i, 'day').format('YYYY-MM-DD'));
+    }
+    return dates;
+};
 
 interface DataPoint {
     date: string;
-    totalUsage: number;
-    totalVolume: number;
-    drillDownList: DetailedDataPoint[];
+    totalNumberOfFiles: number;
+    totalSizeOfFilesBytes: number;
+    trendsDrillDownList: DetailedDataPoint[];
 }
 
 interface DetailedDataPoint {
     time: string;
-    usage: number;
-    volume: number;
+    sizeOfFilesBytes: number;
+    numberOfFiles: number;
 }
 
 const chartHeight = 450;
@@ -83,23 +46,23 @@ const ParentChart = ({ data, onDrillDown, setIsChildChartDisplayed }: { data: Da
 
     const transformedData = data.map(item => ({
         collectionDate: item.date,
-        totalUsage: item.totalUsage,
-        totalVolume: item.totalVolume,
+        totalNumberOfFiles: item.totalNumberOfFiles,
+        totalSizeOfFilesBytes: item.totalSizeOfFilesBytes,
     }));
 
     const lineChartParams = {
         series: [
             {
-                id: 'totalUsage',
-                datakey: 'totalUsage',
-                label: 'Usage',
-                data: transformedData.map(item => item.totalUsage),
+                id: 'totalNumberOfFiles',
+                datakey: 'totalNumberOfFiles',
+                label: 'Number of Files',
+                data: transformedData.map(item => item.totalNumberOfFiles),
             },
             {
-                id: 'totalVolume',
-                datakey: 'totalVolume',
-                label: 'Volume',
-                data: transformedData.map(item => item.totalVolume),
+                id: 'totalSizeOfFilesBytes',
+                datakey: 'totalSizeOfFilesBytes',
+                label: 'Size of Files (Bytes)',
+                data: transformedData.map(item => item.totalSizeOfFilesBytes),
             }
         ],
         xAxis: [{
@@ -148,16 +111,16 @@ const ChildChart = ({ date, data }: { date: string, data: DetailedDataPoint[] })
     const detailedLineChartsParams = {
         series: [
             {
-                id: 'usage',
-                datakey: 'usage',
-                label: 'Usage',
-                data: data.map(item => item.usage)
+                id: 'numberOfFiles',
+                datakey: 'numberOfFiles',
+                label: 'Number of Files',
+                data: data.map(item => item.numberOfFiles)
             },
             {
-                id: 'volume',
-                datakey: 'volume',
-                label: 'Volume',
-                data: data.map(item => item.volume)
+                id: 'sizeOfFilesBytes',
+                datakey: 'sizeOfFilesBytes',
+                label: 'Size of Files (Bytes)',
+                data: data.map(item => item.sizeOfFilesBytes)
             }
         ],
         xAxis: [{
@@ -178,74 +141,73 @@ const ChildChart = ({ date, data }: { date: string, data: DetailedDataPoint[] })
     );
 };
 
-const OverallHealthMetrics: React.FC = () => {
+const DailyTrend: React.FC = () => {
     const theme = useTheme();
-    const [collectionTypeList, setCollectionTypeList] = useState<any[]>([
-        { id: '1', name: 'Collection Type 1' },
-        { id: '2', name: 'Collection Type 2' },
-        { id: '3', name: 'Collection Type 3' },
-    ]);
-    const [selectedCollectionType, setSelectedCollectionType] = useState<any>(null);
+    const [projectList, setProjectList] = useState<any[]>([]);
+    const [ucgSourceList, setUcgSourceList] = useState<{ id: number, name: string }[]>([]);
+    const [selectedProject, setSelectedProject] = useState<any>(null);
+    const [selectedUCGSource, setSelectedUCGSource] = useState<number>(0);
     const [fromDate, setSelectedFromDate] = useState<Dayjs>(dayjs().subtract(1, 'month'));
     const [toDate, setSelectedToDate] = useState<Dayjs | null>(dayjs());
     const [loading, setLoading] = useState<boolean>(false);
+    const [ucgsourceLoading, setUcgsourceLoading] = useState<boolean>(false);
     const [dataFetched, setDataFetched] = useState<boolean>(false);
-    const [responseData, setResponseData] = useState<DataPoint[]>([
-        {
-            date: '2023-01-01',
-            totalUsage: 100,
-            totalVolume: 200,
-            drillDownList: [
-                { time: '10:00', usage: 10, volume: 20 },
-                { time: '11:00', usage: 15, volume: 25 },
-                { time: '12:00', usage: 20, volume: 30 },
-            ],
-        },
-        {
-            date: '2023-01-02',
-            totalUsage: 150,
-            totalVolume: 250,
-            drillDownList: [
-                { time: '10:00', usage: 20, volume: 30 },
-                { time: '11:00', usage: 25, volume: 35 },
-                { time: '12:00', usage: 30, volume: 40 },
-            ],
-        },
-        {
-            date: '2023-01-03',
-            totalUsage: 200,
-            totalVolume: 300,
-            drillDownList: [
-                { time: '10:00', usage: 30, volume: 40 },
-                { time: '11:00', usage: 35, volume: 45 },
-                { time: '12:00', usage: 40, volume: 50 },
-            ],
-        },
-    ]);
+    const [responseData, setResponseData] = useState<DataPoint[]>([]);
     const [viewStack, setViewStack] = useState<string[]>([]);
     const [isChildChartDisplayed, setIsChildChartDisplayed] = useState(false);
     const { showSnackbar } = useSnackbar();
+    const last10Dates = generateLast10Dates();
 
     useEffect(() => {
-        // Fetch collection types from a dummy API
-        const fetchCollectionTypes = async () => {
+        const fetchProjectData = async () => {
             try {
-                const response = await axios.get('/api/collection-types');
-                setCollectionTypeList(response.data);
+                const projectResponse = await axios.post(__UCS_GRAPHQL_URL__, {
+                    query: UNIQUE_PROJECT_QUERY,
+                });
+                if (projectResponse.data?.data?.uniqueUCSPProjects && projectResponse.data.data.uniqueUCSPProjects.length > 0) {
+                    setProjectList(projectResponse.data.data.uniqueUCSPProjects);
+                }
             } catch (error) {
-                showSnackbar('Error fetching collection types!');
-                console.error('Error fetching collection types', error);
+                showSnackbar('Error fetching project data!');
+                console.error('Error fetching project data', error);
             }
         };
-        fetchCollectionTypes();
+        fetchProjectData();
     }, []);
 
-    const handleCollectionTypeChange = (event: any, value: any) => {
-        setSelectedCollectionType(value);
+    const handleProjectChange = async (options: any) => {
+        setSelectedProject(options);
+        setUcgsourceLoading(true);
+        setSelectedUCGSource(0);
+        setUcgSourceList([]);
+        if (options && options.id) {
+            try {
+                const ucgSourcesResponse = await axios.post(__UCS_GRAPHQL_URL__, {
+                    query: UNIQUE_UGS_SOURCE_QUERY,
+                    variables: { projectId: options.id },
+                });
+                if (ucgSourcesResponse.data?.data?.uniqueUCGSourcesByProject && ucgSourcesResponse.data.data.uniqueUCGSourcesByProject.length > 0) {
+                    setUcgSourceList(ucgSourcesResponse.data.data.uniqueUCGSourcesByProject);
+                } else {
+                    showSnackbar('No UCGsource exists for this Project!');
+                }
+            } catch (error) {
+                showSnackbar('Error fetching UCGsource data!');
+                console.error('Error fetching UCG source:', error);
+            } finally {
+                setUcgsourceLoading(false);
+            }
+        }
+    };
+
+    const handleSelectChange = (setter: React.Dispatch<React.SetStateAction<number>>) => (
+        event: SelectChangeEvent<number>) => {
+        setter(event.target.value as number);
     };
 
     const handleReset = () => {
-        setSelectedCollectionType(null);
+        setSelectedProject(null);
+        setSelectedUCGSource(0);
         setSelectedFromDate(dayjs().subtract(1, 'month'));
         setSelectedToDate(dayjs());
         setResponseData([]);
@@ -261,20 +223,24 @@ const OverallHealthMetrics: React.FC = () => {
         const formattedToDate = dayjs(toDate).format('YYYY-MM-DD');
 
         const data = {
-            collectionType: selectedCollectionType?.id,
+            ucgSourceID: selectedUCGSource,
             fromDate: formattedFromDate,
             toDate: formattedToDate
         };
 
         try {
-            /*const response = await axios.post('/api/fetch-data', data);
+            const response = await axios.post(__UCS_GRAPHQL_URL__, {
+                query: GET_DAILY_TRENDS_DATA,
+                variables: data,
+            });
 
-            if (response.data && response.data.length > 0) {
-                setResponseData(response.data);
+            if (response.data?.data?.dailyTrends && response.data.data.dailyTrends.length > 0) {
+                let data = response.data.data.dailyTrends || [];
+                console.log(data);
+                setResponseData(data);
             } else {
                 showSnackbar("No Data Found!");
-            }*/
-            setResponseData(responseData);
+            }
             setDataFetched(true);
         } catch (error) {
             showSnackbar("Error While fetching the Data from the Server");
@@ -293,10 +259,11 @@ const OverallHealthMetrics: React.FC = () => {
     };
 
     const currentView = viewStack[viewStack.length - 1];
-    const currentData = responseData.find(item => item.date === currentView)?.drillDownList || [];
+    const currentData = responseData.find(item => item.date === currentView)?.trendsDrillDownList || [];
+
 
     const isButtonDisabled = () => {
-        return !selectedCollectionType || !fromDate || !toDate;
+        return !selectedProject || !selectedUCGSource || !fromDate || !toDate;
     };
 
     return (
@@ -309,14 +276,42 @@ const OverallHealthMetrics: React.FC = () => {
             <Grid container spacing={4} alignItems="flex-end">
                 <Grid item xs={12} sm={6} md>
                     <Autocomplete
-                        value={selectedCollectionType}
-                        onChange={handleCollectionTypeChange}
+                        value={selectedProject}
+                        onChange={(e, options) => handleProjectChange(options)}
                         loading={loading}
                         disablePortal
-                        options={collectionTypeList}
+                        options={projectList}
                         getOptionLabel={(option) => option.name}
-                        renderInput={(params: any) => <TextField {...params} label="Collection Type" placeholder="Collection Type" />}
+                        renderInput={(params: any) => <TextField {...params} label="Project" placeholder="Project Name" />}
                     />
+                </Grid>
+                <Grid item xs={12} sm={6} md>
+                    <FormControl variant="outlined" sx={{ width: '100%', height: '100%' }}>
+                        <InputLabel id="select-outlined-label">UCG Source</InputLabel>
+                        <Select
+                            labelId="select-outlined-label"
+                            id="select-outlined"
+                            label="UCG Source"
+                            value={selectedUCGSource}
+                            onChange={(event) => handleSelectChange(setSelectedUCGSource)(event)}
+                        >
+                            {ucgsourceLoading ? (
+                                <MenuItem disabled>
+                                    Loading…
+                                </MenuItem>
+                            ) : (
+                                ucgSourceList?.map((source, i) => (
+                                    <MenuItem
+                                        key={source.id}
+                                        id="dropDown"
+                                        value={source.id}
+                                    >
+                                        {source.name}
+                                    </MenuItem>
+                                ))
+                            )}
+                        </Select>
+                    </FormControl>
                 </Grid>
                 <Grid item xs={12} sm={6} md>
                     <LocalizationProvider dateAdapter={AdapterDayjs}>
@@ -388,7 +383,7 @@ const OverallHealthMetrics: React.FC = () => {
                         ) : (
                             <LineChart
                                 height={chartHeight}
-                                xAxis={[{ data: [], scaleType: 'point', }]}
+                                xAxis={[{ data: last10Dates, scaleType: 'point', }]}
                                 yAxis={[{ min: 0, max: 10 }]}
                                 series={[]}
                             />
@@ -400,9 +395,53 @@ const OverallHealthMetrics: React.FC = () => {
     );
 }
 
-export default OverallHealthMetrics;
+export default DailyTrend;
 
 
+Instead of daily trend use OverallHealthMetric and implement this API's:
+
+{
+  alarmMetrics(alarmMetricsRequest:{
+    collectionType:"MCP",
+    fromDate:"2024-12-1",
+    toDate:"2024-12-3"
+  }){
+    date
+    totalSizeOfFilesBytes
+    totalNumberOfFiles
+    alarmMetricsDrillDownList {
+      time
+      sizeOfFilesBytes
+      numberOfFiles
+    }
+  } 
+}
+
+{
+    availableAlarmCollectionTypes {
+        typeId
+        type
+    }
+}
+
+{
+    searchAlarmInventory(alarmInventorySearchRequest:{
+        collectionType:"syslog"
+    }) {
+        id
+        collectionType
+        deviceIp
+        deviceName
+        model
+        vendor
+        loopback
+        network
+        pollerCluster
+        pollerInterval
+        lastUpdate
+        physIp
+    }
+}
 
 
 Here the backend schema:
@@ -537,3 +576,100 @@ type UCSPAlarmInventory {
     physIp: String 
 }
 
+Here grapgqlqueries.ts
+
+export const UNIQUE_MODELS_QUERY = `
+    query{
+        uniqueModels
+    }
+`;
+
+export const UNIQUE_VENDORS_QUERY = `
+    query{
+        uniqueVendors
+    }
+`;
+
+export const UNIQUE_NETWORKS_QUERY = `
+    query{
+        uniqueNetworks
+    }
+`;
+export const UNIQUE_UGS_SOURCE_QUERY = `
+query GetUniqueUCGSourcesByProject($projectId: ID!) {
+  uniqueUCGSourcesByProject(projectId: $projectId) {
+    id
+    name
+  }
+}
+`;
+export const UNIQUE_PROJECT_QUERY = `
+query {
+    uniqueUCSPProjects {
+        id
+        name                            
+    }
+}
+`;
+
+export const GET_DAILY_TRENDS_DATA = `query GetDailyTrends($ucgSourceID: Int!, $fromDate: String!, $toDate: String!) {
+  dailyTrends(trendsRequest: { ucgSourceID: $ucgSourceID, fromDate: $fromDate, toDate: $toDate }) {
+    date
+    totalNumberOfFiles 
+    totalSizeOfFilesBytes
+    trendsDrillDownList{
+      time
+      sizeOfFilesBytes
+      numberOfFiles
+    }
+  }
+}`
+
+export const GET_DEVICE_DETAILS = (selectedDeviceName: string, selectedDeviceModel: string, selectedDeviceIp: string, selectedDeviceVendor: string, selectedDeviceNetwork: string) => `
+{
+  searchDevices(apiRequest:{
+		deviceName: "${selectedDeviceName}",
+        model: "${selectedDeviceModel}",
+        loopback: "${selectedDeviceIp}",
+        vendor: "${selectedDeviceVendor}",
+        network: "${selectedDeviceNetwork}"
+  }){
+    deviceName
+    model
+    vendor
+    routerType
+    status
+    loopback
+    routerType,
+    network
+    pollerCluster
+    pollerInterval
+    lastUpdate
+    physIp
+  }
+}
+`;
+
+
+export const UNIQUE_NETWORKS_BY_PROTOCOL_QUERY = `
+    query{
+        uniqueNetworksByProtocol
+    }
+`;
+
+export const AVG_NETWORK_BY_COVERAGE_QUERY = `
+query AvgNetworkByCoverage($network: String!,$fromDate: String!,$toDate: String!,$device: String) {
+  avgNetworkByCoverage(network: $network,fromDate:$fromDate,toDate: $toDate,device: $device) {
+    date
+    totalCoverage
+    coverageDrillDownList {
+      time
+      coverage
+    }
+  }
+}
+`;
+export const UNIQUE_DEVICES_BY_NETWORK_SNMP = `
+query uniqueDevicesByNetwork($network: String!) {
+  uniqueDevicesByNetwork(network: $network)
+}`;
