@@ -1,192 +1,62 @@
-API List:
-availableAlarmCollectionTypes 
-{
-    availableAlarmCollectionTypes {
-        typeId
-        type
-    }
-}
-2.  uniqueAlarmModels
-{
-    uniqueAlarmModels
-}
-3. uniqueAlarmVendors
-{
-    uniqueAlarmVendors
-
-}
-4. searchAlarmInventory
-{
-    searchAlarmInventory(alarmInventorySearchRequest:{
-        collectionType:"mcp"
-    }) {
-        id
-        collectionType
-        deviceIp
-        deviceName
-        model
-        vendor
-        loopback
-        network
-        pollerCluster
-        pollerInterval
-        lastUpdate
-        physIp
-    }
-}
-5. availableAlarmCollectionTypes 
-{
-    availableAlarmCollectionTypes {
-        typeId
-        type
-    } 
-}
-6. alarmMetrics 
-{
-  alarmMetrics(alarmMetricsRequest:{
-    collectionType:"MCP",
-    fromDate:"2024-12-1",
-    toDate:"2024-12-3"
-  }){
-    date
-    totalSizeOfFilesBytes
-    totalNumberOfFiles
-    alarmMetricsDrillDownList {
-      time
-      sizeOfFilesBytes
-      numberOfFiles
-    }
-  }
-}
-
-and also here the graphql schema for backend:
-type Query {
-    allDevices: [Device]
-    availableAlarmCollectionTypes: [AlarmCollectionType!]!
-    avgNetworkByCoverage(network: String,fromDate: String,toDate: String,device: String): [AvgNetworkCoverageDTO]
-    alarmMetrics(alarmMetricsRequest: AlarmMetricsRequest): [AlarmMetricsDTO]
-    dailyTrends(trendsRequest: TrendsRequest): [TrendsDTO]
-    searchAlarmInventory(alarmInventorySearchRequest:AlarmInventorySearchRequest): [UCSPAlarmInventory]
-    searchDevices(apiRequest: ApiRequest): [Device]
-    uniqueDevicesByNetwork(network: String): [String]
-    uniqueModels: [String]
-    uniqueNetworks: [String]
-    uniqueNetworksByProtocol: [String]
-    uniqueUCSPProjects:[UcspProject]
-    uniqueUCGSources: [String]
-    uniqueUCGSourcesByProject(projectId: ID): [UcspProject]
-    uniqueVendors: [String]
-    uniqueAlarmVendors: [String]
-    uniqueAlarmModels: [String]
-}
-type AlarmCollectionType {
-    typeId: Int
-    type: String
-}
-
-type TrendsDrillDownData{
- 	time: String
- 	sizeOfFilesBytes: Float
- 	numberOfFiles: Int
-}
-type TrendsDTO{
- 	date: String
- 	totalSizeOfFilesBytes: Float
- 	totalNumberOfFiles: Int
- 	trendsDrillDownList: [TrendsDrillDownData]
-}
-
-type AlarmMetricsDrillDownData{
-    time: String
-    sizeOfFilesBytes: Float
-    numberOfFiles: Int
-}
-type AlarmMetricsDTO{
-    date: String
-    totalSizeOfFilesBytes: Float
-    totalNumberOfFiles: Int
-    alarmMetricsDrillDownList: [AlarmMetricsDrillDownData]
-}
-input AlarmMetricsRequest {
-    collectionType: String
-    fromDate: String
-    toDate: String
-}
-
-type AvgNetworkCovDrillDownData {
-    time: String
-    coverage: Float
-}
-
-type AvgNetworkCoverageDTO {
-    date: String
-    totalCoverage: Float
-    coverageDrillDownList: [AvgNetworkCovDrillDownData]
-}
-
-
-type Device {
-    deviceName: ID!
-    model: String
-    loopback: String
-    status: String
-    vendor: String
-    routerType: String
-    pollerCluster: String
-    pollerInterval: Int
-    network: String
-    lastUpdate: String
-    physIp: String
-}
-type UcspProject{
-    id:ID!
-    name:String!
-}
-
-
-input TrendsRequest {
-    ucgSourceID: Int
-    fromDate: String
-    toDate: String
-}
-
-type Trends {
-    id: ID!
-    ucgSourceID: Int
-    collectionDate: String
-    sizeOfFilesKB: Int
-    numberOfFiles: Int
-}
-
-input ApiRequest {
-    deviceName: String
-    model: String
-    loopback: String
-    vendor: String
-    network: String
-}
-
-input AlarmInventorySearchRequest {
-    deviceName: String
-    collectionType: String
-    model: String
-    vendor: String
-    deviceIp: String
-}
-type UCSPAlarmInventory {
-    id: Int 
-    collectionType: String
-    deviceName: String 
-    deviceIp: String 
-    model: String 
-    vendor: String 
-    routerType: String 
-    status: String 
-    loopback: String 
-    network: String 
-    pollerCluster: String 
-    pollerInterval: String 
-    lastUpdate: String 
-    physIp: String 
-}
-
+INSERT INTO ucsp_alarm_metrics (collection_id, collection_date, number_of_msgs, size_of_msgs)
+VALUES
+(1, '2024-01-01', 1000, 150000),
+(2, '2024-01-02', 1200, 180000),
+(3, '2024-01-03', 950, 140000),
+(4, '2024-01-04', 1300, 190000),
+(5, '2024-01-05', 1100, 160000),
+(6, '2024-01-06', 1050, 155000),
+(7, '2024-01-07', 1150, 170000),
+(8, '2024-01-08', 1250, 180000),
+(9, '2024-01-09', 1400, 200000),
+(10, '2024-01-10', 1350, 195000),
+(11, '2024-02-01', 1300, 190000),
+(12, '2024-02-02', 1400, 210000),
+(13, '2024-02-03', 1250, 185000),
+(14, '2024-02-04', 1500, 220000),
+(15, '2024-02-05', 1450, 215000),
+(16, '2024-02-06', 1200, 180000),
+(17, '2024-02-07', 1350, 200000),
+(18, '2024-02-08', 1550, 225000),
+(19, '2024-02-09', 1600, 230000),
+(20, '2024-02-10', 1250, 190000),
+(21, '2024-03-01', 1700, 240000),
+(22, '2024-03-02', 1650, 235000),
+(23, '2024-03-03', 1550, 220000),
+(24, '2024-03-04', 1450, 210000),
+(25, '2024-03-05', 1600, 225000),
+(26, '2024-03-06', 1750, 250000),
+(27, '2024-03-07', 1500, 215000),
+(28, '2024-03-08', 1800, 260000),
+(29, '2024-03-09', 1650, 230000),
+(30, '2024-03-10', 1400, 200000),
+(31, '2024-04-01', 1550, 230000),
+(32, '2024-04-02', 1450, 215000),
+(33, '2024-04-03', 1300, 200000),
+(34, '2024-04-04', 1600, 240000),
+(35, '2024-04-05', 1500, 220000),
+(36, '2024-04-06', 1400, 210000),
+(37, '2024-04-07', 1700, 245000),
+(38, '2024-04-08', 1600, 230000),
+(39, '2024-04-09', 1800, 255000),
+(40, '2024-04-10', 1900, 270000),
+(41, '2024-05-01', 2000, 280000),
+(42, '2024-05-02', 2100, 290000),
+(43, '2024-05-03', 1800, 260000),
+(44, '2024-05-04', 1900, 270000),
+(45, '2024-05-05', 2050, 295000),
+(46, '2024-05-06', 1950, 285000),
+(47, '2024-05-07', 2200, 310000),
+(48, '2024-05-08', 2150, 300000),
+(49, '2024-05-09', 2100, 290000),
+(50, '2024-05-10', 2300, 320000),
+(51, '2024-06-01', 2400, 330000),
+(52, '2024-06-02', 2500, 340000),
+(53, '2024-06-03', 2200, 310000),
+(54, '2024-06-04', 2300, 320000),
+(55, '2024-06-05', 2400, 330000),
+(56, '2024-06-06', 2350, 325000),
+(57, '2024-06-07', 2500, 340000),
+(58, '2024-06-08', 2550, 350000),
+(59, '2024-06-09', 2450, 335000),
+(60, '2024-06-10', 2650, 355000);
