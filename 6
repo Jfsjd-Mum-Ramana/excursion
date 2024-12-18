@@ -1,1 +1,28 @@
-import { UNIQUE_UGS_SOURCE_QUERY, UNIQUE_PROJECT_QUERY, GET_DAILY_TRENDS_DATA } from '../../graphQL/graphqlQueries';
+export const AVAILABLE_ALARM_COLLECTION_TYPES_QUERY = `
+    query {
+        availableAlarmCollectionTypes {
+            typeId
+            type
+        }
+    }
+`;
+
+export const FETCH_ALARM_METRICS_QUERY = `
+    query alarmMetrics($collectionType: String, $fromDate: String, $toDate: String) {
+        alarmMetrics(alarmMetricsRequest: { collectionType: $collectionType, fromDate: $fromDate, toDate: $toDate }) {
+            date
+            totalSizeOfFilesBytes
+            totalNumberOfFiles
+            alarmMetricsDrillDownList {
+                time
+                sizeOfFilesBytes
+                numberOfFiles
+            }
+        }
+    }
+`;
+
+The API calls are done from this file plsss use this file and import it on the code the imports are 
+
+import { AVAILABLE_ALARM_COLLECTION_TYPES_QUERY, FETCH_ALARM_METRICS_QUERY } from '../../graphQL/graphqlQueries';
+import { __UCS_GRAPHQL_URL__ } from '../../api-endpoints'; 
