@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { __UCS_GRAPHQL_URL__ } from '../../api-endpoints';
-import { UNIQUE_PROJECT_QUERY, GET_HEALTH_METRICS_TRENDS_DATA } from '../../graphQL/graphqlQueries';
+import { AVAILABLE_ALARM_COLLECTION_TYPES_QUERY, FETCH_ALARM_METRICS_QUERY } from '../../graphQL/graphqlQueries';
 import LoadingButton from "@mui/lab/LoadingButton";
 import { LineChart } from '@mui/x-charts/LineChart';
 import { AxisConfig, ChartsXAxisProps } from '@mui/x-charts';
-import { Box, FormControl, Grid, InputLabel, MenuItem, Select, SelectChangeEvent, TextField, Autocomplete, Button, Breadcrumbs, Link, Typography } from '@mui/material';
+import { Box, FormControl, Grid, InputLabel, MenuItem, Select, SelectChangeEvent, TextField, Button, Breadcrumbs, Link, Typography } from '@mui/material';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import dayjs, { Dayjs } from 'dayjs';
@@ -15,52 +15,45 @@ import { useSnackbar } from '../../utils/SnackbarContext';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import HomeIcon from '@mui/icons-material/Home';
 
-const generateLast10Dates = () => {
-    const dates = [];
-    for (let i = 0; i < 10; i++) {
-        dates.push(dayjs().subtract(i, 'day').format('YYYY-MM-DD'));
-    }
-    return dates;
-};
-
-interface HealthMetricDataPoint {
+// Define types for the data
+interface DataPoint {
     date: string;
-    heartRate: number;
-    bloodPressure: number;
-    trendsDrillDownList: DetailedHealthMetricDataPoint[];
+    totalNumberOfFiles: number;
+    totalSizeOfFilesBytes: number;
+    trendsDrillDownList: DetailedDataPoint[];
 }
 
-interface DetailedHealthMetricDataPoint {
+interface DetailedDataPoint {
     time: string;
-    heartRate: number;
-    bloodPressure: number;
+    sizeOfFilesBytes: number;
+    numberOfFiles: number;
 }
 
 const chartHeight = 450;
 const childChartHeight = 410;
 
-const ParentChart = ({ data, onDrillDown, setIsChildChartDisplayed }: { data: HealthMetricDataPoint[], onDrillDown: (date: string) => void, setIsChildChartDisplayed: (value: boolean) => void }) => {
+const ParentChart = ({ data, onDrillDown, setIsChildChartDisplayed }: { data: DataPoint[], onDrillDown: (date: string) => void, setIsChildChartDisplayed: (value: boolean) => void }) => {
     const theme = useTheme();
 
     const transformedData = data.map(item => ({
         collectionDate: item.date,
-        heartRate: item.heartRate,
-        bloodPressure: item.bloodPressure,
+        totalNumberOfFiles: item.totalNumberOfFiles,
+        totalSizeOfFilesBytes: item.totalSizeOfFilesBytes,
     }));
 
     const lineChartParams = {
         series: [
             {
-                id: 'heartRate',
-                datakey: 'heartRate',
-                label: 'Heart Rate',
-                data: transformedData.map(item => item.heartRate),
+                id: 'totalNumberOfFiles',
+                datakey: 'totalNumberOfFiles',
+                label: 'Number of Files',
+                data: transformedData.map(item => item.totalNumberOfFiles),
             },
             {
-                id: 'bloodPressure',
-                datakey: 'bloodPressure',
-                label: 'Blood Pressure',
-                data: transformedData.map(item => item.bloodPressure),
+                id: 'totalSizeOfFilesBytes',
+                datakey: 'totalSizeOfFilesBytes',
+                label: 'Size of Files (Bytes)',
+                data: transformedData.map(item => item.totalSizeOfFilesBytes),
             }
         ],
         xAxis: [{
@@ -104,21 +97,21 @@ const ParentChart = ({ data, onDrillDown, setIsChildChartDisplayed }: { data: He
     );
 };
 
-const ChildChart = ({ date, data }: { date: string, data: DetailedHealthMetricDataPoint[] }) => {
+const ChildChart = ({ date, data }: { date: string, data: DetailedDataPoint[] }) => {
     const theme = useTheme();
     const detailedLineChartsParams = {
         series: [
             {
-                id: 'heartRate',
-                datakey: 'heartRate',
-                label: 'Heart Rate',
-                data: data.map(item => item.heartRate)
+                id: 'numberOfFiles',
+                datakey: 'numberOfFiles',
+                label: 'Number of Files',
+                data: data.map(item => item.numberOfFiles)
             },
             {
-                id: 'bloodPressure',
-                datakey: 'bloodPressure',
-                label: 'Blood Pressure',
-                data: data.map(item => item.bloodPressure)
+                id: 'sizeOfFilesBytes',
+                datakey: 'sizeOfFilesBytes',
+                label: 'Size of Files (Bytes)',
+                data: data.map(item => item.sizeOfFilesBytes)
             }
         ],
         xAxis: [{
@@ -141,41 +134,41 @@ const ChildChart = ({ date, data }: { date: string, data: DetailedHealthMetricDa
 
 const HealthMetricsDashboard: React.FC = () => {
     const theme = useTheme();
-    const [projectList, setProjectList] = useState<any[]>([]);
-    const [selectedProject, setSelectedProject] = useState<any>(null);
+    const [collectionTypes, setCollectionTypes] = useState<any[]>([]);
+    const [selectedCollectionType, setSelectedCollectionType] = useState<string>('');
     const [fromDate, setSelectedFromDate] = useState<Dayjs>(dayjs().subtract(1, 'month'));
     const [toDate, setSelectedToDate] = useState<Dayjs | null>(dayjs());
     const [loading, setLoading] = useState<boolean>(false);
     const [dataFetched, setDataFetched] = useState<boolean>(false);
-    const [responseData, setResponseData] = useState<HealthMetricDataPoint[]>([]);
+    const [responseData, setResponseData] = useState<DataPoint[]>([]);
     const [viewStack, setViewStack] = useState<string[]>([]);
     const [isChildChartDisplayed, setIsChildChartDisplayed] = useState(false);
     const { showSnackbar } = useSnackbar();
-    const last10Dates = generateLast10Dates();
 
+    // Fetch available collection types on component mount
     useEffect(() => {
-        const fetchProjectData = async () => {
+        const fetchCollectionTypes = async () => {
             try {
-                const projectResponse = await axios.post(__UCS_GRAPHQL_URL__, {
-                    query: UNIQUE_PROJECT_QUERY,
+                const response = await axios.post(__UCS_GRAPHQL_URL__, {
+                    query: AVAILABLE_ALARM_COLLECTION_TYPES_QUERY,
                 });
-                if (projectResponse.data?.data?.uniqueUCSPProjects && projectResponse.data.data.uniqueUCSPProjects.length > 0) {
-                    setProjectList(projectResponse.data.data.uniqueUCSPProjects);
+                if (response.data?.data?.availableAlarmCollectionTypes) {
+                    setCollectionTypes(response.data.data.availableAlarmCollectionTypes);
                 }
             } catch (error) {
-                showSnackbar('Error fetching project data!');
-                console.error('Error fetching project data', error);
+                showSnackbar('Error fetching collection types!');
+                console.error('Error fetching collection types', error);
             }
         };
-        fetchProjectData();
+        fetchCollectionTypes();
     }, []);
 
-    const handleProjectChange = async (options: any) => {
-        setSelectedProject(options);
+    const handleCollectionTypeChange = (event: SelectChangeEvent<string>) => {
+        setSelectedCollectionType(event.target.value);
     };
 
     const handleReset = () => {
-        setSelectedProject(null);
+        setSelectedCollectionType('');
         setSelectedFromDate(dayjs().subtract(1, 'month'));
         setSelectedToDate(dayjs());
         setResponseData([]);
@@ -190,21 +183,18 @@ const HealthMetricsDashboard: React.FC = () => {
         const formattedFromDate = dayjs(fromDate).format('YYYY-MM-DD');
         const formattedToDate = dayjs(toDate).format('YYYY-MM-DD');
 
-        const data = {
-            projectID: selectedProject?.id,
-            fromDate: formattedFromDate,
-            toDate: formattedToDate
-        };
-
         try {
             const response = await axios.post(__UCS_GRAPHQL_URL__, {
-                query: GET_HEALTH_METRICS_TRENDS_DATA,
-                variables: data,
+                query: FETCH_ALARM_METRICS_QUERY,
+                variables: {
+                    collectionType: selectedCollectionType,
+                    fromDate: formattedFromDate,
+                    toDate: formattedToDate
+                },
             });
 
-            if (response.data?.data?.healthMetricsTrends && response.data.data.healthMetricsTrends.length > 0) {
-                let data = response.data.data.healthMetricsTrends || [];
-                setResponseData(data);
+            if (response.data?.data?.alarmMetrics) {
+                setResponseData(response.data.data.alarmMetrics);
             } else {
                 showSnackbar("No Data Found!");
             }
@@ -225,12 +215,17 @@ const HealthMetricsDashboard: React.FC = () => {
         setViewStack(viewStack.slice(0, index + 1));
     };
 
+    const handleHomeClick = () => {
+        // Reset state to go back to the dashboard
+        setIsChildChartDisplayed(false);
+        setViewStack([]);
+    };
+
     const currentView = viewStack[viewStack.length - 1];
     const currentData = responseData.find(item => item.date === currentView)?.trendsDrillDownList || [];
 
-
     const isButtonDisabled = () => {
-        return !selectedProject || !fromDate || !toDate;
+        return !selectedCollectionType || !fromDate || !toDate;
     };
 
     return (
@@ -242,15 +237,22 @@ const HealthMetricsDashboard: React.FC = () => {
         }}>
             <Grid container spacing={4} alignItems="flex-end">
                 <Grid item xs={12} sm={6} md>
-                    <Autocomplete
-                        value={selectedProject}
-                        onChange={(e, options) => handleProjectChange(options)}
-                        loading={loading}
-                        disablePortal
-                        options={projectList}
-                        getOptionLabel={(option) => option.name}
-                        renderInput={(params: any) => <TextField {...params} label="Project" placeholder="Project Name" />}
-                    />
+                    <FormControl variant="outlined" sx={{ width: '100%', height: '100%' }}>
+                        <InputLabel id="select-collection-type-label">Collection Type</InputLabel>
+                        <Select
+                            labelId="select-collection-type-label"
+                            id="select-collection-type"
+                            label="Collection Type"
+                            value={selectedCollectionType}
+                            onChange={handleCollectionTypeChange}
+                        >
+                            {collectionTypes.map((type, i) => (
+                                <MenuItem key={type.typeId} value={type.type}>
+                                    {type.type}
+                                </MenuItem>
+                            ))}
+                        </Select>
+                    </FormControl>
                 </Grid>
                 <Grid item xs={12} sm={6} md>
                     <LocalizationProvider dateAdapter={AdapterDayjs}>
@@ -258,12 +260,7 @@ const HealthMetricsDashboard: React.FC = () => {
                             label="Start Date"
                             sx={{ width: '100%', height: '100%' }}
                             value={fromDate}
-                            onChange={(newValue: Dayjs | null) => {
-                                setSelectedFromDate(newValue || dayjs());
-                                if (newValue && toDate && newValue.isAfter(toDate)) {
-                                    setSelectedToDate(null);
-                                }
-                            }}
+                            onChange={(newDate: Dayjs | null) => setSelectedFromDate(newDate || dayjs())}
                         />
                     </LocalizationProvider>
                 </Grid>
@@ -273,44 +270,55 @@ const HealthMetricsDashboard: React.FC = () => {
                             label="End Date"
                             sx={{ width: '100%', height: '100%' }}
                             value={toDate}
-                            minDate={fromDate}
-                            onChange={(newValue) => setSelectedToDate(newValue)}
+                            onChange={(newDate: Dayjs | null) => setSelectedToDate(newDate || dayjs())}
                         />
                     </LocalizationProvider>
                 </Grid>
-                <Grid item xs={2} sm={2} md={2} sx={{ display: 'flex' }}>
-                    <Button variant="contained" onClick={handleReset} color="primary" sx={{ marginRight: 2 }}>Reset</Button>
-                    <LoadingButton onClick={handleFetchClick} loading={loading} loadingIndicator="Fetching…" variant="contained"
-                        disabled={isButtonDisabled()}>
-                        <span>Fetch</span>
+                <Grid item xs={12} sm={6} md={2}>
+                    <LoadingButton
+                        loading={loading}
+                        variant="contained"
+                        onClick={handleFetchClick}
+                        disabled={isButtonDisabled()}
+                    >
+                        Fetch Data
                     </LoadingButton>
                 </Grid>
             </Grid>
-
-            {dataFetched && !loading && (
-                <Box sx={{ mt: 4, width: '100%', borderRadius: 2, border: '1px solid #e0e0e0', bgcolor: 'white' }}>
-
-                    {isChildChartDisplayed && responseData.length > 0 && (
-                        <Breadcrumbs aria-label="breadcrumb" separator={<NavigateNextIcon fontSize="small" />} sx={{ padding: '1%' }}>
-                            <Link underline="hover" sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer', '&:hover': { textDecoration: 'underline !important', color: '#1976d2' } }} onClick={() => handleBreadcrumbClick(0)}>
-                                <HomeIcon fontSize="small" sx={{ marginRight: 1 }} />Home
+            {dataFetched && !isChildChartDisplayed && (
+                <>
+                    <ParentChart
+                        data={responseData}
+                        onDrillDown={handleDrillDown}
+                        setIsChildChartDisplayed={setIsChildChartDisplayed}
+                    />
+                </>
+            )}
+            {isChildChartDisplayed && (
+                <>
+                    <ChildChart
+                        date={currentView}
+                        data={currentData}
+                    />
+                    <Breadcrumbs
+                        separator={<NavigateNextIcon fontSize="small" />}
+                        aria-label="breadcrumb"
+                        sx={{ margin: "10px" }}
+                    >
+                        <Link href="/" color="inherit" onClick={handleHomeClick}>
+                            <HomeIcon fontSize="small" />
+                        </Link>
+                        {viewStack.map((date, index) => (
+                            <Link
+                                key={index}
+                                color="inherit"
+                                onClick={() => handleBreadcrumbClick(index)}
+                            >
+                                {date}
                             </Link>
-                            {viewStack.map((view, index) => (
-                                <Link key={index} underline="hover" sx={{ cursor: 'pointer' }} onClick={() => handleBreadcrumbClick(index)}>
-                                    {view}
-                                </Link>
-                            ))}
-                        </Breadcrumbs>
-                    )}
-
-                    <Box sx={{ width: '100%', padding: '20px' }}>
-                        {isChildChartDisplayed && currentData.length > 0 ? (
-                            <ChildChart date={currentView} data={currentData} />
-                        ) : (
-                            <ParentChart data={responseData} onDrillDown={handleDrillDown} setIsChildChartDisplayed={setIsChildChartDisplayed} />
-                        )}
-                    </Box>
-                </Box>
+                        ))}
+                    </Breadcrumbs>
+                </>
             )}
         </Box>
     );
