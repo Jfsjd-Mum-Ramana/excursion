@@ -1,87 +1,67 @@
--- For collection_id 1, use different collection_date values
+The error duplicate key value violates unique constraint unique_collection_metric indicates that the combination of collection_id and collection_date already exists in the ucsp_alarm_metrics table, violating the unique constraint unique_collection_metric.
+
+To resolve this error, we need to ensure that each collection_id and collection_date combination is unique in the table. If you're trying to insert new data for collection_id = 1, you may need to either:
+
+1. Update Existing Records for the same collection_id and collection_date if they already exist.
+
+
+2. Insert Data with New collection_date values, ensuring no duplicates occur.
+
+
+
+If you need to update existing records for collection_id = 1, you can use an UPDATE query instead of INSERT. Here's an example:
+
+1. Update Query
+
+-- Update existing records for collection_id = 1
+UPDATE ucsp_alarm_metrics
+SET number_of_msgs = 1500, size_of_msgs = 410000
+WHERE collection_id = 1 AND collection_date = '2024-12-01 10:30:00';
+
+UPDATE ucsp_alarm_metrics
+SET number_of_msgs = 1600, size_of_msgs = 430000
+WHERE collection_id = 1 AND collection_date = '2024-12-02 11:00:00';
+
+-- Repeat for other collection_dates
+
+2. Insert New Data (Ensuring Unique Dates)
+
+If you are trying to insert new data, make sure that the collection_date is unique for each collection_id. Here’s an example with updated collection_date values to avoid duplicates:
+
+-- Insert new records for collection_id = 1 with unique collection_date
 INSERT INTO ucsp_alarm_metrics (collection_id, collection_date, number_of_msgs, size_of_msgs)
 VALUES
 (1, '2024-12-01 10:30:00', 1000, 204800),
 (1, '2024-12-02 11:00:00', 1200, 250000),
 (1, '2024-12-03 11:30:00', 950, 210000),
-(1, '2024-12-04 12:00:00', 1100, 220000),
-(1, '2024-12-05 12:30:00', 1300, 240000),
-(1, '2024-12-06 13:00:00', 1400, 260000),
-(1, '2024-12-07 13:30:00', 1000, 230000),
-(1, '2024-12-08 14:00:00', 1100, 250000),
-(1, '2024-12-09 14:30:00', 1050, 215000),
-(1, '2024-12-10 15:00:00', 1200, 245000),
-(1, '2024-12-11 15:30:00', 1300, 255000),
-(1, '2024-12-12 16:00:00', 950, 205000),
-(1, '2024-12-13 16:30:00', 1100, 225000),
-(1, '2024-12-14 17:00:00', 1200, 235000),
-(1, '2024-12-15 17:30:00', 1050, 215000),
-(1, '2024-12-16 18:00:00', 1000, 210000),
-(1, '2024-12-17 18:30:00', 950, 200000),
-(1, '2024-12-18 19:00:00', 1300, 240000),
-(1, '2024-12-19 19:30:00', 1100, 225000),
-(1, '2024-12-20 20:00:00', 1200, 250000),
-(1, '2024-12-21 20:30:00', 1050, 210000),
-(1, '2024-12-22 21:00:00', 1100, 230000),
-(1, '2024-12-23 21:30:00', 1300, 245000),
-(1, '2024-12-24 22:00:00', 1000, 220000),
-(1, '2024-12-25 22:30:00', 950, 205000),
-(1, '2024-12-26 23:00:00', 1400, 260000),
-(1, '2024-12-27 23:30:00', 1200, 240000),
-(1, '2024-12-28 00:00:00', 1100, 230000),
-(1, '2024-12-29 00:30:00', 1000, 215000),
-(1, '2024-12-30 01:00:00', 950, 210000);
+-- Add more unique dates for each collection_id...
 
--- For collection_id 2, use different collection_date values
-INSERT INTO ucsp_alarm_metrics (collection_id, collection_date, number_of_msgs, size_of_msgs)
-VALUES
-(2, '2024-12-01 10:30:00', 500, 102400),
-(2, '2024-12-02 11:00:00', 600, 110000),
-(2, '2024-12-03 11:30:00', 550, 105000),
-(2, '2024-12-04 12:00:00', 650, 115000),
-(2, '2024-12-05 12:30:00', 700, 120000),
-(2, '2024-12-06 13:00:00', 750, 125000),
-(2, '2024-12-07 13:30:00', 600, 115000),
-(2, '2024-12-08 14:00:00', 650, 118000),
-(2, '2024-12-09 14:30:00', 580, 110000),
-(2, '2024-12-10 15:00:00', 620, 113000),
-(2, '2024-12-11 15:30:00', 700, 120000),
-(2, '2024-12-12 16:00:00', 750, 125000),
-(2, '2024-12-13 16:30:00', 650, 116000),
-(2, '2024-12-14 17:00:00', 580, 108000),
-(2, '2024-12-15 17:30:00', 650, 115000),
-(2, '2024-12-16 18:00:00', 600, 110000),
-(2, '2024-12-17 18:30:00', 700, 118000),
-(2, '2024-12-18 19:00:00', 750, 125000),
-(2, '2024-12-19 19:30:00', 650, 116000),
-(2, '2024-12-20 20:00:00', 600, 112000),
-(2, '2024-12-21 20:30:00', 550, 105000),
-(2, '2024-12-22 21:00:00', 600, 110000),
-(2, '2024-12-23 21:30:00', 700, 115000),
-(2, '2024-12-24 22:00:00', 650, 112000),
-(2, '2024-12-25 22:30:00', 750, 120000),
-(2, '2024-12-26 23:00:00', 600, 115000),
-(2, '2024-12-27 23:30:00', 700, 118000),
-(2, '2024-12-28 00:00:00', 750, 120000);
+3. Check for Existing Records
 
--- For collection_id 3, use different collection_date values
-INSERT INTO ucsp_alarm_metrics (collection_id, collection_date, number_of_msgs, size_of_msgs)
-VALUES
-(3, '2024-12-01 10:30:00', 1500, 409600),
-(3, '2024-12-02 11:00:00', 1600, 430000),
-(3, '2024-12-03 11:30:00', 1550, 420000),
-(3, '2024-12-04 12:00:00', 1700, 450000),
-(3, '2024-12-05 12:30:00', 1800, 460000),
-(3, '2024-12-06 13:00:00', 1900, 470000),
-(3, '2024-12-07 13:30:00', 1600, 430000),
-(3, '2024-12-08 14:00:00', 1700, 440000),
-(3, '2024-12-09 14:30:00', 1550, 420000),
-(3, '2024-12-10 15:00:00', 1800, 460000),
-(3, '2024-12-11 15:30:00', 1900, 470000),
-(3, '2024-12-12 16:00:00', 1700, 450000),
-(3, '2024-12-13 16:30:00', 1600, 430000),
-(3, '2024-12-14 17:00:00', 1800, 460000),
-(3, '2024-12-15 17:30:00', 1700, 440000),
-(3, '2024-12-16 18:00:00', 1900, 470000),
-(3, '2024-12-17 18:30:00', 1600, 430000),
-(3, '2024-12-18 19:00:00', 1800, 460000);
+To prevent the error from happening, you can also check if a record exists for a given collection_id and collection_date before inserting. If the record already exists, update it instead of inserting new data.
+
+For example, you can use a SELECT query to check if a record exists:
+
+-- Check if the record already exists
+SELECT * FROM ucsp_alarm_metrics
+WHERE collection_id = 1 AND collection_date = '2024-12-01 10:30:00';
+
+If the record exists, update it; otherwise, insert a new one.
+
+
+---
+
+Summary of Solutions:
+
+1. Use UPDATE to modify existing data if it already exists for the given collection_id and collection_date.
+
+
+2. Ensure collection_date is unique when inserting new records.
+
+
+3. Check for existing records before performing an INSERT to avoid duplicate entries.
+
+
+
+If you'd like, I can help you craft the SQL based on your exact requirements. Let me know what you'd like to do next!
+
