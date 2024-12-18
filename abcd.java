@@ -1,463 +1,323 @@
-package com.verizon.ucs.restapi.controllers;
+import React, { useEffect, useState } from 'react';
+import axios from 'axios';
+import { __UCS_GRAPHQL_URL__ } from '../../api-endpoints';
+import { AVAILABLE_ALARM_COLLECTION_TYPES_QUERY, FETCH_ALARM_METRICS_QUERY } from '../../graphQL/graphqlQueries';
+import LoadingButton from "@mui/lab/LoadingButton";
+import { LineChart } from '@mui/x-charts/LineChart';
+import { AxisConfig, ChartsXAxisProps } from '@mui/x-charts';
+import { Box, FormControl, Grid, InputLabel, MenuItem, Select, SelectChangeEvent, TextField, Button, Breadcrumbs, Link, Typography } from '@mui/material';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import dayjs, { Dayjs } from 'dayjs';
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import { useTheme } from "@mui/material/styles";
+import { useSnackbar } from '../../utils/SnackbarContext';
+import NavigateNextIcon from '@mui/icons-material/NavigateNext';
+import HomeIcon from '@mui/icons-material/Home';
 
-import com.verizon.ucs.restapi.dto.ApiRequest;
-import com.verizon.ucs.restapi.dto.TrendsRequest;
-import com.verizon.ucs.restapi.model.AvgNetworkCoverageDTO;
-import com.verizon.ucs.restapi.model.AvgNetworkCoverageMap;
-import com.verizon.ucs.restapi.model.Device;
-import com.verizon.ucs.restapi.model.Trends;
-import com.verizon.ucs.restapi.model.TrendsDTO;
-import com.verizon.ucs.restapi.model.UcspProject;
-import com.verizon.ucs.restapi.service.UCSPService;
-import graphql.GraphQLException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.dao.DataAccessException;
-import org.springframework.graphql.data.method.annotation.Argument;
-import org.springframework.graphql.data.method.annotation.QueryMapping;
-import org.springframework.graphql.data.method.annotation.SchemaMapping;
-import org.springframework.stereotype.Controller;
+interface DataPoint {
+    date: string;
+    totalNumberOfFiles: number;
+    totalSizeOfFilesBytes: number;
+    trendsDrillDownList: DetailedDataPoint[];
+}
 
-import java.util.Comparator;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
+interface DetailedDataPoint {
+    time: string;
+    sizeOfFilesBytes: number;
+    numberOfFiles: number;
+}
 
-/**
- * Controller interface for UCS Portal Application with JPA
- */
-@Controller
-public class UCSPController {
-    private static final Logger logger = LoggerFactory.getLogger(UCSPController.class);
+const chartHeight = 450;
+const childChartHeight = 410;
 
-    @Autowired
-    private UCSPService uCSPService;
+const ParentChart = ({ data, onDrillDown }: { data: DataPoint[], onDrillDown: (date: string) => void }) => {
+    const theme = useTheme();
 
-    @QueryMapping(value = "searchDevices")
-    public List<Device> getFilteredDevices(@Argument ApiRequest apiRequest) {
-        return uCSPService.searchDevices(apiRequest);
-    }
+    const transformedData = data.map(item => ({
+        collectionDate: item.date,
+        totalNumberOfFiles: item.totalNumberOfFiles,
+        totalSizeOfFilesBytes: item.totalSizeOfFilesBytes,
+    }));
 
-    @QueryMapping(value = "allDevices")
-    public List<Device> getAllDevices() {
-        return uCSPService.getAllDevices();
-    }
+    const lineChartParams = {
+        series: [
+            {
+                id: 'totalNumberOfFiles',
+                datakey: 'totalNumberOfFiles',
+                label: 'Number of Files',
+                data: transformedData.map(item => item.totalNumberOfFiles),
+            },
+            {
+                id: 'totalSizeOfFilesBytes',
+                datakey: 'totalSizeOfFilesBytes',
+                label: 'Size of Files (Bytes)',
+                data: transformedData.map(item => item.totalSizeOfFilesBytes),
+            }
+        ],
+        xAxis: [{
+            data: transformedData.map(item => item.collectionDate),
+            id: 'axis1',
+            dataKey: 'collectionDate',
+            scaleType: "point",
+            label: "Collected Date",
+            tickLabelStyle: {
+                angle: -25,
+                textAnchor: 'end',
+                fontSize: 10,
+            },
+            labelStyle: { transform: "translateY(30px)" },
+            tickPlacement: 'middle', tickLabelPlacement: 'middle',
+        } as AxisConfig<'point', string, ChartsXAxisProps>],
+        height: chartHeight,
+        margin: {
+            left: 60,
+            right: 10,
+            top: 20,
+            bottom: 80,
+        },
+        colors: theme.palette.distinctLightPalette
+    };
 
-    @SchemaMapping(typeName = "Query", value = "uniqueModels")
-    public List<String> getUniqueModels() {
-        return uCSPService.getUniqueValues().get("models");
-    }
+    return (
+        <Box width="100%">
+            <LineChart
+                {...lineChartParams}
+                onAxisClick={(event, d) => {
+                    if (d && d.axisValue) {
+                        onDrillDown(String(d.axisValue));
+                    } else {
+                        console.error('collectionDate not found in data point');
+                    }
+                }}
+            />
+        </Box>
+    );
+};
 
-    @QueryMapping(value = "uniqueVendors")
-    public List<String> getUniqueVendors() {
-        return uCSPService.getUniqueValues().get("vendors");
-    }
+const ChildChart = ({ date, data }: { date: string, data: DetailedDataPoint[] }) => {
+    const theme = useTheme();
+    const detailedLineChartsParams = {
+        series: [
+            {
+                id: 'numberOfFiles',
+                datakey: 'numberOfFiles',
+                label: 'Number of Files',
+                data: data.map(item => item.numberOfFiles)
+            },
+            {
+                id: 'sizeOfFilesBytes',
+                datakey: 'sizeOfFilesBytes',
+                label: 'Size of Files (Bytes)',
+                data: data.map(item => item.sizeOfFilesBytes)
+            }
+        ],
+        xAxis: [{
+            data: data.map(item => item.time),
+            id: 'axis2',
+            dataKey: 'time',
+            scaleType: "point",
+            label: "Collected Time on " + date,
+        } as AxisConfig<'point', string, ChartsXAxisProps>],
+        height: childChartHeight,
+        colors: theme.palette.distinctLightPalette
+    };
 
-    @QueryMapping(value = "dailyTrends")
-    public List<TrendsDTO> getTrends(@Argument TrendsRequest trendsRequest) {
+    return (
+        <Box width="100%">
+            <LineChart {...detailedLineChartsParams} />
+        </Box>
+    );
+};
+
+const HealthMetricsDashboard: React.FC = () => {
+    const theme = useTheme();
+    const [collectionTypes, setCollectionTypes] = useState<any[]>([]);
+    const [selectedCollectionType, setSelectedCollectionType] = useState<string>('');
+    const [fromDate, setSelectedFromDate] = useState<Dayjs>(dayjs().subtract(1, 'month'));
+    const [toDate, setSelectedToDate] = useState<Dayjs | null>(dayjs());
+    const [loading, setLoading] = useState<boolean>(false);
+    const [dataFetched, setDataFetched] = useState<boolean>(false);
+    const [responseData, setResponseData] = useState<DataPoint[]>([]);
+    const [viewStack, setViewStack] = useState<string[]>([]);
+    const [isChildChartDisplayed, setIsChildChartDisplayed] = useState(false);
+    const { showSnackbar } = useSnackbar();
+
+    useEffect(() => {
+        const fetchCollectionTypes = async () => {
+            try {
+                const response = await axios.post(__UCS_GRAPHQL_URL__, {
+                    query: AVAILABLE_ALARM_COLLECTION_TYPES_QUERY,
+                });
+                if (response.data?.data?.availableAlarmCollectionTypes) {
+                    setCollectionTypes(response.data.data.availableAlarmCollectionTypes);
+                }
+            } catch (error) {
+                showSnackbar('Error fetching collection types!');
+                console.error('Error fetching collection types', error);
+            }
+        };
+        fetchCollectionTypes();
+    }, []);
+
+    const handleCollectionTypeChange = (event: SelectChangeEvent<string>) => {
+        setSelectedCollectionType(event.target.value);
+    };
+
+    const handleReset = () => {
+        setSelectedCollectionType('');
+        setSelectedFromDate(dayjs().subtract(1, 'month'));
+        setSelectedToDate(dayjs());
+        setResponseData([]);
+        setViewStack([]);
+        setIsChildChartDisplayed(false);
+        setDataFetched(false);
+    };
+
+    const handleFetchClick = async () => {
+        setLoading(true);
+        setResponseData([]);
+        const formattedFromDate = dayjs(fromDate).format('YYYY-MM-DD');
+        const formattedToDate = dayjs(toDate).format('YYYY-MM-DD');
+
         try {
-        	 Map<String, TrendsDTO> trendsDataMap = uCSPService.getDailyTrends(trendsRequest);
-             return trendsDataMap.values().stream()
-            		  .sorted(Comparator.comparing(TrendsDTO::getDate))
-            		 .collect(Collectors.toList());
-        } catch (DataAccessException e) {
-            logger.error("Database error occurred while fetching data", e);
-            throw new GraphQLException("Database error: Unable to fetch data");
-        } catch (RuntimeException e) {
-            logger.error("Runtime error occurred", e);
-            throw new GraphQLException("Runtime error: " + e.getMessage());
-        } catch (Exception e) {
-            logger.error("Unexpected error occurred", e);
-            throw new GraphQLException("Unexpected error: " + e.getMessage());
+            const response = await axios.post(__UCS_GRAPHQL_URL__, {
+                query: FETCH_ALARM_METRICS_QUERY,
+                variables: {
+                    collectionType: selectedCollectionType,
+                    fromDate: formattedFromDate,
+                    toDate: formattedToDate
+                },
+            });
+
+            if (response.data?.data?.alarmMetrics) {
+                setResponseData(response.data.data.alarmMetrics);
+            } else {
+                showSnackbar("No Data Found!");
+            }
+            setDataFetched(true);
+        } catch (error) {
+            showSnackbar("Error While fetching the Data from the Server");
+            console.error('Error fetching data', error);
+        } finally {
+            setLoading(false);
         }
-    }
-
-    @QueryMapping
-    public List<String> uniqueNetworks() {
-        return uCSPService.getUniqueValues().get("networks");
-    }
-
-    @QueryMapping(value = "uniqueUCSPProjects")
-    public List<UcspProject> getUniqueProjects() {
-        List<UcspProject> ucgProjects = uCSPService.getUniqueProjects();
-        return ucgProjects;
-    }
-
-    @QueryMapping(value = "uniqueUCGSources")
-    public List<String> getUniqueUCGSources() {
-        List<String> ucgSources = uCSPService.getUniqueUCGSources();
-        return ucgSources;
-    }
-
-    @QueryMapping(value = "uniqueUCGSourcesByProject")
-    public List<UcspProject> getUniqueUCGSourcesByProject(@Argument Long projectId) {
-        try {
-            return uCSPService.getUniqueUCGSourcesByProject(projectId);
-        } catch (DataAccessException e) {
-            logger.error("Database error occurred while fetching UCG Sources", e);
-            throw new GraphQLException("Database error: Unable to fetch UCG Sources for project ID: " + projectId);
-        } catch (RuntimeException e) {
-            logger.error("Runtime error occurred", e);
-            throw new GraphQLException("Runtime error: " + e.getMessage());
-        } catch (Exception e) {
-            logger.error("Unexpected error occurred", e);
-            throw new GraphQLException("Unexpected error: " + e.getMessage());
-        }
-    }
-    
-    @QueryMapping
-    public List<String> uniqueNetworksByProtocol() {
-        return uCSPService.uniqueNetworksByProtocol().get("snmp");
-    }
-    
-    @QueryMapping
-    public List<String> uniqueDevicesByNetwork(@Argument String network) {
-        return uCSPService.uniqueDevicesByNetwork(network);
-    }
-    
-    @QueryMapping(value = "avgNetworkByCoverage")
-    public List<AvgNetworkCoverageDTO> avgNetworkByCoverage(@Argument String network,
-            @Argument String fromDate, @Argument String toDate, @Argument String device) {
-        try {
-            Map<String, AvgNetworkCoverageDTO> detailedData = uCSPService.avgNetworkByCoverage(network, fromDate, toDate, device);
-            return detailedData.values().stream()
-                    .map(dto -> {
-                        dto.setTotalCoverage(Double.parseDouble(dto.getFormattedTotalCoverage()));
-                        return dto;
-                    })
-                    .sorted(Comparator.comparing(AvgNetworkCoverageDTO::getDate))
-                    .collect(Collectors.toList());
-        } catch (DataAccessException e) {
-            logger.error("Database error occurred while fetching network coverage", e);
-            throw new GraphQLException("Database error: Unable to fetch network coverage for network: " + network);
-        } catch (RuntimeException e) {
-            logger.error("Runtime error occurred", e);
-            throw new GraphQLException("Runtime error: " + e.getMessage());
-        } catch (Exception e) {
-            logger.error("Unexpected error occurred", e);
-            throw new GraphQLException("Unexpected error: " + e.getMessage());
-        }
-    }
-}
-
-
-
-
-
-package com.verizon.ucs.restapi.repository;
-
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
-
-import com.verizon.ucs.restapi.model.Trends;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
-import org.springframework.graphql.data.method.annotation.Argument;
-
-import com.verizon.ucs.restapi.model.AvgNetworkCoverageDTO;
-import com.verizon.ucs.restapi.model.Device;
-
-public interface UCSPRepository extends JpaRepository<Device, String> {
-
-	List<Device> findByDeviceNameIgnoreCase(String deviceName);
-
-	List<Device> findByLoopbackIgnoreCase(String loopback);
-
-	List<Device> findByNetworkIgnoreCase(String network);
-
-	List<Device> findByVendorIgnoreCase(String vendor);
-
-	List<Device> findByModelIgnoreCase(String model);
-
-	@Query("SELECT DISTINCT d.model FROM Device d")
-	List<String> findDistinctModels();
-
-	@Query("SELECT DISTINCT d.vendor FROM Device d")
-	List<String> findDistinctVendors();
-
-	@Query("SELECT DISTINCT d.network FROM Device d")
-	List<String> findDistinctNetworks();
-
-	@Query(nativeQuery=true, value="SELECT DISTINCT u.ucg_source FROM ucsp_ucgsources u")
-	List<String> findDistinctUCGSources();
-	
-	@Query(nativeQuery=true, value="SELECT DISTINCT network FROM proto_gw_ntwk")
-	List<String> uniqueNetworksBySNMPprotocol();
-	
-    @Query(nativeQuery = true, value = "SELECT network, CAST(date_hour AS DATE) as date, TO_CHAR(date_hour, 'HH24:MI') as time, SUM(coverage) as sumOfCoverage " +
-            "FROM avg_network_coverage WHERE network = :network AND CAST(date_hour AS DATE) BETWEEN :fromDate AND :toDate " +
-            " and (:device is null or :device = '' or device_name=:device) "+
-            "GROUP BY network, CAST(date_hour AS DATE), TO_CHAR(date_hour, 'HH24:MI') " +
-            "ORDER BY network, CAST(date_hour AS DATE), TO_CHAR(date_hour, 'HH24:MI')")
-    List<Map<String, Object>> avgNetworkByCoverage(@Param("network") String network,
-    		@Param("fromDate") Date fromDate,@Param("toDate") Date toDate,@Param("device") String device);
-    
-	@Query(nativeQuery=true, value="select distinct device_name from avg_network_coverage anc where network = :network "
-			//+ "and device_name IS NOT NULL AND device_name != '';")
-			+ " order by device_name")
-	List<String> getUniqueDevicesByNetwork(@Param("network") String network);
-	
-	/*List<Device> findByDeviceNameIgnoreCaseOrLoopbackIgnoreCaseOrNetworkIgnoreCaseOrVendorIgnoreCaseOrModelIgnoreCase(
-			String deviceName, String loopback, String network, String vendor, String model);
-
-	List<Device> findByDeviceNameContainingIgnoreCaseOrLoopbackContainingIgnoreCaseOrNetworkContainingIgnoreCaseOrVendorContainingIgnoreCaseOrModelContainingIgnoreCase(
-			String deviceName, String loopback, String network, String vendor, String model);
-
-	 * @Query("SELECT d FROM Device d WHERE " +
-	 * "LOWER(d.name) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
-	 * "LOWER(d.ip) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
-	 * "LOWER(d.network) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
-	 * "LOWER(d.vendor) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
-	 * "LOWER(d.model) LIKE LOWER(CONCAT('%', :searchTerm, '%'))") List<Device>
-	 * search(@Param("searchTerm") String searchTerm);
-	 */
-}
-
-
-
-
-package com.verizon.ucs.restapi.service;
-
-import com.verizon.ucs.restapi.dto.ApiRequest;
-import com.verizon.ucs.restapi.dto.TrendsRequest;
-import com.verizon.ucs.restapi.model.AvgNetworkCovDrillDownData;
-import com.verizon.ucs.restapi.model.AvgNetworkCoverageDTO;
-import com.verizon.ucs.restapi.model.Device;
-import com.verizon.ucs.restapi.model.Trends;
-import com.verizon.ucs.restapi.model.TrendsDTO;
-import com.verizon.ucs.restapi.model.TrendsDrillDownData;
-import com.verizon.ucs.restapi.model.UcspProject;
-import com.verizon.ucs.restapi.repository.UCSPProjectsRepository;
-import com.verizon.ucs.restapi.repository.UCSPRepository;
-import com.verizon.ucs.restapi.repository.UCSPTrendsRepository;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.graphql.data.method.annotation.Argument;
-import org.springframework.stereotype.Service;
-
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
-@Service
-public class UCSPService {
-
-	private static final Logger logger = LoggerFactory.getLogger(UCSPService.class);
-
-	@Autowired
-	private UCSPRepository uCSPRepository;
-
-	@Autowired
-	private UCSPTrendsRepository uCSPTrendsRepository;
-
-	@Autowired
-	private UCSPProjectsRepository ucspProjectsRepository;
-	
-	public List<UcspProject> getUniqueUCGSourcesByProject(Long projectId) {
-		try {
-			List<UcspProject> ucgSources = ucspProjectsRepository.findDistinctUCGSourcesByProject(projectId);
-			if (ucgSources == null || ucgSources.isEmpty()) {
-				throw new RuntimeException("No UCG Sources found for the given project ID: " + projectId);
-			}
-			return ucgSources;
-		} catch (Exception e) {
-			logger.error("Error in service method getUniqueUCGSourcesByProject", e);
-			throw e;
-		}
-	}
-
-	public List<Device> searchDevices(ApiRequest params) {
-		if (params.getDeviceName() != null && !params.getDeviceName().isEmpty()) {
-			return uCSPRepository.findByDeviceNameIgnoreCase(params.getDeviceName());
-		}
-		if (params.getLoopback() != null && !params.getLoopback().isEmpty()) {
-			return uCSPRepository.findByLoopbackIgnoreCase(params.getLoopback());
-		}
-		if (params.getNetwork() != null && !params.getNetwork().isEmpty()) {
-			return uCSPRepository.findByNetworkIgnoreCase(params.getNetwork());
-		}
-		if (params.getVendor() != null && !params.getVendor().isEmpty()) {
-			return uCSPRepository.findByVendorIgnoreCase(params.getVendor());
-		}
-		if (params.getModel() != null && !params.getModel().isEmpty()) {
-			return uCSPRepository.findByModelIgnoreCase(params.getModel());
-		}
-		return null;
-	}
-
-	public Map<String, TrendsDTO> getDailyTrends(TrendsRequest params) throws ParseException {
-	    SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
-	    List<Map<String, Object>> results = uCSPTrendsRepository.findDailyTrends(params.getUcgSourceID(), params.getFromDate(), params.getToDate());
-
-	    Map<String, TrendsDTO> trendsData = new HashMap<>();
-
-	    for (Map<String, Object> result : results) {
-	        String date = dateFormat.format(result.get("date"));
-	        String time = (String) result.get("time");
-	        double sizeOfFilesBytes = ((Number) result.get("sizeOfFilesBytes")).doubleValue();
-	        int numberOfFiles = ((Number) result.get("numberOfFiles")).intValue();
-
-	        TrendsDrillDownData trendsDataPoint = new TrendsDrillDownData(time, sizeOfFilesBytes, numberOfFiles);
-
-	        trendsData
-	            .computeIfAbsent(date, k -> new TrendsDTO(date))
-	            .addTrendsData(trendsDataPoint);
-	    }
-
-	    logger.debug("trendsData {}", trendsData);
-	    return trendsData;
-	}
-
-
-	public Map<String, List<String>> getUniqueValues() {
-		Map<String, List<String>> uniqueValues = new HashMap<>();
-		uniqueValues.put("models", uCSPRepository.findDistinctModels());
-		uniqueValues.put("vendors", uCSPRepository.findDistinctVendors());
-		uniqueValues.put("networks", uCSPRepository.findDistinctNetworks());
-		return uniqueValues;
-	}
-	public List<String> getUniqueUCGSources(){
-		return uCSPRepository.findDistinctUCGSources();
-	}
-	public List<Device> getAllDevices() {
-		return uCSPRepository.findAll();
-	}
-
-	public List<UcspProject> getUniqueProjects() {
-		return ucspProjectsRepository.findUniqueProjects();
-	}
-	public Map<String, List<String>> uniqueNetworksByProtocol() {
-		Map<String, List<String>> uniqueValues = new HashMap<>();
-		uniqueValues.put("snmp", uCSPRepository.uniqueNetworksBySNMPprotocol());
-		return uniqueValues;
-	}
-	
-	public List<String> uniqueDevicesByNetwork(String network) {
-		return uCSPRepository.getUniqueDevicesByNetwork(network);
-	}
-	
-	public Map<String, AvgNetworkCoverageDTO> avgNetworkByCoverage(String networkName,String fromDate,String toDate,String device) throws ParseException {
-        Map<String, AvgNetworkCoverageDTO> detailedData = new HashMap<>();
-        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
-
-        List<Map<String, Object>> results = uCSPRepository.avgNetworkByCoverage(networkName,dateFormat.parse(fromDate),dateFormat.parse(toDate),device);
-
-        for (Map<String, Object> result : results) {
-            String date = dateFormat.format(result.get("date"));
-            String time = (String) result.get("time");
-            double sumOfCoverage = ((Number) result.get("sumOfCoverage")).doubleValue();
-
-            AvgNetworkCovDrillDownData coverageData = new AvgNetworkCovDrillDownData(time, sumOfCoverage);
-
-            detailedData
-                .computeIfAbsent(date, k -> new AvgNetworkCoverageDTO(date))
-                .addCoverageData(coverageData);
-            /*detaileddata
-                .computeifabsent(date, k -> new avgnetworkcoveragedto(date, 0.0, new arraylist<>()))
-                .getCoveragedatalist().add(coveragedata);
-            detaileddata.get(date).setTotalcoverage(detaileddata.get(date).getTotalcoverage() + sumofcoverage);
-            */
-        }
-        logger.debug("detailedData {}",detailedData);
-        return detailedData;
-    }
-
-}
-
-
-
-
-type Query {
-    allDevices: [Device]
-    searchDevices(apiRequest: ApiRequest): [Device]
-    uniqueModels: [String]
-    uniqueNetworks: [String]
-    dailyTrends(trendsRequest: TrendsRequest): [TrendsDTO]
-    uniqueUCGSources: [String]
-    uniqueUCGSourcesByProject(projectId: ID): [UcspProject]
-    uniqueVendors: [String]
-    uniqueUCSPProjects:[UcspProject]
-    uniqueNetworksByProtocol: [String]
-    avgNetworkByCoverage(network: String,fromDate: String,toDate: String,device: String): [AvgNetworkCoverageDTO]
-	uniqueDevicesByNetwork(network: String): [String]
-}
-type TrendsDrillDownData{
- 	time: String
- 	sizeOfFilesBytes: Float
- 	numberOfFiles: Int
-}
-type TrendsDTO{
- 	date: String
- 	totalSizeOfFilesBytes: Float
- 	totalNumberOfFiles: Int
- 	trendsDrillDownList: [TrendsDrillDownData]
-}
-type AvgNetworkCovDrillDownData {
-    time: String
-    coverage: Float
-}
-
-type AvgNetworkCoverageDTO {
-    date: String
-    totalCoverage: Float
-    coverageDrillDownList: [AvgNetworkCovDrillDownData]
-}
-
-
-type Device {
-    deviceName: ID!
-    model: String
-    loopback: String
-    status: String
-    vendor: String
-    routerType: String
-    pollerCluster: String
-    pollerInterval: Int
-    network: String
-    lastUpdate: String
-    physIp: String
-}
-type UcspProject{
-    id:ID!
-    name:String!
-}
-
-
-input TrendsRequest {
-    ucgSourceID: Int
-    fromDate: String
-    toDate: String
-}
-
-type Trends {
-    id: ID!
-    ucgSourceID: Int
-    collectionDate: String
-    sizeOfFilesKB: Int
-    numberOfFiles: Int
-}
-
-input ApiRequest {
-    deviceName: String
-    model: String
-    loopback: String
-    vendor: String
-    network: String
-}
-
-
-
-
-
-
-
-These are the details of the project according to this develop the above API's.
+    };
+
+    const handleDrillDown = (date: string) => {
+        setIsChildChartDisplayed(true);
+        setViewStack([...viewStack, date]);
+    };
+
+    const handleBreadcrumbClick = (index: number) => {
+        setViewStack(viewStack.slice(0, index + 1));
+    };
+
+    const handleHomeClick = () => {
+        setIsChildChartDisplayed(false);
+        setViewStack([]);
+    };
+
+    const currentView = viewStack[viewStack.length - 1];
+    const currentData = responseData.find(item => item.date === currentView)?.trendsDrillDownList || [];
+
+    const isButtonDisabled = () => {
+        return !selectedCollectionType || !fromDate || !toDate;
+    };
+
+    return (
+        <Box sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            boxSizing: 'border-box',
+        }}>
+            <Grid container spacing={4} alignItems="flex-end">
+                <Grid item xs={12} sm={6} md>
+                    <FormControl variant="outlined" sx={{ width: '100%', height: '100%' }}>
+                        <InputLabel id="select-collection-type-label">Collection Type</InputLabel>
+                        <Select
+                            labelId="select-collection-type-label"
+                            id="select-collection-type"
+                            label="Collection Type"
+                            value={selectedCollectionType}
+                            onChange={handleCollectionTypeChange}
+                        >
+                            {collectionTypes.map((type, i) => (
+                                <MenuItem key={type.typeId} value={type.type}>
+                                    {type.type}
+                                </MenuItem>
+                            ))}
+                        </Select>
+                    </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6} md>
+                    <LocalizationProvider dateAdapter={AdapterDayjs}>
+                        <DatePicker
+                            label="Start Date"
+                            sx={{ width: '100%', height: '100%' }}
+                            value={fromDate}
+                            onChange={(newDate: Dayjs | null) => setSelectedFromDate(newDate || dayjs())}
+                        />
+                    </LocalizationProvider>
+                </Grid>
+                <Grid item xs={12} sm={6} md>
+                    <LocalizationProvider dateAdapter={AdapterDayjs}>
+                        <DatePicker
+                            label="End Date"
+                            sx={{ width: '100%', height: '100%' }}
+                            value={toDate}
+                            onChange={(newDate: Dayjs | null) => setSelectedToDate(newDate || dayjs())}
+                        />
+                    </LocalizationProvider>
+                </Grid>
+                <Grid item xs={12} sm={6} md={2}>
+                    <LoadingButton
+                        loading={loading}
+                        variant="contained"
+                        onClick={handleFetchClick}
+                        disabled={isButtonDisabled()}
+                    >
+                        Fetch Data
+                    </LoadingButton>
+                </Grid>
+            </Grid>
+            {dataFetched && !isChildChartDisplayed && (
+                <>
+                    <ParentChart
+                        data={responseData}
+                        onDrillDown={handleDrillDown}
+                    />
+                </>
+            )}
+            {isChildChartDisplayed && (
+                <>
+                    <ChildChart
+                        date={currentView}
+                        data={currentData}
+                    />
+                    <Breadcrumbs
+                        separator={<NavigateNextIcon fontSize="small" />}
+                        aria-label="breadcrumb"
+                        sx={{ margin: "10px" }}
+                    >
+                        <Link href="/" color="inherit" onClick={handleHomeClick}>
+                            <HomeIcon fontSize="small" />
+                        </Link>
+                        {viewStack.map((date, index) => (
+                            <Link
+                                key={index}
+                                color="inherit"
+                                onClick={() => handleBreadcrumbClick(index)}
+                            >
+                                {date}
+                            </Link>
+                        ))}
+                    </Breadcrumbs>
+                </>
+            )}
+        </Box>
+    );
+};
+
+export default HealthMetricsDashboard;
