@@ -1,150 +1,23 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import { AVAILABLE_ALARM_COLLECTION_TYPES_QUERY, FETCH_ALARM_METRICS_QUERY } from '../../graphQL/graphqlQueries';
-import { __UCS_GRAPHQL_URL__ } from '../../api-endpoints';
-
-const OverallHealthMetrics = () => {
-    const [collectionTypes, setCollectionTypes] = useState([]);
-    const [selectedType, setSelectedType] = useState('');
-    const [fromDate, setFromDate] = useState(null); // Add date picker default
-    const [toDate, setToDate] = useState(null); // Add date picker default
-    const [metricsData, setMetricsData] = useState([]);
-    const [loading, setLoading] = useState(false);
-
-    // Fetch collection types on component mount
-    useEffect(() => {
-        const fetchCollectionTypes = async () => {
-            try {
-                const response = await axios.post(__UCS_GRAPHQL_URL__, {
-                    query: AVAILABLE_ALARM_COLLECTION_TYPES_QUERY,
-                });
-                setCollectionTypes(response.data?.data?.availableAlarmCollectionTypes || []);
-            } catch (error) {
-                console.error('Error fetching collection types:', error);
-            }
-        };
-        fetchCollectionTypes();
-    }, []);
-
-    // Fetch metrics data
-    const fetchMetrics = async () => {
-        setLoading(true);
-        try {
-            const response = await axios.post(__UCS_GRAPHQL_URL__, {
-                query: FETCH_ALARM_METRICS_QUERY,
-                variables: {
-                    collectionType: selectedType,
-                    fromDate: fromDate ? fromDate.format('YYYY-MM-DD') : null,
-                    toDate: toDate ? toDate.format('YYYY-MM-DD') : null,
-                },
-            });
-            setMetricsData(response.data?.data?.alarmMetrics || []);
-        } catch (error) {
-            console.error('Error fetching metrics data:', error);
-        } finally {
-            setLoading(false);
+export const AVAILABLE_ALARM_COLLECTION_TYPES_QUERY = `
+    query {
+        availableAlarmCollectionTypes {
+            typeId
+            type
         }
-    };
+    }
+`;
 
-    return (
-        <div>
-            <h2>Overall Health Metrics</h2>
-
-            {/* Collection Type Dropdown */}
-            <div>
-                <label>Select Collection Type:</label>
-                <select
-                    value={selectedType}
-                    onChange={(e) => setSelectedType(e.target.value)}
-                >
-                    <option value="">Select</option>
-                    {collectionTypes.map((type) => (
-                        <option key={type.typeId} value={type.type}>
-                            {type.type}
-                        </option>
-                    ))}
-                </select>
-            </div>
-
-            {/* Date Range Inputs */}
-            <div>
-                <label>From:</label>
-                <input
-                    type="date"
-                    value={fromDate || ''}
-                    onChange={(e) => setFromDate(e.target.value)}
-                />
-                <label>To:</label>
-                <input
-                    type="date"
-                    value={toDate || ''}
-                    onChange={(e) => setToDate(e.target.value)}
-                />
-            </div>
-
-            {/* Fetch Metrics Button */}
-            <div>
-                <button onClick={fetchMetrics} disabled={loading}>
-                    {loading ? 'Loading...' : 'Fetch Metrics'}
-                </button>
-            </div>
-
-            {/* Metrics Visualization */}
-            <div>
-                {metricsData.length > 0 ? (
-                    <div>
-                        <h3>Metrics Data</h3>
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Date</th>
-                                    <th>Total Size of Files (Bytes)</th>
-                                    <th>Total Number of Files</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {metricsData.map((metric, index) => (
-                                    <tr key={index}>
-                                        <td>{metric.date}</td>
-                                        <td>{metric.totalSizeOfFilesBytes}</td>
-                                        <td>{metric.totalNumberOfFiles}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-
-                        {/* Drilldown Details */}
-                        <h4>Drilldown Details</h4>
-                        {metricsData.map((metric, index) => (
-                            <div key={index}>
-                                <h5>{metric.date}</h5>
-                                <table>
-                                    <thead>
-                                        <tr>
-                                            <th>Time</th>
-                                            <th>Size of Files (Bytes)</th>
-                                            <th>Number of Files</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {metric.alarmMetricsDrillDownList.map((drillDown, drillIndex) => (
-                                            <tr key={drillIndex}>
-                                                <td>{drillDown.time}</td>
-                                                <td>{drillDown.sizeOfFilesBytes}</td>
-                                                <td>{drillDown.numberOfFiles}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        ))}
-                    </div>
-                ) : (
-                    <p>No metrics data available</p>
-                )}
-            </div>
-        </div>
-    );
-};
-
-export default OverallHealthMetrics;
+export const FETCH_ALARM_METRICS_QUERY = `
+    query alarmMetrics($collectionType: String, $fromDate: String, $toDate: String) {
+        alarmMetrics(alarmMetricsRequest: { collectionType: $collectionType, fromDate: $fromDate, toDate: $toDate }) {
+            date
+            totalSizeOfFilesBytes
+            totalNumberOfFiles
+            alarmMetricsDrillDownList {
+                time
+                sizeOfFilesBytes
+                numberOfFiles
+            }
+        }
+    }
+`;
