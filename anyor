@@ -215,6 +215,12 @@ const HealthMetricsDashboard: React.FC = () => {
         setViewStack(viewStack.slice(0, index + 1));
     };
 
+    const handleHomeClick = () => {
+        // Reset state to go back to the dashboard
+        setIsChildChartDisplayed(false);
+        setViewStack([]);
+    };
+
     const currentView = viewStack[viewStack.length - 1];
     const currentData = responseData.find(item => item.date === currentView)?.trendsDrillDownList || [];
 
@@ -299,7 +305,7 @@ const HealthMetricsDashboard: React.FC = () => {
                         aria-label="breadcrumb"
                         sx={{ margin: "10px" }}
                     >
-                        <Link href="/" color="inherit">
+                        <Link href="/" color="inherit" onClick={handleHomeClick}>
                             <HomeIcon fontSize="small" />
                         </Link>
                         {viewStack.map((date, index) => (
