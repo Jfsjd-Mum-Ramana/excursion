@@ -1,573 +1,214 @@
-import React, { useEffect, useState } from 'react';
-import axios from 'axios';
-import { __UCS_GRAPHQL_URL__ } from '../../api-endpoints';
-import { UNIQUE_UGS_SOURCE_QUERY, UNIQUE_PROJECT_QUERY, GET_DAILY_TRENDS_DATA } from '../../graphQL/graphqlQueries';
-import LoadingButton from "@mui/lab/LoadingButton";
-import { LineChart } from '@mui/x-charts/LineChart';
-import { AxisConfig, ChartsXAxisProps } from '@mui/x-charts';
-import { Box, FormControl, Grid, InputLabel, MenuItem, Select, SelectChangeEvent, TextField, Autocomplete, Button, Breadcrumbs, Link, Typography } from '@mui/material';
+import React, { useState, useEffect } from 'react';
+import { Box, Grid, TextField, Autocomplete, Button } from '@mui/material';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import dayjs, { Dayjs } from 'dayjs';
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
-import { useTheme } from "@mui/material/styles";
-import { useSnackbar } from '../../utils/SnackbarContext';
-import NavigateNextIcon from '@mui/icons-material/NavigateNext';
-import HomeIcon from '@mui/icons-material/Home';
+import { LineChart } from '@mui/x-charts/LineChart';
+import { SEARCH_ALARM_INVENTORY_QUERY, AVAILABLE_ALARM_COLLECTION_TYPES_QUERY, FETCH_ALARM_METRICS_QUERY } from '../../graphQL/graphqlQueries';
+import { __UCS_GRAPHQL_URL__ } from '../../api-endpoints'; // Importing the predefined GraphQL URL
 
-const generateLast10Dates = () => {
-    const dates = [];
-    for (let i = 0; i < 10; i++) {
-        dates.push(dayjs().subtract(i, 'day').format('YYYY-MM-DD'));
-    }
-    return dates;
-};
-
-interface DataPoint {
-    date: string;
-    totalNumberOfFiles: number;
-    totalSizeOfFilesBytes: number;
-    trendsDrillDownList: DetailedDataPoint[];
-}
-
-interface DetailedDataPoint {
-    time: string;
-    sizeOfFilesBytes: number;
-    numberOfFiles: number;
-}
-
-const chartHeight = 450;
-const childChartHeight = 410;
-
-const ParentChart = ({ data, onDrillDown, setIsChildChartDisplayed }: { data: DataPoint[], onDrillDown: (date: string) => void, setIsChildChartDisplayed: (value: boolean) => void }) => {
-    const theme = useTheme();
-
-    const transformedData = data.map(item => ({
-        collectionDate: item.date,
-        totalNumberOfFiles: item.totalNumberOfFiles,
-        totalSizeOfFilesBytes: item.totalSizeOfFilesBytes,
+const ParentChart = ({ data, onDrillDown }: { data: any[], onDrillDown: (date: string) => void }) => {
+    const transformedData = data.map((item) => ({
+        date: item.date,
+        usage: item.totalNumberOfFiles,
+        volume: item.totalSizeOfFilesBytes,
     }));
-
-    const lineChartParams = {
-        series: [
-            {
-                id: 'totalNumberOfFiles',
-                datakey: 'totalNumberOfFiles',
-                label: 'Number of Files',
-                data: transformedData.map(item => item.totalNumberOfFiles),
-            },
-            {
-                id: 'totalSizeOfFilesBytes',
-                datakey: 'totalSizeOfFilesBytes',
-                label: 'Size of Files (Bytes)',
-                data: transformedData.map(item => item.totalSizeOfFilesBytes),
-            }
-        ],
-        xAxis: [{
-            data: transformedData.map(item => item.collectionDate),
-            id: 'axis1',
-            dataKey: 'collectionDate',
-            scaleType: "point",
-            label: "Collected Date",
-            tickLabelStyle: {
-                angle: -25,
-                textAnchor: 'end',
-                fontSize: 10,
-            },
-            labelStyle: { transform: "translateY(30px)" },
-            tickPlacement: 'middle', tickLabelPlacement: 'middle',
-        } as AxisConfig<'point', string, ChartsXAxisProps>],
-        height: chartHeight,
-        margin: {
-            left: 60,
-            right: 10,
-            top: 20,
-            bottom: 80,
-        },
-        colors: theme.palette.distinctLightPalette
-    };
 
     return (
         <Box width="100%">
             <LineChart
-                {...lineChartParams}
+                series={[
+                    { id: 'usage', label: 'Number of Files', data: transformedData.map((d) => d.usage) },
+                    { id: 'volume', label: 'File Size (Bytes)', data: transformedData.map((d) => d.volume) },
+                ]}
+                xAxis={[
+                    { id: 'axis1', dataKey: 'date', data: transformedData.map((d) => d.date), label: 'Date' },
+                ]}
+                height={450}
                 onAxisClick={(event, d) => {
-                    if (d && d.axisValue) {
-                        setIsChildChartDisplayed(true);
-                        onDrillDown(String(d.axisValue));
-                    } else {
-                        console.error('collectionDate not found in data point');
-                    }
+                    if (d?.axisValue) onDrillDown(d.axisValue);
                 }}
             />
         </Box>
     );
 };
 
-const ChildChart = ({ date, data }: { date: string, data: DetailedDataPoint[] }) => {
-    const theme = useTheme();
-    const detailedLineChartsParams = {
-        series: [
-            {
-                id: 'numberOfFiles',
-                datakey: 'numberOfFiles',
-                label: 'Number of Files',
-                data: data.map(item => item.numberOfFiles)
+const ChildChart = ({ data }: { data: any[] }) => (
+    <Box width="100%">
+        <LineChart
+            series={[
+                { id: 'usage', label: 'Number of Files', data: data.map((d) => d.numberOfFiles) },
+                { id: 'volume', label: 'File Size (Bytes)', data: data.map((d) => d.sizeOfFilesBytes) },
+            ]}
+            xAxis={[
+                { id: 'axis2', dataKey: 'time', data: data.map((d) => d.time), label: 'Time' },
+            ]}
+            height={400}
+        />
+    </Box>
+);
+
+const OverallHealthMetrics: React.FC = () => {
+    const [selectedCollectionType, setSelectedCollectionType] = useState<any>(null);
+    const [fromDate, setFromDate] = useState<Dayjs>(dayjs().subtract(1, 'month'));
+    const [toDate, setToDate] = useState<Dayjs>(dayjs());
+    const [viewStack, setViewStack] = useState<string[]>([]);
+    const [isChildChartDisplayed, setIsChildChartDisplayed] = useState(false);
+    const [alarmMetrics, setAlarmMetrics] = useState<any[]>([]);
+    const [searchResults, setSearchResults] = useState<any[]>([]);
+
+    const [collectionTypes, setCollectionTypes] = useState<any[]>([]);
+
+    // Fetch available alarm collection types from GraphQL
+    const fetchCollectionTypes = async () => {
+        const response = await fetch(__UCS_GRAPHQL_URL__, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
             },
-            {
-                id: 'sizeOfFilesBytes',
-                datakey: 'sizeOfFilesBytes',
-                label: 'Size of Files (Bytes)',
-                data: data.map(item => item.sizeOfFilesBytes)
-            }
-        ],
-        xAxis: [{
-            data: data.map(item => item.time),
-            id: 'axis2',
-            dataKey: 'time',
-            scaleType: "point",
-            label: "Collected Time on " + date,
-        } as AxisConfig<'point', string, ChartsXAxisProps>],
-        height: childChartHeight,
-        colors: theme.palette.distinctLightPalette
+            body: JSON.stringify({
+                query: AVAILABLE_ALARM_COLLECTION_TYPES_QUERY,
+            }),
+        });
+        const data = await response.json();
+        setCollectionTypes(data.data.availableAlarmCollectionTypes || []);
     };
 
+    // Fetch search alarm inventory data
+    const fetchAlarmInventory = async (collectionType: string) => {
+        const response = await fetch(__UCS_GRAPHQL_URL__, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                query: SEARCH_ALARM_INVENTORY_QUERY,
+                variables: { collectionType },
+            }),
+        });
+        const data = await response.json();
+        setSearchResults(data.data.searchAlarmInventory || []);
+    };
+
+    // Fetch alarm metrics based on the selected collection type and dates
+    const fetchAlarmMetrics = async () => {
+        if (!selectedCollectionType || !fromDate || !toDate) {
+            alert('Please fill all required fields!');
+            return;
+        }
+
+        const response = await fetch(__UCS_GRAPHQL_URL__, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                query: FETCH_ALARM_METRICS_QUERY,
+                variables: {
+                    collectionType: selectedCollectionType.type,
+                    fromDate: fromDate.format('YYYY-MM-DD'),
+                    toDate: toDate.format('YYYY-MM-DD'),
+                },
+            }),
+        });
+
+        const data = await response.json();
+        setAlarmMetrics(data.data.alarmMetrics || []);
+        setIsChildChartDisplayed(false);
+    };
+
+    // Handle drill down to view more detailed metrics
+    const handleDrillDown = (date: string) => {
+        const drillDownData = alarmMetrics.find((metric) => metric.date === date)?.alarmMetricsDrillDownList || [];
+        setViewStack([...viewStack, date]);
+        setAlarmMetrics(drillDownData);
+        setIsChildChartDisplayed(true);
+    };
+
+    // Reset all states
+    const handleReset = () => {
+        setSelectedCollectionType(null);
+        setFromDate(dayjs().subtract(1, 'month'));
+        setToDate(dayjs());
+        setAlarmMetrics([]);
+        setSearchResults([]);
+        setViewStack([]);
+        setIsChildChartDisplayed(false);
+    };
+
+    // Fetch collection types and alarm inventory when component mounts
+    useEffect(() => {
+        fetchCollectionTypes();
+    }, []);
+
     return (
-        <Box width="100%">
-            <LineChart {...detailedLineChartsParams} />
+        <Box sx={{ p: 4 }}>
+            <Grid container spacing={2} alignItems="flex-end">
+                <Grid item xs={12} sm={6} md={4}>
+                    <Autocomplete
+                        options={collectionTypes}
+                        getOptionLabel={(option) => option.type}
+                        value={selectedCollectionType}
+                        onChange={(e, newValue) => {
+                            setSelectedCollectionType(newValue);
+                            fetchAlarmInventory(newValue?.type); // Fetch alarm inventory when collection type is selected
+                        }}
+                        renderInput={(params) => <TextField {...params} label="Collection Type" />}
+                    />
+                </Grid>
+                <Grid item xs={12} sm={6} md={4}>
+                    <LocalizationProvider dateAdapter={AdapterDayjs}>
+                        <DatePicker
+                            label="From Date"
+                            value={fromDate}
+                            onChange={(newValue) => setFromDate(newValue || dayjs())}
+                            maxDate={toDate}
+                        />
+                    </LocalizationProvider>
+                </Grid>
+                <Grid item xs={12} sm={6} md={4}>
+                    <LocalizationProvider dateAdapter={AdapterDayjs}>
+                        <DatePicker
+                            label="To Date"
+                            value={toDate}
+                            onChange={(newValue) => setToDate(newValue || dayjs())}
+                            minDate={fromDate}
+                        />
+                    </LocalizationProvider>
+                </Grid>
+                <Grid item xs={12}>
+                    <Button variant="contained" onClick={fetchAlarmMetrics}>Fetch</Button>
+                    <Button variant="outlined" onClick={handleReset} sx={{ ml: 2 }}>Reset</Button>
+                </Grid>
+            </Grid>
+
+            <Box mt={4}>
+                {isChildChartDisplayed ? (
+                    <ChildChart data={alarmMetrics} />
+                ) : (
+                    <ParentChart data={alarmMetrics} onDrillDown={handleDrillDown} />
+                )}
+            </Box>
+
+            <Box mt={4}>
+                <h3>Search Results</h3>
+                <Grid container spacing={2}>
+                    {searchResults.map((result) => (
+                        <Grid item xs={12} sm={6} md={4} key={result.id}>
+                            <Box sx={{ border: '1px solid #ccc', padding: '10px', borderRadius: '4px' }}>
+                                <h4>{result.deviceName}</h4>
+                                <p>{result.deviceIp}</p>
+                                <p>{result.vendor}</p>
+                            </Box>
+                        </Grid>
+                    ))}
+                </Grid>
+            </Box>
         </Box>
     );
 };
 
-const DailyTrend: React.FC = () => {
-    const theme = useTheme();
-    const [projectList, setProjectList] = useState<any[]>([]);
-    const [ucgSourceList, setUcgSourceList] = useState<{ id: number, name: string }[]>([]);
-    const [selectedProject, setSelectedProject] = useState<any>(null);
-    const [selectedUCGSource, setSelectedUCGSource] = useState<number>(0);
-    const [fromDate, setSelectedFromDate] = useState<Dayjs>(dayjs().subtract(1, 'month'));
-    const [toDate, setSelectedToDate] = useState<Dayjs | null>(dayjs());
-    const [loading, setLoading] = useState<boolean>(false);
-    const [ucgsourceLoading, setUcgsourceLoading] = useState<boolean>(false);
-    const [dataFetched, setDataFetched] = useState<boolean>(false);
-    const [responseData, setResponseData] = useState<DataPoint[]>([]);
-    const [viewStack, setViewStack] = useState<string[]>([]);
-    const [isChildChartDisplayed, setIsChildChartDisplayed] = useState(false);
-    const { showSnackbar } = useSnackbar();
-    const last10Dates = generateLast10Dates();
+export default OverallHealthMetrics;
 
-    useEffect(() => {
-        const fetchProjectData = async () => {
-            try {
-                const projectResponse = await axios.post(__UCS_GRAPHQL_URL__, {
-                    query: UNIQUE_PROJECT_QUERY,
-                });
-                if (projectResponse.data?.data?.uniqueUCSPProjects && projectResponse.data.data.uniqueUCSPProjects.length > 0) {
-                    setProjectList(projectResponse.data.data.uniqueUCSPProjects);
-                }
-            } catch (error) {
-                showSnackbar('Error fetching project data!');
-                console.error('Error fetching project data', error);
-            }
-        };
-        fetchProjectData();
-    }, []);
-
-    const handleProjectChange = async (options: any) => {
-        setSelectedProject(options);
-        setUcgsourceLoading(true);
-        setSelectedUCGSource(0);
-        setUcgSourceList([]);
-        if (options && options.id) {
-            try {
-                const ucgSourcesResponse = await axios.post(__UCS_GRAPHQL_URL__, {
-                    query: UNIQUE_UGS_SOURCE_QUERY,
-                    variables: { projectId: options.id },
-                });
-                if (ucgSourcesResponse.data?.data?.uniqueUCGSourcesByProject && ucgSourcesResponse.data.data.uniqueUCGSourcesByProject.length > 0) {
-                    setUcgSourceList(ucgSourcesResponse.data.data.uniqueUCGSourcesByProject);
-                } else {
-                    showSnackbar('No UCGsource exists for this Project!');
-                }
-            } catch (error) {
-                showSnackbar('Error fetching UCGsource data!');
-                console.error('Error fetching UCG source:', error);
-            } finally {
-                setUcgsourceLoading(false);
-            }
-        }
-    };
-
-    const handleSelectChange = (setter: React.Dispatch<React.SetStateAction<number>>) => (
-        event: SelectChangeEvent<number>) => {
-        setter(event.target.value as number);
-    };
-
-    const handleReset = () => {
-        setSelectedProject(null);
-        setSelectedUCGSource(0);
-        setSelectedFromDate(dayjs().subtract(1, 'month'));
-        setSelectedToDate(dayjs());
-        setResponseData([]);
-        setViewStack([]);
-        setIsChildChartDisplayed(false);
-        setDataFetched(false);
-    };
-
-    const handleFetchClick = async () => {
-        setLoading(true);
-        setResponseData([]);
-        const formattedFromDate = dayjs(fromDate).format('YYYY-MM-DD');
-        const formattedToDate = dayjs(toDate).format('YYYY-MM-DD');
-
-        const data = {
-            ucgSourceID: selectedUCGSource,
-            fromDate: formattedFromDate,
-            toDate: formattedToDate
-        };
-
-        try {
-            const response = await axios.post(__UCS_GRAPHQL_URL__, {
-                query: GET_DAILY_TRENDS_DATA,
-                variables: data,
-            });
-
-            if (response.data?.data?.dailyTrends && response.data.data.dailyTrends.length > 0) {
-                let data = response.data.data.dailyTrends || [];
-                console.log(data);
-                setResponseData(data);
-            } else {
-                showSnackbar("No Data Found!");
-            }
-            setDataFetched(true);
-        } catch (error) {
-            showSnackbar("Error While fetching the Data from the Server");
-            console.error('Error fetching data', error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleDrillDown = (date: string) => {
-        setViewStack([...viewStack, date]);
-    };
-
-    const handleBreadcrumbClick = (index: number) => {
-        setViewStack(viewStack.slice(0, index + 1));
-    };
-
-    const currentView = viewStack[viewStack.length - 1];
-    const currentData = responseData.find(item => item.date === currentView)?.trendsDrillDownList || [];
-
-
-    const isButtonDisabled = () => {
-        return !selectedProject || !selectedUCGSource || !fromDate || !toDate;
-    };
-
-    return (
-        <Box sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            boxSizing: 'border-box',
-        }}>
-            <Grid container spacing={4} alignItems="flex-end">
-                <Grid item xs={12} sm={6} md>
-                    <Autocomplete
-                        value={selectedProject}
-                        onChange={(e, options) => handleProjectChange(options)}
-                        loading={loading}
-                        disablePortal
-                        options={projectList}
-                        getOptionLabel={(option) => option.name}
-                        renderInput={(params: any) => <TextField {...params} label="Project" placeholder="Project Name" />}
-                    />
-                </Grid>
-                <Grid item xs={12} sm={6} md>
-                    <FormControl variant="outlined" sx={{ width: '100%', height: '100%' }}>
-                        <InputLabel id="select-outlined-label">UCG Source</InputLabel>
-                        <Select
-                            labelId="select-outlined-label"
-                            id="select-outlined"
-                            label="UCG Source"
-                            value={selectedUCGSource}
-                            onChange={(event) => handleSelectChange(setSelectedUCGSource)(event)}
-                        >
-                            {ucgsourceLoading ? (
-                                <MenuItem disabled>
-                                    Loading…
-                                </MenuItem>
-                            ) : (
-                                ucgSourceList?.map((source, i) => (
-                                    <MenuItem
-                                        key={source.id}
-                                        id="dropDown"
-                                        value={source.id}
-                                    >
-                                        {source.name}
-                                    </MenuItem>
-                                ))
-                            )}
-                        </Select>
-                    </FormControl>
-                </Grid>
-                <Grid item xs={12} sm={6} md>
-                    <LocalizationProvider dateAdapter={AdapterDayjs}>
-                        <DatePicker
-                            label="Start Date"
-                            sx={{ width: '100%', height: '100%' }}
-                            value={fromDate}
-                            onChange={(newValue: Dayjs | null) => {
-                                setSelectedFromDate(newValue || dayjs());
-                                if (newValue && toDate && newValue.isAfter(toDate)) {
-                                    setSelectedToDate(null);
-                                }
-                            }}
-                        />
-                    </LocalizationProvider>
-                </Grid>
-                <Grid item xs={12} sm={6} md>
-                    <LocalizationProvider dateAdapter={AdapterDayjs}>
-                        <DatePicker
-                            label="End Date"
-                            sx={{ width: '100%', height: '100%' }}
-                            value={toDate}
-                            minDate={fromDate}
-                            onChange={(newValue) => setSelectedToDate(newValue)}
-                        />
-                    </LocalizationProvider>
-                </Grid>
-                <Grid item xs={2} sm={2} md={2} sx={{ display: 'flex' }}>
-                    <Button variant="contained" onClick={handleReset} color="primary" sx={{ marginRight: 2 }}>Reset</Button>
-                    <LoadingButton onClick={handleFetchClick} loading={loading} loadingIndicator="Fetching…" variant="contained"
-                        disabled={isButtonDisabled()}>
-                        <span>Fetch</span>
-                    </LoadingButton>
-                </Grid>
-            </Grid>
-
-            {dataFetched && !loading && (
-                <Box sx={{ mt: 4, width: '100%', borderRadius: 2, border: '1px solid #e0e0e0', bgcolor: 'white' }}>
-
-                    {isChildChartDisplayed && responseData.length > 0 && (
-                        <Breadcrumbs aria-label="breadcrumb" separator={<NavigateNextIcon fontSize="small" />} sx={{ padding: '1%' }}>
-                            <Link underline="hover" sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer', '&:hover': { textDecoration: 'underline !important', color: '#1976d2 !important' } }} color="primary" onClick={() => { setViewStack([]); setIsChildChartDisplayed(false); }} >
-                                <HomeIcon sx={{ mr: 0.4 }} fontSize="inherit" />
-                                Home
-                            </Link>
-                            {viewStack.map((view, index) => (
-                                <Link
-                                    key={view}
-                                    color="inherit"
-                                    sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}
-                                    underline="none"
-                                    onClick={() => handleBreadcrumbClick(index)}
-                                >
-                                    {view}
-                                </Link>
-                            ))}
-                        </Breadcrumbs>
-                    )}
-
-                    <Box mt={1} sx={{ width: '100%' }}>
-                        {responseData.length > 0 ? (
-                            <>
-                                {currentView ? (
-                                    <ChildChart date={currentView} data={currentData} />
-                                ) : (
-                                    <ParentChart data={responseData} onDrillDown={handleDrillDown} setIsChildChartDisplayed={setIsChildChartDisplayed} />
-                                )}
-                            </>
-                        ) : (
-                            <LineChart
-                                height={chartHeight}
-                                xAxis={[{ data: last10Dates, scaleType: 'point', }]}
-                                yAxis={[{ min: 0, max: 10 }]}
-                                series={[]}
-                            />
-                        )}
-                    </Box>
-                </Box>
-            )}
-        </Box>
-    );
-}
-
-export default DailyTrend;
-
-Take the refrence of this code and implement 3 api's i another dashboard page which is called OverallHealthMetric  here the api details
-
-{
-  alarmMetrics(alarmMetricsRequest:{
-    collectionType:"MCP",
-    fromDate:"2024-12-1",
-    toDate:"2024-12-3"
-  }){
-    date
-    totalSizeOfFilesBytes
-    totalNumberOfFiles
-    alarmMetricsDrillDownList {
-      time
-      sizeOfFilesBytes
-      numberOfFiles
-    }
-  } 
-}
-
-{
-    availableAlarmCollectionTypes {
-        typeId
-        type
-    }
-{
-    searchAlarmInventory(alarmInventorySearchRequest:{
-        collectionType:"mcp"
-    }) {
-        id
-        collectionType
-        deviceIp
-        deviceName
-        model
-        vendor
-        loopback
-        network
-        pollerCluster
-        pollerInterval
-        lastUpdate
-        physIp
-    }
-}
-
-Here the backend schema:
-
-type Query {
-    allDevices: [Device]
-    availableAlarmCollectionTypes: [AlarmCollectionType!]!
-    avgNetworkByCoverage(network: String,fromDate: String,toDate: String,device: String): [AvgNetworkCoverageDTO]
-    alarmMetrics(alarmMetricsRequest: AlarmMetricsRequest): [AlarmMetricsDTO]
-    dailyTrends(trendsRequest: TrendsRequest): [TrendsDTO]
-    searchAlarmInventory(alarmInventorySearchRequest:AlarmInventorySearchRequest): [UCSPAlarmInventory]
-    searchDevices(apiRequest: ApiRequest): [Device]
-    uniqueDevicesByNetwork(network: String): [String]
-    uniqueModels: [String]
-    uniqueNetworks: [String]
-    uniqueNetworksByProtocol: [String]
-    uniqueUCSPProjects:[UcspProject]
-    uniqueUCGSources: [String]
-    uniqueUCGSourcesByProject(projectId: ID): [UcspProject]
-    uniqueVendors: [String]
-    uniqueAlarmVendors: [String]
-    uniqueAlarmModels: [String]
-}
-type AlarmCollectionType {
-    typeId: Int
-    type: String
-}
-
-type TrendsDrillDownData{
- 	time: String
- 	sizeOfFilesBytes: Float
- 	numberOfFiles: Int
-}
-type TrendsDTO{
- 	date: String
- 	totalSizeOfFilesBytes: Float
- 	totalNumberOfFiles: Int
- 	trendsDrillDownList: [TrendsDrillDownData]
-}
-
-type AlarmMetricsDrillDownData{
-    time: String
-    sizeOfFilesBytes: Float
-    numberOfFiles: Int
-}
-type AlarmMetricsDTO{
-    date: String
-    totalSizeOfFilesBytes: Float
-    totalNumberOfFiles: Int
-    alarmMetricsDrillDownList: [AlarmMetricsDrillDownData]
-}
-input AlarmMetricsRequest {
-    collectionType: String
-    fromDate: String
-    toDate: String
-}
-
-type AvgNetworkCovDrillDownData {
-    time: String
-    coverage: Float
-}
-
-type AvgNetworkCoverageDTO {
-    date: String
-    totalCoverage: Float
-    coverageDrillDownList: [AvgNetworkCovDrillDownData]
-}
-
-
-type Device {
-    deviceName: ID!
-    model: String
-    loopback: String
-    status: String
-    vendor: String
-    routerType: String
-    pollerCluster: String
-    pollerInterval: Int
-    network: String
-    lastUpdate: String
-    physIp: String
-}
-type UcspProject{
-    id:ID!
-    name:String!
-}
-
-
-input TrendsRequest {
-    ucgSourceID: Int
-    fromDate: String
-    toDate: String
-}
-
-type Trends {
-    id: ID!
-    ucgSourceID: Int
-    collectionDate: String
-    sizeOfFilesKB: Int
-    numberOfFiles: Int
-}
-
-input ApiRequest {
-    deviceName: String
-    model: String
-    loopback: String
-    vendor: String
-    network: String
-}
-
-input AlarmInventorySearchRequest {
-    deviceName: String
-    collectionType: String
-    model: String
-    vendor: String
-    deviceIp: String
-}
-type UCSPAlarmInventory {
-    id: Int 
-    collectionType: String
-    deviceName: String 
-    deviceIp: String 
-    model: String 
-    vendor: String 
-    routerType: String 
-    status: String 
-    loopback: String 
-    network: String 
-    pollerCluster: String 
-    pollerInterval: String 
-    lastUpdate: String 
-    physIp: String 
-}
-
-please provide graphqlqueries.ts and also full implemented dashbard
+please note this code and I will give you the requirement
