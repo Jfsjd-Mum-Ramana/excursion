@@ -319,6 +319,3 @@ const HealthMetricsDashboard: React.FC = () => {
 };
 
 export default HealthMetricsDashboard;
-
-
-Here in the graph showing the data but when I click on that data point it will show another graph with that data same as daily trends
