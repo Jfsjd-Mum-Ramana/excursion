@@ -2,31 +2,20 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { __UCS_GRAPHQL_URL__ } from '../../api-endpoints';
 import { AVAILABLE_ALARM_COLLECTION_TYPES_QUERY, FETCH_ALARM_METRICS_QUERY } from '../../graphQL/graphqlQueries';
+import LoadingButton from "@mui/lab/LoadingButton";
 import { LineChart } from '@mui/x-charts/LineChart';
 import { AxisConfig, ChartsXAxisProps } from '@mui/x-charts';
-import {
-  Box,
-  FormControl,
-  Grid,
-  InputLabel,
-  MenuItem,
-  Select,
-  SelectChangeEvent,
-  Button,
-  Breadcrumbs,
-  Link,
-  Typography,
-} from '@mui/material';
+import { Box, FormControl, Grid, InputLabel, MenuItem, Select, SelectChangeEvent, Breadcrumbs, Link } from '@mui/material';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import dayjs, { Dayjs } from 'dayjs';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import { useTheme } from "@mui/material/styles";
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import HomeIcon from '@mui/icons-material/Home';
-import { useTheme } from '@mui/material/styles';
 import { useSnackbar } from '../../utils/SnackbarContext';
-import LoadingButton from '@mui/lab/LoadingButton';
 
+// Define types for data structure
 interface DataPoint {
   date: string;
   totalNumberOfFiles: number;
@@ -40,14 +29,14 @@ interface DetailedDataPoint {
   numberOfFiles: number;
 }
 
+// Chart dimensions
 const chartHeight = 450;
-const childChartHeight = 400;
+const childChartHeight = 410;
 
-// Parent Chart Component
 const ParentChart = ({
   data,
   onDrillDown,
-  setIsChildChartDisplayed,
+  setIsChildChartDisplayed
 }: {
   data: DataPoint[];
   onDrillDown: (date: string) => void;
@@ -61,55 +50,37 @@ const ParentChart = ({
     totalSizeOfFilesBytes: item.totalSizeOfFilesBytes,
   }));
 
-  const lineChartParams = {
-    series: [
-      {
-        id: 'totalNumberOfFiles',
-        datakey: 'totalNumberOfFiles',
-        label: 'Number of Files',
-        data: transformedData.map(item => item.totalNumberOfFiles),
-      },
-      {
-        id: 'totalSizeOfFilesBytes',
-        datakey: 'totalSizeOfFilesBytes',
-        label: 'Size of Files (Bytes)',
-        data: transformedData.map(item => item.totalSizeOfFilesBytes),
-      },
-    ],
-    xAxis: [
-      {
-        data: transformedData.map(item => item.collectionDate),
-        id: 'axis1',
-        dataKey: 'collectionDate',
-        scaleType: 'point',
-        label: 'Collected Date',
-        tickLabelStyle: {
-          angle: -30,
-          textAnchor: 'end',
-          fontSize: 12,
-        },
-      } as AxisConfig<'point', string, ChartsXAxisProps>,
-    ],
-    height: chartHeight,
-    margin: {
-      left: 70,
-      right: 20,
-      top: 20,
-      bottom: 80,
-    },
-    colors: theme.palette.primary,
-  };
-
   return (
     <Box width="100%">
       <LineChart
-        {...lineChartParams}
+        series={[
+          {
+            id: 'totalNumberOfFiles',
+            dataKey: 'totalNumberOfFiles',
+            label: 'Number of Files',
+            data: transformedData.map(item => item.totalNumberOfFiles),
+          },
+          {
+            id: 'totalSizeOfFilesBytes',
+            dataKey: 'totalSizeOfFilesBytes',
+            label: 'Size of Files (Bytes)',
+            data: transformedData.map(item => item.totalSizeOfFilesBytes),
+          }
+        ]}
+        xAxis={[
+          {
+            data: transformedData.map(item => item.collectionDate),
+            id: 'axis1',
+            dataKey: 'collectionDate',
+            scaleType: "point",
+            label: "Collected Date",
+          } as AxisConfig<'point', string, ChartsXAxisProps>
+        ]}
+        height={chartHeight}
         onAxisClick={(event, d) => {
           if (d && d.axisValue) {
             setIsChildChartDisplayed(true);
             onDrillDown(String(d.axisValue));
-          } else {
-            console.error('collectionDate not found in data point');
           }
         }}
       />
@@ -117,81 +88,69 @@ const ParentChart = ({
   );
 };
 
-// Child Chart Component
 const ChildChart = ({ date, data }: { date: string; data: DetailedDataPoint[] }) => {
   const theme = useTheme();
 
-  const detailedLineChartsParams = {
-    series: [
-      {
-        id: 'numberOfFiles',
-        datakey: 'numberOfFiles',
-        label: 'Number of Files',
-        data: data.map(item => item.numberOfFiles),
-      },
-      {
-        id: 'sizeOfFilesBytes',
-        datakey: 'sizeOfFilesBytes',
-        label: 'Size of Files (Bytes)',
-        data: data.map(item => item.sizeOfFilesBytes),
-      },
-    ],
-    xAxis: [
-      {
-        data: data.map(item => item.time),
-        id: 'axis2',
-        dataKey: 'time',
-        scaleType: 'point',
-        label: 'Collected Time',
-      } as AxisConfig<'point', string, ChartsXAxisProps>,
-    ],
-    height: childChartHeight,
-    colors: theme.palette.secondary,
-  };
-
   return (
     <Box width="100%">
-      <LineChart {...detailedLineChartsParams} />
+      <LineChart
+        series={[
+          {
+            id: 'numberOfFiles',
+            dataKey: 'numberOfFiles',
+            label: 'Number of Files',
+            data: data.map(item => item.numberOfFiles),
+          },
+          {
+            id: 'sizeOfFilesBytes',
+            dataKey: 'sizeOfFilesBytes',
+            label: 'Size of Files (Bytes)',
+            data: data.map(item => item.sizeOfFilesBytes),
+          }
+        ]}
+        xAxis={[
+          {
+            data: data.map(item => item.time),
+            id: 'axis2',
+            dataKey: 'time',
+            scaleType: "point",
+            label: `Collected Time on ${date}`,
+          } as AxisConfig<'point', string, ChartsXAxisProps>
+        ]}
+        height={childChartHeight}
+      />
     </Box>
   );
 };
 
-// Main Health Metrics Dashboard
 const HealthMetricsDashboard: React.FC = () => {
   const theme = useTheme();
   const { showSnackbar } = useSnackbar();
   const [collectionTypes, setCollectionTypes] = useState<any[]>([]);
   const [selectedCollectionType, setSelectedCollectionType] = useState<string>('');
   const [fromDate, setFromDate] = useState<Dayjs>(dayjs().subtract(1, 'month'));
-  const [toDate, setToDate] = useState<Dayjs>(dayjs());
-  const [loading, setLoading] = useState<boolean>(false);
-  const [dataFetched, setDataFetched] = useState<boolean>(false);
+  const [toDate, setToDate] = useState<Dayjs | null>(dayjs());
+  const [loading, setLoading] = useState(false);
   const [responseData, setResponseData] = useState<DataPoint[]>([]);
   const [viewStack, setViewStack] = useState<string[]>([]);
   const [isChildChartDisplayed, setIsChildChartDisplayed] = useState(false);
 
-  const fetchCollectionTypes = async () => {
-    try {
-      const response = await axios.post(__UCS_GRAPHQL_URL__, {
-        query: AVAILABLE_ALARM_COLLECTION_TYPES_QUERY,
-      });
-      if (response.data?.data?.availableAlarmCollectionTypes) {
-        setCollectionTypes(response.data.data.availableAlarmCollectionTypes);
-      }
-    } catch (error) {
-      showSnackbar('Error fetching collection types!');
-    }
-  };
-
   useEffect(() => {
+    const fetchCollectionTypes = async () => {
+      try {
+        const response = await axios.post(__UCS_GRAPHQL_URL__, {
+          query: AVAILABLE_ALARM_COLLECTION_TYPES_QUERY,
+        });
+        setCollectionTypes(response.data?.data?.availableAlarmCollectionTypes || []);
+      } catch (error) {
+        showSnackbar('Error fetching collection types!');
+        console.error(error);
+      }
+    };
     fetchCollectionTypes();
   }, []);
 
-  const handleCollectionTypeChange = (event: SelectChangeEvent<string>) => {
-    setSelectedCollectionType(event.target.value);
-  };
-
-  const fetchMetrics = async () => {
+  const handleFetchClick = async () => {
     setLoading(true);
     const formattedFromDate = dayjs(fromDate).format('YYYY-MM-DD');
     const formattedToDate = dayjs(toDate).format('YYYY-MM-DD');
@@ -199,33 +158,14 @@ const HealthMetricsDashboard: React.FC = () => {
     try {
       const response = await axios.post(__UCS_GRAPHQL_URL__, {
         query: FETCH_ALARM_METRICS_QUERY,
-        variables: {
-          collectionType: selectedCollectionType,
-          fromDate: formattedFromDate,
-          toDate: formattedToDate,
-        },
+        variables: { collectionType: selectedCollectionType, fromDate: formattedFromDate, toDate: formattedToDate },
       });
-
-      if (response.data?.data?.alarmMetrics) {
-        setResponseData(response.data.data.alarmMetrics);
-      } else {
-        showSnackbar('No data found!');
-      }
-
-      setDataFetched(true);
+      setResponseData(response.data?.data?.alarmMetrics || []);
     } catch (error) {
-      showSnackbar('Error fetching data from server');
+      showSnackbar("Error fetching data");
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleDrillDown = (date: string) => {
-    setViewStack([...viewStack, date]);
-  };
-
-  const handleBreadcrumbClick = (index: number) => {
-    setViewStack(viewStack.slice(0, index + 1));
   };
 
   const currentView = viewStack[viewStack.length - 1];
@@ -233,39 +173,61 @@ const HealthMetricsDashboard: React.FC = () => {
 
   return (
     <Box>
-      <Grid container spacing={2}>
-        <Grid item xs={4}>
+      <Grid container spacing={4}>
+        <Grid item xs={12} sm={6}>
           <FormControl fullWidth>
             <InputLabel>Collection Type</InputLabel>
-            <Select value={selectedCollectionType} onChange={handleCollectionTypeChange}>
-              {collectionTypes.map(type => (
-                <MenuItem key={type.typeId} value={type.type}>
-                  {type.type}
-                </MenuItem>
+            <Select
+              value={selectedCollectionType}
+              onChange={e => setSelectedCollectionType(e.target.value)}
+            >
+              {collectionTypes.map((type, index) => (
+                <MenuItem key={index} value={type.type}>{type.type}</MenuItem>
               ))}
             </Select>
           </FormControl>
         </Grid>
-        <Grid item xs={4}>
+        <Grid item xs={12} sm={3}>
           <LocalizationProvider dateAdapter={AdapterDayjs}>
-            <DatePicker label="Start Date" value={fromDate} onChange={setFromDate} />
+            <DatePicker value={fromDate} onChange={newDate => setFromDate(newDate || dayjs())} />
           </LocalizationProvider>
         </Grid>
-        <Grid item xs={4}>
+        <Grid item xs={12} sm={3}>
           <LocalizationProvider dateAdapter={AdapterDayjs}>
-            <DatePicker label="End Date" value={toDate} onChange={setToDate} />
+            <DatePicker value={toDate} onChange={newDate => setToDate(newDate)} />
           </LocalizationProvider>
+        </Grid>
+        <Grid item xs={12}>
+          <LoadingButton onClick={handleFetchClick} loading={loading}>
+            Fetch Data
+          </LoadingButton>
         </Grid>
       </Grid>
-      <Button onClick={fetchMetrics}>Fetch Metrics</Button>
-      {dataFetched && (
+
+      {!isChildChartDisplayed && (
         <ParentChart
           data={responseData}
-          onDrillDown={handleDrillDown}
+          onDrillDown={date => setViewStack([...viewStack, date])}
           setIsChildChartDisplayed={setIsChildChartDisplayed}
         />
       )}
-      {isChildChartDisplayed && <ChildChart date={currentView} data={currentData} />}
+
+      {isChildChartDisplayed && (
+        <ChildChart date={currentView} data={currentData} />
+      )}
+
+      {viewStack.length > 0 && (
+        <Breadcrumbs separator={<NavigateNextIcon />}>
+          <Link onClick={() => setIsChildChartDisplayed(false)}>
+            <HomeIcon />
+          </Link>
+          {viewStack.map((date, index) => (
+            <Link key={index} onClick={() => setViewStack(viewStack.slice(0, index + 1))}>
+              {date}
+            </Link>
+          ))}
+        </Breadcrumbs>
+      )}
     </Box>
   );
 };
