@@ -1,68 +1,164 @@
-<Grid container spacing={4} alignItems="flex-end">
-  <Grid item xs={12} sm={6} md>
-    <FormControl variant="outlined" fullWidth>
-      <InputLabel id="select-collection-type-label">Collection Type</InputLabel>
-      <Select
-        labelId="select-collection-type-label"
-        id="select-collection-type"
-        label="Collection Type"
-        value={selectedCollectionType}
-        onChange={handleCollectionTypeChange}
-      >
-        {collectionTypes.map((type) => (
-          <MenuItem key={type.typeId} value={type.type}>
-            {type.type}
-          </MenuItem>
-        ))}
-      </Select>
-    </FormControl>
-  </Grid>
-  <Grid item xs={12} sm={6} md>
-    <LocalizationProvider dateAdapter={AdapterDayjs}>
-      <DatePicker
-        label="Start Date"
-        value={fromDate}
-        onChange={(newValue) => setSelectedFromDate(newValue)}
-        renderInput={(params) => (
-          <FormControl fullWidth>
-            <Box {...params} />
-          </FormControl>
-        )}
-      />
-    </LocalizationProvider>
-  </Grid>
-  <Grid item xs={12} sm={6} md>
-    <LocalizationProvider dateAdapter={AdapterDayjs}>
-      <DatePicker
-        label="End Date"
-        value={toDate}
-        onChange={(newValue) => setSelectedToDate(newValue)}
-        renderInput={(params) => (
-          <FormControl fullWidth>
-            <Box {...params} />
-          </FormControl>
-        )}
-      />
-    </LocalizationProvider>
-  </Grid>
-  <Grid item xs={12} sm={6} md="auto">
-    <LoadingButton
-      loading={loading}
-      variant="contained"
-      disabled={isButtonDisabled()}
-      onClick={handleFetchClick}
-      sx={{ width: '100%' }}
-    >
-      Fetch
-    </LoadingButton>
-  </Grid>
-  <Grid item xs={12} sm={6} md="auto">
-    <LoadingButton
-      variant="outlined"
-      onClick={handleReset}
-      sx={{ width: '100%' }}
-    >
-      Reset
-    </LoadingButton>
-  </Grid>
-</Grid>
+package com.verizon.ucs.parser;
+
+import com.verizon.ucs.model.NexusData;
+
+public class Nexus1500Parser implements NexusParser {
+
+    @Override
+    public NexusData parse(String response) {
+        NexusData data = new NexusData();
+        data.setFirmware(extractValue(response, "Firm", ","));
+        data.setDeviceName(extractValue(response, "Meter", "\""));
+        data.setDeviceType(extractValue(response, "DEV_TYPE>", "<"));
+        data.setVan(extractValue(response, "Inst Van", "\""));
+        data.setVbn(extractValue(response, "Inst Vbn", "\""));
+        data.setVcn(extractValue(response, "Inst Vcn", "\""));
+        data.setVab(extractValue(response, "Inst Vab", "\""));
+        data.setVbc(extractValue(response, "Inst Vbc", "\""));
+        data.setVca(extractValue(response, "Inst Vca", "\""));
+        data.setIa(extractValue(response, "Inst Ia", "\""));
+        data.setIb(extractValue(response, "Inst Ib", "\""));
+        data.setIc(extractValue(response, "Inst Ic", "\""));
+        data.setFreq(extractValue(response, "Inst Freq", "\""));
+        data.setPf(extractValue(response, "Inst PF", "\""));
+        data.setWatt(extractValue(response, "Inst Watt", "\""));
+        data.setWattHr(extractValue(response, "Watt Hour", "\""));
+        return data;
+    }
+
+    private String extractValue(String xml, String startTag, String endChar) {
+        int startIndex = xml.indexOf(startTag);
+        if (startIndex == -1) return "";
+        startIndex += startTag.length();
+        int endIndex = startIndex;
+        while (endIndex < xml.length() && xml.charAt(endIndex) != endChar.charAt(0)) {
+            endIndex++;
+        }
+        return xml.substring(startIndex, endIndex).trim();
+    }
+}
+
+
+
+
+package com.verizon.ucs.controller;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.verizon.ucs.model.NexusData;
+import com.verizon.ucs.service.NexusService;
+
+@RestController
+@RequestMapping("/api/nexus")
+public class NexusController {
+
+	private static final Logger logger = LoggerFactory.getLogger(NexusController.class);
+	
+    @Autowired
+    private NexusService service;
+
+    @GetMapping("/data/{deviceType}")
+    public ResponseEntity<NexusData> getNexusData(@PathVariable String deviceType) {
+        try {
+            NexusData data = service.getNexusData(deviceType);
+            return ResponseEntity.ok(data);
+        } catch (Exception e) {
+        	logger.error("Exception at api /data/deviceType {}",e);
+            return ResponseEntity.status(500).body(null);
+        }
+    }
+}
+
+
+package com.verizon.ucs.service;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.protobuf.MessageOrBuilder;
+import com.google.protobuf.util.JsonFormat;
+import com.verizon.ucs.config.VMBProperties;
+import com.verizon.ucs.model.NexusData;
+import com.verizon.ucs.service.pulsar.PulsarPublisherService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.stereotype.Service;
+import com.verizon.ucs.data.UcgDataPacket;
+
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Map;
+import java.util.Iterator;
+
+@Service
+@EnableConfigurationProperties({ VMBProperties.class })
+public class NormaliseReactorService {
+
+	private static final Logger logger = LoggerFactory.getLogger(NormaliseReactorService.class);
+
+	@Autowired
+	private PulsarPublisherService pulsarPublisherService;
+
+	@Autowired
+	private VMBProperties vmbProperties;
+
+	public void handleAndPublishData(NexusData data, String deviceIp) throws Exception {
+		SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX");
+		String timestamp = dateFormat.format(new Date());
+
+		// Convert NexusData to JSON and trim spaces from all string values
+		ObjectMapper objectMapper = new ObjectMapper();
+		ObjectNode ucgRawDataNode = (ObjectNode) objectMapper.valueToTree(data);
+		Iterator<Map.Entry<String, JsonNode>> fields = ucgRawDataNode.fields();
+		while (fields.hasNext()) {
+			Map.Entry<String, JsonNode> field = fields.next();
+			if (field.getValue().isTextual()) {
+				ucgRawDataNode.put(field.getKey(), field.getValue().asText().trim());
+			}
+		}
+
+		String ucgRawData = objectMapper.writeValueAsString(ucgRawDataNode);
+		logger.info("UCGRAW  JSON DATA:" + ucgRawData);
+
+		Map<String, Object> ucgData = Map.of(
+				"ucgTimestamp", timestamp,
+				"ucgSource", deviceIp,
+				"ucgRawData", ucgRawData,
+				"ucgDeviceName", data.getDeviceName().trim(),
+				"ucgType", "LIVE",
+				"ucgTopic", vmbProperties.getTopicName());
+
+		String ucgDataJsonString = new ObjectMapper().writeValueAsString(ucgData);
+		logger.info("UCG JSON DATA:" + ucgDataJsonString);
+		pulsarPublisherService.publishMessage(ucgDataJsonString);
+	}
+}
+
+The above code is the publishing the nexus models now include the pulsar to publish it into pulsar here the topics:
+
+persistent://enmv/psc/nexus-meter
+persistent://enmv/psc-alarm/nexus-meter-lov
+
+and also here the yaml file 
+nexus:
+  api-endpoints:
+    1250: http://{siteIP}/poll_data.xml
+    1450: http://{siteIP}/api/dm/data
+    1500: http://{siteIP}/I/pdata.xml
+  credentials: your-credentials
+  use-sample-data: true
+  sample-data-paths: 
+   1250: src/main/resources/samples/10.219.32.76_nexus_1250.xml
+   1450: src/main/resources/samples/nexus_1450.json
+   1500: src/main/resources/samples/10.193.40.75_nexus1500.xml
+
+Please proceed with further code development to publish it into pulsar
