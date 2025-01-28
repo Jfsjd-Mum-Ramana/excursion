@@ -161,4 +161,11 @@ nexus:
    1450: src/main/resources/samples/nexus_1450.json
    1500: src/main/resources/samples/10.193.40.75_nexus1500.xml
 
-Please proceed with further code development to publish it into pulsar
+Please proceed with further code development to publish it into pulsar and these are therequirements:
+
+As a UCS developer, I want to normalize the power data retrieved from the Nexus 15xx model and publish it to the VMB so that 1PSC can consume the data in a consistent format.
+RK-1: VMB instability may affect data publishing.
+AS-1: VMB topic is configured and available.
+*Technical Specifications*:
+
+{"apiEndPoints":"\"UCS internal API endpoint for VMB publishing.\"","requestPayloadStructure":"\"Normalized power data (kW, kWh, etc.), timestamp.\"","responsePayloadStructure":"\"Success/failure status. HTTP status codes (200, 500).\"","authentication":"\"Secure communication between UCS and VMB.\"","errorHandling":"\"Error codes for publishing failures. Retry mechanism.\"","versioningInformation":"\"v1.0\"","performanceRequirementCriteria":"\"Publishing within 15 seconds\"","backwardCompatibility":"\"Yes\"","businessRules":"\"Data normalization rules.\"","loggingAndMonitoring":"\"Logs for successful/failed publishing attempts.\"","securityConsiderations":"\"Secure communication channel.\"","complianceRegulations":"\"N/A\"","documentationImpact":"\"Update documentation on VMB topic and data format.\""}
