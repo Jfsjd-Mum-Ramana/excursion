@@ -1,86 +1,214 @@
 package com.verizon.ucs.model;
 
-import java.time.Instant;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
-public class PowerData {
+@JsonIgnoreProperties(ignoreUnknown = true)
+public class DeviceInfo {
+
+	@JsonProperty("device_name")
+	private String deviceName;
+
+	@JsonProperty("device_ip")
+	private String deviceIP;
+
+	@JsonProperty("pollercluster")
+	private String pollerCluster;
+
+	@JsonProperty("model")
+	private String model;
+
+	@JsonProperty("frequency")
+	private String frequency;
+
+	public String getDeviceName() {
+		return deviceName;
+	}
+
+	public void setDeviceName(String deviceName) {
+		this.deviceName = deviceName;
+	}
+
+	public String getDeviceIP() {
+		return deviceIP;
+	}
+
+	public void setDeviceIP(String deviceIP) {
+		this.deviceIP = deviceIP;
+	}
+
+	public String getPollerCluster() {
+		return pollerCluster;
+	}
+
+	public void setPollerCluster(String pollerCluster) {
+		this.pollerCluster = pollerCluster;
+	}
+
+	public String getModel() {
+		return model;
+	}
+
+	public void setModel(String model) {
+		this.model = model;
+	}
+
+	public String getFrequency() {
+		return frequency;
+	}
+
+	public void setFrequency(String frequency) {
+		this.frequency = frequency;
+	}
+
+	@Override
+	public String toString() {
+		return "DeviceData [deviceName=" + deviceName + ", deviceIP=" + deviceIP + ", pollerCluster=" + pollerCluster
+				+ ", model=" + model + ", frequency=" + frequency + "]";
+	}
+
+}
+
+package com.verizon.ucs.model;
+
+public class NexusData {
+	
+    private String firmware;
     private String deviceName;
-    private String deviceIP;
-    private String model;
-    private double powerKW;
-    private double energyKWh;
-    private Instant timestamp;
-
-    // Default Constructor
-    public PowerData() {}
-
-    // Parameterized Constructor
-    public PowerData(String deviceName, String deviceIP, String model, double powerKW, double energyKWh, Instant timestamp) {
-        this.deviceName = deviceName;
-        this.deviceIP = deviceIP;
-        this.model = model;
-        this.powerKW = powerKW;
-        this.energyKWh = energyKWh;
-        this.timestamp = timestamp;
-    }
+    private String deviceType;
+    private String van;
+    private String vbn;
+    private String vcn;
+    private String vab;
+    private String vbc;
+    private String vca;
+    private String ia;
+    private String ib;
+    private String ic;
+    private String freq;
+    private String pf;
+    private String watt;
+    private String wattHr;
+    
+    private String serial;
+    private String mac;
+    
+	public String getFirmware() {
+		return firmware;
+	}
+	public void setFirmware(String firmware) {
+		this.firmware = firmware;
+	}
+	public String getDeviceName() {
+		return deviceName;
+	}
+	public void setDeviceName(String deviceName) {
+		this.deviceName = deviceName;
+	}
+	public String getDeviceType() {
+		return deviceType;
+	}
+	public void setDeviceType(String deviceType) {
+		this.deviceType = deviceType;
+	}
+	public String getVan() {
+		return van;
+	}
+	public void setVan(String van) {
+		this.van = van;
+	}
+	public String getVbn() {
+		return vbn;
+	}
+	public void setVbn(String vbn) {
+		this.vbn = vbn;
+	}
+	public String getVcn() {
+		return vcn;
+	}
+	public void setVcn(String vcn) {
+		this.vcn = vcn;
+	}
+	public String getVab() {
+		return vab;
+	}
+	public void setVab(String vab) {
+		this.vab = vab;
+	}
+	public String getVbc() {
+		return vbc;
+	}
+	public void setVbc(String vbc) {
+		this.vbc = vbc;
+	}
+	public String getVca() {
+		return vca;
+	}
+	public void setVca(String vca) {
+		this.vca = vca;
+	}
+	public String getIa() {
+		return ia;
+	}
+	public void setIa(String ia) {
+		this.ia = ia;
+	}
+	public String getIb() {
+		return ib;
+	}
+	public void setIb(String ib) {
+		this.ib = ib;
+	}
+	public String getIc() {
+		return ic;
+	}
+	public void setIc(String ic) {
+		this.ic = ic;
+	}
+	public String getFreq() {
+		return freq;
+	}
+	public void setFreq(String freq) {
+		this.freq = freq;
+	}
+	public String getPf() {
+		return pf;
+	}
+	public void setPf(String pf) {
+		this.pf = pf;
+	}
+	public String getWatt() {
+		return watt;
+	}
+	public void setWatt(String watt) {
+		this.watt = watt;
+	}
+	public String getWattHr() {
+		return wattHr;
+	}
+	public void setWattHr(String wattHr) {
+		this.wattHr = wattHr;
+	}
+	public String getSerial() {
+		return serial;
+	}
+	public void setSerial(String serial) {
+		this.serial = serial;
+	}
+	public String getMac() {
+		return mac;
+	}
+	public void setMac(String mac) {
+		this.mac = mac;
+	}
+	@Override
+	public String toString() {
+		return "NexusData [firmware=" + firmware + ", deviceName=" + deviceName + ", deviceType=" + deviceType
+				+ ", van=" + van + ", vbn=" + vbn + ", vcn=" + vcn + ", vab=" + vab + ", vbc=" + vbc + ", vca=" + vca
+				+ ", ia=" + ia + ", ib=" + ib + ", ic=" + ic + ", freq=" + freq + ", pf=" + pf + ", watt=" + watt
+				+ ", wattHr=" + wattHr + ", serial=" + serial + ", mac=" + mac + "]";
+	}
 
     // Getters and Setters
-    public String getDeviceName() {
-        return deviceName;
-    }
-
-    public void setDeviceName(String deviceName) {
-        this.deviceName = deviceName;
-    }
-
-    public String getDeviceIP() {
-        return deviceIP;
-    }
-
-    public void setDeviceIP(String deviceIP) {
-        this.deviceIP = deviceIP;
-    }
-
-    public String getModel() {
-        return model;
-    }
-
-    public void setModel(String model) {
-        this.model = model;
-    }
-
-    public double getPowerKW() {
-        return powerKW;
-    }
-
-    public void setPowerKW(double powerKW) {
-        this.powerKW = powerKW;
-    }
-
-    public double getEnergyKWh() {
-        return energyKWh;
-    }
-
-    public void setEnergyKWh(double energyKWh) {
-        this.energyKWh = energyKWh;
-    }
-
-    public Instant getTimestamp() {
-        return timestamp;
-    }
-
-    public void setTimestamp(Instant timestamp) {
-        this.timestamp = timestamp;
-    }
-
-    @Override
-    public String toString() {
-        return "PowerData{" +
-                "deviceName='" + deviceName + '\'' +
-                ", deviceIP='" + deviceIP + '\'' +
-                ", model='" + model + '\'' +
-                ", powerKW=" + powerKW +
-                ", energyKWh=" + energyKWh +
-                ", timestamp=" + timestamp +
-                '}';
-    }
+    
 }
