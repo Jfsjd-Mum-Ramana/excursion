@@ -1,74 +1,115 @@
 package com.verizon.ucs.service;
 
-import com.verizon.ucs.model.DeviceInfo;
-import com.verizon.ucs.model.NexusData;
-import org.apache.pulsar.client.api.PulsarClientException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.Map;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.retry.RetryCallback;
+import org.springframework.retry.RetryContext;
+import org.springframework.retry.RetryListener;
+import org.springframework.retry.support.RetryTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.verizon.ucs.config.Constants;
+import com.verizon.ucs.config.NexusConfig;
+import com.verizon.ucs.model.DeviceInfo;
+import com.verizon.ucs.model.NexusData;
+import com.verizon.ucs.parser.Nexus1250Parser;
+import com.verizon.ucs.parser.Nexus1450Parser;
+import com.verizon.ucs.parser.NexusParser;
 
 @Service
 public class NexusService {
-
-    private static final Logger logger = LoggerFactory.getLogger(NexusService.class);
+	private static final Logger logger = LoggerFactory.getLogger(NexusService.class);
+    @Autowired
+    private NexusConfig config;
 
     @Autowired
-    private PulsarProducerService pulsarProducerService;
+    private RestTemplate restTemplate;
 
-    // Existing method to fetch data from Nexus device
+    @Autowired
+    private RetryTemplate retryTemplate;
+
+
     public NexusData getNexusData(DeviceInfo device) throws Exception {
-        NexusData data = null;
-        try {
-            // Call to a method that fetches data from the device (existing logic)
-            data = fetchDataFromDevice(device);
+        String response;
+        String deviceType = device.getModel().replace("Nexus ", "");
 
-            // If data is null, it means device is unreachable
-            if (data == null) {
-                sendUnreachableNotification(device);
-            }
-        } catch (Exception e) {
-            logger.error("Error fetching data for device: {}", device.getDeviceName(), e);
-            sendUnreachableNotification(device);  // Send notification on error (device unreachable)
-            throw e;  // Rethrow exception for further handling (if needed)
+        if (config.isUseSampleData()) {
+            response = new String(Files.readAllBytes(Paths.get(config.getSampleDataPaths().get(deviceType))));
+        } else {
+            response = fetchDataFromDevice(deviceType,device.getDeviceIP());
         }
+
+        NexusParser parser = getParser(deviceType);
+        NexusData data = parser.parse(response);
+        logger.info("NexusData::  {}", data);
+        //validateData(data);
+        //yourservice.publish(data,"kk");
         return data;
     }
 
-    // Send notification if device is unreachable
-    private void sendUnreachableNotification(DeviceInfo device) {
-        String message = String.format("Device %s (%s) is unreachable.", device.getDeviceName(), device.getDeviceIP());
+    private String fetchDataFromDevice(String deviceType,String deviceIP) throws Exception {
+        return retryTemplate.execute(context -> {
+
+        	String url = config.getApiEndpoints().get(deviceType).replace("{siteIP}", deviceIP);
+
+        	 switch (deviceType) {
+             case "1250":
+            	 return restTemplate.getForObject(url, String.class);
+             case "1450":
+            	 return restTemplate.postForObject(url, getHttpEntity(), String.class);
+             case "1500":
+            	 return restTemplate.getForObject(url, String.class);
+             default:
+                 throw new IllegalArgumentException("Unsupported device type: " + deviceType);
+         }
+
+        });
+    }
+    private HttpEntity<String> getHttpEntity() {
+    	HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpEntity<String> entity = new HttpEntity<>(createRequestPayload(Constants.REQUEST_BODY_1450), headers);
+        return entity;
+    }
+    private String createRequestPayload(String[] chans) {
+        ObjectMapper mapper = new ObjectMapper();
+        Map<String, Object> payloadMap = Map.of("chans", chans);
         try {
-            pulsarProducerService.sendMessage(message);  // Sending the message to Pulsar
-            logger.info("Unreachable device notification sent to Pulsar: {}", message);
-        } catch (PulsarClientException e) {
-            logger.error("Error sending Pulsar message for unreachable device: {}", device.getDeviceName(), e);
+            return mapper.writeValueAsString(payloadMap);
+        } catch (JsonProcessingException e) {
+            logger.error("Error creating JSON request payload", e);
+            return null;
         }
     }
 
-    // Method to fetch data from device (can be your existing logic)
-    private NexusData fetchDataFromDevice(DeviceInfo device) {
-        // Placeholder: Logic to fetch data from the device based on device info (your existing implementation)
-        // For example, use the device IP or model to make an API call or DB query to get data
-        logger.info("Fetching data from device: {}", device.getDeviceName());
-        
-        // Example: Return null to simulate unreachable device (this would be replaced with your actual logic)
-        return null;  // Simulating an unreachable device, replace with actual fetching logic
+    private NexusParser getParser(String deviceType) {
+        switch (deviceType) {
+            case "1250":
+                return new Nexus1250Parser();
+            case "1450":
+                return new Nexus1450Parser();
+            case "1500":
+                return new Nexus1250Parser();
+            default:
+                throw new IllegalArgumentException("Unsupported device type: " + deviceType);
+        }
     }
 
-    // Method to fetch Nexus data by device name (optional, if needed)
-    public NexusData getDataByDeviceName(String deviceName) throws Exception {
-        DeviceInfo device = getDeviceInfoByName(deviceName);
-        return getNexusData(device);
+    private void validateData(NexusData data) throws Exception {
+    	if(data !=null && data.getDeviceName()!=null) {
+    		return;
+    	}
     }
-
-    // Example of getting DeviceInfo by device name (this would be your actual logic)
-    private DeviceInfo getDeviceInfoByName(String deviceName) {
-        // Placeholder logic: Fetch device info based on device name from DB or API
-        DeviceInfo deviceInfo = new DeviceInfo();
-        deviceInfo.setDeviceName(deviceName);
-        deviceInfo.setDeviceIP("192.168.1.1");  // Example IP, replace with actual logic
-        return deviceInfo;
-    }
-
 }
