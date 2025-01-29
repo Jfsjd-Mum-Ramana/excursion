@@ -1,214 +1,28 @@
-import React, { useState, useEffect } from 'react';
-import { Box, Grid, TextField, Autocomplete, Button } from '@mui/material';
-import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import dayjs, { Dayjs } from 'dayjs';
-import { DatePicker } from "@mui/x-date-pickers/DatePicker";
-import { LineChart } from '@mui/x-charts/LineChart';
-import { SEARCH_ALARM_INVENTORY_QUERY, AVAILABLE_ALARM_COLLECTION_TYPES_QUERY, FETCH_ALARM_METRICS_QUERY } from '../../graphQL/graphqlQueries';
-import { __UCS_GRAPHQL_URL__ } from '../../api-endpoints'; // Importing the predefined GraphQL URL
+nexus:
+  api-endpoints:
+    1250: http://{siteIP}/poll_data.xml
+    1450: http://{siteIP}/api/dm/data
+    1500: http://{siteIP}/I/pdata.xml
+  credentials: your-credentials
+  use-sample-data: false
+  sample-data-paths: 
+   1250: src/main/resources/samples/10.219.32.76_nexus_1250.xml
+   1450: src/main/resources/samples/nexus_1450.json
+   1500: src/main/resources/samples/10.193.40.75_nexus1500.xml
 
-const ParentChart = ({ data, onDrillDown }: { data: any[], onDrillDown: (date: string) => void }) => {
-    const transformedData = data.map((item) => ({
-        date: item.date,
-        usage: item.totalNumberOfFiles,
-        volume: item.totalSizeOfFilesBytes,
-    }));
+scheduler:
+   cron: 0 */15 * * * *
+   zone: UTC
 
-    return (
-        <Box width="100%">
-            <LineChart
-                series={[
-                    { id: 'usage', label: 'Number of Files', data: transformedData.map((d) => d.usage) },
-                    { id: 'volume', label: 'File Size (Bytes)', data: transformedData.map((d) => d.volume) },
-                ]}
-                xAxis={[
-                    { id: 'axis1', dataKey: 'date', data: transformedData.map((d) => d.date), label: 'Date' },
-                ]}
-                height={450}
-                onAxisClick={(event, d) => {
-                    if (d?.axisValue) onDrillDown(d.axisValue);
-                }}
-            />
-        </Box>
-    );
-};
+db:
+  dbCallUrl: ${DB_URL:https://ucs-api-np-bbg1-idn.vzwnet.com/papi/api/call}
+  stpName: eclipse.get_avl_stream_devices_fvo_1psc_test1
 
-const ChildChart = ({ data }: { data: any[] }) => (
-    <Box width="100%">
-        <LineChart
-            series={[
-                { id: 'usage', label: 'Number of Files', data: data.map((d) => d.numberOfFiles) },
-                { id: 'volume', label: 'File Size (Bytes)', data: data.map((d) => d.sizeOfFilesBytes) },
-            ]}
-            xAxis={[
-                { id: 'axis2', dataKey: 'time', data: data.map((d) => d.time), label: 'Time' },
-            ]}
-            height={400}
-        />
-    </Box>
-);
-
-const OverallHealthMetrics: React.FC = () => {
-    const [selectedCollectionType, setSelectedCollectionType] = useState<any>(null);
-    const [fromDate, setFromDate] = useState<Dayjs>(dayjs().subtract(1, 'month'));
-    const [toDate, setToDate] = useState<Dayjs>(dayjs());
-    const [viewStack, setViewStack] = useState<string[]>([]);
-    const [isChildChartDisplayed, setIsChildChartDisplayed] = useState(false);
-    const [alarmMetrics, setAlarmMetrics] = useState<any[]>([]);
-    const [searchResults, setSearchResults] = useState<any[]>([]);
-
-    const [collectionTypes, setCollectionTypes] = useState<any[]>([]);
-
-    // Fetch available alarm collection types from GraphQL
-    const fetchCollectionTypes = async () => {
-        const response = await fetch(__UCS_GRAPHQL_URL__, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                query: AVAILABLE_ALARM_COLLECTION_TYPES_QUERY,
-            }),
-        });
-        const data = await response.json();
-        setCollectionTypes(data.data.availableAlarmCollectionTypes || []);
-    };
-
-    // Fetch search alarm inventory data
-    const fetchAlarmInventory = async (collectionType: string) => {
-        const response = await fetch(__UCS_GRAPHQL_URL__, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                query: SEARCH_ALARM_INVENTORY_QUERY,
-                variables: { collectionType },
-            }),
-        });
-        const data = await response.json();
-        setSearchResults(data.data.searchAlarmInventory || []);
-    };
-
-    // Fetch alarm metrics based on the selected collection type and dates
-    const fetchAlarmMetrics = async () => {
-        if (!selectedCollectionType || !fromDate || !toDate) {
-            alert('Please fill all required fields!');
-            return;
-        }
-
-        const response = await fetch(__UCS_GRAPHQL_URL__, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                query: FETCH_ALARM_METRICS_QUERY,
-                variables: {
-                    collectionType: selectedCollectionType.type,
-                    fromDate: fromDate.format('YYYY-MM-DD'),
-                    toDate: toDate.format('YYYY-MM-DD'),
-                },
-            }),
-        });
-
-        const data = await response.json();
-        setAlarmMetrics(data.data.alarmMetrics || []);
-        setIsChildChartDisplayed(false);
-    };
-
-    // Handle drill down to view more detailed metrics
-    const handleDrillDown = (date: string) => {
-        const drillDownData = alarmMetrics.find((metric) => metric.date === date)?.alarmMetricsDrillDownList || [];
-        setViewStack([...viewStack, date]);
-        setAlarmMetrics(drillDownData);
-        setIsChildChartDisplayed(true);
-    };
-
-    // Reset all states
-    const handleReset = () => {
-        setSelectedCollectionType(null);
-        setFromDate(dayjs().subtract(1, 'month'));
-        setToDate(dayjs());
-        setAlarmMetrics([]);
-        setSearchResults([]);
-        setViewStack([]);
-        setIsChildChartDisplayed(false);
-    };
-
-    // Fetch collection types and alarm inventory when component mounts
-    useEffect(() => {
-        fetchCollectionTypes();
-    }, []);
-
-    return (
-        <Box sx={{ p: 4 }}>
-            <Grid container spacing={2} alignItems="flex-end">
-                <Grid item xs={12} sm={6} md={4}>
-                    <Autocomplete
-                        options={collectionTypes}
-                        getOptionLabel={(option) => option.type}
-                        value={selectedCollectionType}
-                        onChange={(e, newValue) => {
-                            setSelectedCollectionType(newValue);
-                            fetchAlarmInventory(newValue?.type); // Fetch alarm inventory when collection type is selected
-                        }}
-                        renderInput={(params) => <TextField {...params} label="Collection Type" />}
-                    />
-                </Grid>
-                <Grid item xs={12} sm={6} md={4}>
-                    <LocalizationProvider dateAdapter={AdapterDayjs}>
-                        <DatePicker
-                            label="From Date"
-                            value={fromDate}
-                            onChange={(newValue) => setFromDate(newValue || dayjs())}
-                            maxDate={toDate}
-                        />
-                    </LocalizationProvider>
-                </Grid>
-                <Grid item xs={12} sm={6} md={4}>
-                    <LocalizationProvider dateAdapter={AdapterDayjs}>
-                        <DatePicker
-                            label="To Date"
-                            value={toDate}
-                            onChange={(newValue) => setToDate(newValue || dayjs())}
-                            minDate={fromDate}
-                        />
-                    </LocalizationProvider>
-                </Grid>
-                <Grid item xs={12}>
-                    <Button variant="contained" onClick={fetchAlarmMetrics}>Fetch</Button>
-                    <Button variant="outlined" onClick={handleReset} sx={{ ml: 2 }}>Reset</Button>
-                </Grid>
-            </Grid>
-
-            <Box mt={4}>
-                {isChildChartDisplayed ? (
-                    <ChildChart data={alarmMetrics} />
-                ) : (
-                    <ParentChart data={alarmMetrics} onDrillDown={handleDrillDown} />
-                )}
-            </Box>
-
-            <Box mt={4}>
-                <h3>Search Results</h3>
-                <Grid container spacing={2}>
-                    {searchResults.map((result) => (
-                        <Grid item xs={12} sm={6} md={4} key={result.id}>
-                            <Box sx={{ border: '1px solid #ccc', padding: '10px', borderRadius: '4px' }}>
-                                <h4>{result.deviceName}</h4>
-                                <p>{result.deviceIp}</p>
-                                <p>{result.vendor}</p>
-                            </Box>
-                        </Grid>
-                    ))}
-                </Grid>
-            </Box>
-        </Box>
-    );
-};
-
-export default OverallHealthMetrics;
-
-please note this code and I will give you the requirement
+vmb:
+  #serviceUrl: ${VMB_SERVICE_URL:pulsar+ssl://vmb-aws-us-west-2-nonprod.verizon.com:6651}
+  serviceUrl: ${VMB_SERVICE_URL:pulsar+ssl://vmb-aws-us-east-1-nonprod.verizon.com:6651}
+  partitionCount: ${VMB_PARTITION_COUNT:16}
+  topicName: ${TL1_VMB_TOPIC:persistent://enmv/psc-alarm/nexus-meter-lov}
+  tlsCertFile: ${VMB_TLS_CERT_FILE:/prod/eclapp/vmb/ssl/enmv.cert.pem}
+  tlsKeyFile: ${VMB_TLS_KEY_FILE:/prod/eclapp/vmb/ssl/enmv.key-pk8.pem}
+  tlsTrustCertsFile: ${VMB_TRUST_CERTS_FILE:/prod/eclapp/vmb/ssl/ca.cert.pem}
