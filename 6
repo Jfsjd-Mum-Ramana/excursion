@@ -1,330 +1,80 @@
-Certainly! Below is the full implementation of the code classes with the necessary fixes and improvements for handling the NumberFormatException and properly sanitizing power and energy data.
-
-1. NexusData.java
-
-package com.verizon.ucs.model;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-public class NexusData {
-
-    private static final Logger log = LoggerFactory.getLogger(NexusData.class);
-
-    private String firmware;
-    private String deviceName;
-    private String deviceType;
-    private String van;
-    private String vbn;
-    private String vcn;
-    private String vab;
-    private String vbc;
-    private String vca;
-    private String ia;
-    private String ib;
-    private String ic;
-    private String freq;
-    private String pf;
-    private String watt;
-    private String wattHr;
-
-    private String serial;
-    private String mac;
-
-    // Getters and Setters for all fields...
-
-    /**
-     * Parses the power string and returns a valid double value, or 0.0 if invalid.
-     */
-    public double getPower() {
-        return parseValue(watt);
-    }
-
-    /**
-     * Parses the energy string and returns a valid double value, or 0.0 if invalid.
-     */
-    public double getEnergy() {
-        return parseValue(wattHr);
-    }
-
-    /**
-     * Utility method to parse a string as a double, handling invalid inputs.
-     * 
-     * @param value The string value to parse
-     * @return The parsed double value or 0.0 if invalid
-     */
-    private double parseValue(String value) {
-        if (value == null || value.isEmpty()) {
-            log.error("Invalid value: null or empty string.");
-            return 0.0;
-        }
-
-        try {
-            // Remove non-numeric characters (except for the decimal point)
-            String cleaned = value.replaceAll("[^0-9.]", "").trim();
-            if (cleaned.isEmpty()) {
-                throw new NumberFormatException("No valid numeric data found in: " + value);
-            }
-
-            return Double.parseDouble(cleaned);
-        } catch (NumberFormatException e) {
-            // Log the error and return 0.0 if parsing fails
-            log.error("Failed to parse value: " + value, e);
-            return 0.0;
-        }
-    }
-
-    @Override
-    public String toString() {
-        return "NexusData [firmware=" + firmware + ", deviceName=" + deviceName + ", deviceType=" + deviceType
-                + ", van=" + van + ", vbn=" + vbn + ", vcn=" + vcn + ", vab=" + vab + ", vbc=" + vbc + ", vca=" + vca
-                + ", ia=" + ia + ", ib=" + ib + ", ic=" + ic + ", freq=" + freq + ", pf=" + pf + ", watt=" + watt
-                + ", wattHr=" + wattHr + ", serial=" + serial + ", mac=" + mac + "]";
-    }
-
-    // Getters and setters for each field
-
-    public String getFirmware() {
-        return firmware;
-    }
-
-    public void setFirmware(String firmware) {
-        this.firmware = firmware;
-    }
-
-    public String getDeviceName() {
-        return deviceName;
-    }
-
-    public void setDeviceName(String deviceName) {
-        this.deviceName = deviceName;
-    }
-
-    public String getDeviceType() {
-        return deviceType;
-    }
-
-    public void setDeviceType(String deviceType) {
-        this.deviceType = deviceType;
-    }
-
-    public String getVan() {
-        return van;
-    }
-
-    public void setVan(String van) {
-        this.van = van;
-    }
-
-    public String getVbn() {
-        return vbn;
-    }
-
-    public void setVbn(String vbn) {
-        this.vbn = vbn;
-    }
-
-    public String getVcn() {
-        return vcn;
-    }
-
-    public void setVcn(String vcn) {
-        this.vcn = vcn;
-    }
-
-    public String getVab() {
-        return vab;
-    }
-
-    public void setVab(String vab) {
-        this.vab = vab;
-    }
-
-    public String getVbc() {
-        return vbc;
-    }
-
-    public void setVbc(String vbc) {
-        this.vbc = vbc;
-    }
-
-    public String getVca() {
-        return vca;
-    }
-
-    public void setVca(String vca) {
-        this.vca = vca;
-    }
-
-    public String getIa() {
-        return ia;
-    }
-
-    public void setIa(String ia) {
-        this.ia = ia;
-    }
-
-    public String getIb() {
-        return ib;
-    }
-
-    public void setIb(String ib) {
-        this.ib = ib;
-    }
-
-    public String getIc() {
-        return ic;
-    }
-
-    public void setIc(String ic) {
-        this.ic = ic;
-    }
-
-    public String getFreq() {
-        return freq;
-    }
-
-    public void setFreq(String freq) {
-        this.freq = freq;
-    }
-
-    public String getPf() {
-        return pf;
-    }
-
-    public void setPf(String pf) {
-        this.pf = pf;
-    }
-
-    public String getWatt() {
-        return watt;
-    }
-
-    public void setWatt(String watt) {
-        this.watt = watt;
-    }
-
-    public String getWattHr() {
-        return wattHr;
-    }
-
-    public void setWattHr(String wattHr) {
-        this.wattHr = wattHr;
-    }
-
-    public String getSerial() {
-        return serial;
-    }
-
-    public void setSerial(String serial) {
-        this.serial = serial;
-    }
-
-    public String getMac() {
-        return mac;
-    }
-
-    public void setMac(String mac) {
-        this.mac = mac;
-    }
-}
-
-2. NexusService.java
-
-package com.verizon.ucs.service;
-
-import com.verizon.ucs.model.NexusData;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-public class NexusService {
-
-    private static final Logger log = LoggerFactory.getLogger(NexusService.class);
-
-    public void getNexusData(NexusData nexusData) {
-        try {
-            // Safely get power and energy data
-            double power = nexusData.getPower();
-            double energy = nexusData.getEnergy();
-
-            log.info("Normalized Power Data: Power = " + power + " kW, Energy = " + energy + " kWh");
-
-            // Further processing if needed...
-        } catch (Exception e) {
-            log.error("Error while processing Nexus data for device: " + nexusData.getDeviceName(), e);
-        }
-    }
-}
-
-3. NexusScheduler.java
-
-package com.verizon.ucs.scheduler;
-
-import com.verizon.ucs.model.NexusData;
-import com.verizon.ucs.service.NexusService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-public class NexusScheduler {
-
-    private static final Logger log = LoggerFactory.getLogger(NexusScheduler.class);
-
-    private final NexusService nexusService;
-
-    public NexusScheduler() {
-        this.nexusService = new NexusService();
-    }
-
-    public void scheduleTask(NexusData deviceData) {
-        try {
-            log.info("Processing device: " + deviceData.getDeviceName());
-
-            // Call the service to get and process Nexus data
-            nexusService.getNexusData(deviceData);
-        } catch (Exception e) {
-            log.error("Exception while processing device: " + deviceData.getDeviceName(), e);
-        }
-    }
-}
-
-Explanation:
-
-1. NexusData.java:
-
-Contains the fields for device data (watt, wattHr, etc.), along with methods to safely parse watt (power) and wattHr (energy) fields as double values.
-
-Uses regular expressions to clean up non-numeric characters before parsing.
-
-If the parsing fails, the method logs the error and returns a default value of 0.0.
-
-
-
-2. NexusService.java:
-
-Contains logic to fetch normalized power and energy data using getPower() and getEnergy() methods from NexusData.
-
-Logs normalized data and handles any potential errors.
-
-
-
-3. NexusScheduler.java:
-
-Calls the NexusService to process device data.
-
-Handles scheduling of tasks and logs any exceptions during processing.
-
-
-
-
-Error Handling:
-
-When the watt or wattHr values contain invalid strings (e.g., "227.82 k" or "COMM ERROR"), the error is logged, and the method safely returns a 0.0 value.
-
-
-Logging:
-
-The error logs will display the invalid values along with the device name to help in identifying issues with specific devices.
-
-
-This full implementation should resolve the NumberFormatException issues and ensure that the power and energy data are processed safely even when encountering invalid values.
-
+(C:\Users\margara\Apps\ms-psc-polling\target\classes started by MARGARA in C:\Users\margara\Apps\ms-psc-polling)
+[2025-01-30 00:37:45,972 UTC] [INFO ] main com.verizon.ucs.UCSApplication - No active profile set, falling back to 1 default profile: "default"
+[2025-01-30 00:37:47,112 UTC] [INFO ] main org.springframework.boot.web.embedded.tomcat.TomcatWebServer - Tomcat initialized with port 8080 (http)
+[2025-01-30 00:37:47,123 UTC] [INFO ] main org.apache.coyote.http11.Http11NioProtocol - Initializing ProtocolHandler ["http-nio-8080"]
+[2025-01-30 00:37:47,126 UTC] [INFO ] main org.apache.catalina.core.StandardService - Starting service [Tomcat]
+[2025-01-30 00:37:47,126 UTC] [INFO ] main org.apache.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/10.1.28]
+[2025-01-30 00:37:47,196 UTC] [INFO ] main org.apache.catalina.core.ContainerBase.[Tomcat].[localhost].[/] - Initializing Spring embedded WebApplicationContext
+[2025-01-30 00:37:47,198 UTC] [INFO ] main org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext - Root WebApplicationContext: initialization completed in 1171 ms
+[2025-01-30 00:37:47,699 UTC] [WARN ] main org.apache.pulsar.common.util.netty.DnsResolverUtil - Cannot get DNS TTL settings from sun.net.InetAddressCachePolicy class
+java.lang.IllegalAccessException: class org.apache.pulsar.common.util.netty.DnsResolverUtil cannot access class sun.net.InetAddressCachePolicy (in module java.base) because module java.base does not export sun.net to unnamed module @18bf3d14
+	at java.base/jdk.internal.reflect.Reflection.newIllegalAccessException(Reflection.java:392)
+	at java.base/java.lang.reflect.AccessibleObject.checkAccess(AccessibleObject.java:674)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:560)
+	at org.apache.pulsar.common.util.netty.DnsResolverUtil.<clinit>(DnsResolverUtil.java:46)
+	at org.apache.pulsar.client.impl.ConnectionPool.createAddressResolver(ConnectionPool.java:121)
+	at org.apache.pulsar.client.impl.ConnectionPool.lambda$new$1(ConnectionPool.java:109)
+	at java.base/java.util.Optional.orElseGet(Optional.java:364)
+	at org.apache.pulsar.client.impl.ConnectionPool.<init>(ConnectionPool.java:109)
+	at org.apache.pulsar.client.impl.ConnectionPool.<init>(ConnectionPool.java:78)
+	at org.apache.pulsar.client.impl.ConnectionPool.<init>(ConnectionPool.java:73)
+	at org.apache.pulsar.client.impl.PulsarClientImpl.<init>(PulsarClientImpl.java:194)
+	at org.apache.pulsar.client.impl.PulsarClientImpl.<init>(PulsarClientImpl.java:150)
+	at org.apache.pulsar.client.impl.ClientBuilderImpl.build(ClientBuilderImpl.java:67)
+	at com.verizon.ucs.config.PulsarConfig.pulsarClient(PulsarConfig.java:19)
+	at com.verizon.ucs.config.PulsarConfig$$SpringCGLIB$$0.CGLIB$pulsarClient$0(<generated>)
+	at com.verizon.ucs.config.PulsarConfig$$SpringCGLIB$$FastClass$$1.invoke(<generated>)
+	at org.springframework.cglib.proxy.MethodProxy.invokeSuper(MethodProxy.java:258)
+	at org.springframework.context.annotation.ConfigurationClassEnhancer$BeanMethodInterceptor.intercept(ConfigurationClassEnhancer.java:348)
+	at com.verizon.ucs.config.PulsarConfig$$SpringCGLIB$$0.pulsarClient(<generated>)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:568)
+	at org.springframework.beans.factory.support.SimpleInstantiationStrategy.instantiate(SimpleInstantiationStrategy.java:146)
+	at org.springframework.beans.factory.support.ConstructorResolver.instantiate(ConstructorResolver.java:644)
+	at org.springframework.beans.factory.support.ConstructorResolver.instantiateUsingFactoryMethod(ConstructorResolver.java:485)
+	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.instantiateUsingFactoryMethod(AbstractAutowireCapableBeanFactory.java:1355)
+	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.createBeanInstance(AbstractAutowireCapableBeanFactory.java:1185)
+	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.doCreateBean(AbstractAutowireCapableBeanFactory.java:562)
+	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.createBean(AbstractAutowireCapableBeanFactory.java:522)
+	at org.springframework.beans.factory.support.AbstractBeanFactory.lambda$doGetBean$0(AbstractBeanFactory.java:337)
+	at org.springframework.beans.factory.support.DefaultSingletonBeanRegistry.getSingleton(DefaultSingletonBeanRegistry.java:234)
+	at org.springframework.beans.factory.support.AbstractBeanFactory.doGetBean(AbstractBeanFactory.java:335)
+	at org.springframework.beans.factory.support.AbstractBeanFactory.getBean(AbstractBeanFactory.java:200)
+	at org.springframework.beans.factory.config.DependencyDescriptor.resolveCandidate(DependencyDescriptor.java:254)
+	at org.springframework.beans.factory.support.DefaultListableBeanFactory.doResolveDependency(DefaultListableBeanFactory.java:1443)
+	at org.springframework.beans.factory.support.DefaultListableBeanFactory.resolveDependency(DefaultListableBeanFactory.java:1353)
+	at org.springframework.beans.factory.annotation.AutowiredAnnotationBeanPostProcessor$AutowiredFieldElement.resolveFieldValue(AutowiredAnnotationBeanPostProcessor.java:785)
+	at org.springframework.beans.factory.annotation.AutowiredAnnotationBeanPostProcessor$AutowiredFieldElement.inject(AutowiredAnnotationBeanPostProcessor.java:768)
+	at org.springframework.beans.factory.annotation.InjectionMetadata.inject(InjectionMetadata.java:145)
+	at org.springframework.beans.factory.annotation.AutowiredAnnotationBeanPostProcessor.postProcessProperties(AutowiredAnnotationBeanPostProcessor.java:509)
+	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.populateBean(AbstractAutowireCapableBeanFactory.java:1439)
+	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.doCreateBean(AbstractAutowireCapableBeanFactory.java:599)
+	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.createBean(AbstractAutowireCapableBeanFactory.java:522)
+	at org.springframework.beans.factory.support.AbstractBeanFactory.lambda$doGetBean$0(AbstractBeanFactory.java:337)
+	at org.springframework.beans.factory.support.DefaultSingletonBeanRegistry.getSingleton(DefaultSingletonBeanRegistry.java:234)
+	at org.springframework.beans.factory.support.AbstractBeanFactory.doGetBean(AbstractBeanFactory.java:335)
+	at org.springframework.beans.factory.support.AbstractBeanFactory.getBean(AbstractBeanFactory.java:200)
+	at org.springframework.beans.factory.support.DefaultListableBeanFactory.preInstantiateSingletons(DefaultListableBeanFactory.java:975)
+	at org.springframework.context.support.AbstractApplicationContext.finishBeanFactoryInitialization(AbstractApplicationContext.java:971)
+	at org.springframework.context.support.AbstractApplicationContext.refresh(AbstractApplicationContext.java:625)
+	at org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext.refresh(ServletWebServerApplicationContext.java:146)
+	at org.springframework.boot.SpringApplication.refresh(SpringApplication.java:754)
+	at org.springframework.boot.SpringApplication.refreshContext(SpringApplication.java:456)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:335)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1363)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1352)
+	at com.verizon.ucs.UCSApplication.main(UCSApplication.java:13)
+[2025-01-30 00:37:48,135 UTC] [INFO ] main org.apache.coyote.http11.Http11NioProtocol - Starting ProtocolHandler ["http-nio-8080"]
+[2025-01-30 00:37:48,165 UTC] [INFO ] main org.springframework.boot.web.embedded.tomcat.TomcatWebServer - Tomcat started on port 8080 (http) with context path '/'
+[2025-01-30 00:37:48,185 UTC] [INFO ] main com.verizon.ucs.UCSApplication - Started UCSApplication in 2.615 seconds (process running for 3.142)
+[2025-01-30 00:37:48,250 UTC] [INFO ] scheduling-1 com.verizon.ucs.service.DBService - requestPayload in fetchDeviceDetails: '[{"stp":"eclipse.get_avl_stream_devices_fvo_1psc_test1"},{"param":""}]'
+[2025-01-30 00:37:49,928 UTC] [INFO ] scheduling-1 com.verizon.ucs.service.DBService - ResponseEntity in fetchDeviceDetails: '<200 OK OK,[[[{"device_name":"Azusa_CCC","device_ip":"10.218.104.42","pollercluster":null,"model":"Nexus 1450","frequency":null}, {"device_name":"Azusa_BB","device_ip":"10.218.104.5","pollercluster":null,"model":"Nexus 1450","frequency":null}, {"device_name":"Duff Dr - B-Tie","device_ip":"10.219.32.79","pollercluster":null,"model":"Nexus 1250","frequency":null}, {"device_name":"Duff Dr - C-Tie","device_ip":"10.219.32.76","pollercluster":null,"model":"Nexus 1250","frequency":null}, {"device_name":"[~DEVICE_LABEL]","device_ip":"10.193.40.75","pollercluster":null,"model":"Nexus 1500","frequency":null}]]],[Content-Length:"597", Content-Type:"text/plain;charset=UTF-8", Date:"Wed, 29 Jan 2025 19:07:49 GMT", X-Ratelimit-Limit:"0", X-Ratelimit-Remaining:"0", X-Ratelimit-Reset:"0"]>'
+[2025-01-30 00:37:49,929 UTC] [INFO ] scheduling-1 com.verizon.ucs.service.DBService - Cleaned final response in fetchDeviceDetails: '[[[{"device_name":"Azusa_CCC","device_ip":"10.218.104.42","pollercluster":null,"model":"Nexus 1450","frequency":null}, {"device_name":"Azusa_BB","device_ip":"10.218.104.5","pollercluster":null,"model":"Nexus 1450","frequency":null}, {"device_name":"Duff Dr - B-Tie","device_ip":"10.219.32.79","pollercluster":null,"model":"Nexus 1250","frequency":null}, {"device_name":"Duff Dr - C-Tie","device_ip":"10.219.32.76","pollercluster":null,"model":"Nexus 1250","frequency":null}, {"device_name":"[~DEVICE_LABEL]","device_ip":"10.193.40.75","pollercluster":null,"model":"Nexus 1500","frequency":null}]]]'
+[2025-01-30 00:37:49,956 UTC] [INFO ] scheduling-1 com.verizon.ucs.service.DBService - devices from DB size: 5
+[2025-01-30 00:37:49,956 UTC] [INFO ] scheduling-1 com.verizon.ucs.scheduler.NexusScheduler - devices from DB::  [DeviceData [deviceName=Azusa_CCC, deviceIP=10.218.104.42, pollerCluster=null, model=Nexus 1450, frequency=null], DeviceData [deviceName=Azusa_BB, deviceIP=10.218.104.5, pollerCluster=null, model=Nexus 1450, frequency=null], DeviceData [deviceName=Duff Dr - B-Tie, deviceIP=10.219.32.79, pollerCluster=null, model=Nexus 1250, frequency=null], DeviceData [deviceName=Duff Dr - C-Tie, deviceIP=10.219.32.76, pollerCluster=null, model=Nexus 1250, frequency=null], DeviceData [deviceName=[~DEVICE_LABEL], deviceIP=10.193.40.75, pollerCluster=null, model=Nexus 1500, frequency=null]]
+[2025-01-30 00:37:49,959 UTC] [ERROR] pool-2-thread-1 com.verizon.ucs.service.NexusService - Invalid value: null or empty string.
+[2025-01-30 00:37:49,960 UTC] [ERROR] pool-2-thread-1 com.verizon.ucs.service.NexusService - Invalid value: null or empty string.
+
+Now getting this error plss resolve 
