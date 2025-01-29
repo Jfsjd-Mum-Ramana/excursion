@@ -1,3 +1,89 @@
+Here are the remaining files, integrating Pulsar messaging for unreachable devices while keeping the core NexusService intact:
+
+1. PulsarProducerService.java (Service for Pulsar message publishing)
+
+package com.verizon.ucs.service;
+
+import org.apache.pulsar.client.api.Producer;
+import org.apache.pulsar.client.api.PulsarClientException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+@Service
+public class PulsarProducerService {
+
+    private static final Logger logger = LoggerFactory.getLogger(PulsarProducerService.class);
+
+    @Autowired
+    private Producer<byte[]> pulsarProducer;
+
+    // Method to send a message to Pulsar topic
+    public void sendMessage(String message) {
+        try {
+            pulsarProducer.send(message.getBytes());
+            logger.info("Sent message to Pulsar: {}", message);
+        } catch (PulsarClientException e) {
+            logger.error("Error sending message to Pulsar", e);
+        }
+    }
+}
+
+2. PulsarConfig.java (Configuration for Pulsar connection)
+
+package com.verizon.ucs.config;
+
+import org.apache.pulsar.client.api.PulsarClient;
+import org.apache.pulsar.client.api.Producer;
+import org.apache.pulsar.client.api.PulsarClientException;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class PulsarConfig {
+
+    @Value("${vmb.serviceUrl}")
+    private String serviceUrl;
+
+    @Value("${vmb.topicName}")
+    private String topic;
+
+    @Value("${vmb.tlsCertFile}")
+    private String tlsCertFile;
+
+    @Value("${vmb.tlsKeyFile}")
+    private String tlsKeyFile;
+
+    @Value("${vmb.tlsTrustCertsFile}")
+    private String tlsTrustCertsFile;
+
+    // Pulsar client bean for establishing the Pulsar connection
+    @Bean
+    public PulsarClient pulsarClient() throws PulsarClientException {
+        return PulsarClient.builder()
+                .serviceUrl(serviceUrl)
+                .allowTlsInsecureConnection(true)  // Set to true for insecure connection, update as per your environment
+                .tlsTrustCertsFilePath(tlsTrustCertsFile)
+                .tlsCertificateFilePath(tlsCertFile)
+                .tlsKeyFilePath(tlsKeyFile)
+                .build();
+    }
+
+    // Producer bean to send messages to Pulsar
+    @Bean
+    public Producer<byte[]> pulsarProducer(PulsarClient client) throws PulsarClientException {
+        return client.newProducer()
+                .topic(topic)
+                .create();
+    }
+}
+
+3. application.yaml
+
+Ensure the following configuration is added in your src/main/resources/application.yaml to configure Pulsar, Nexus, and VMB details.
+
 nexus:
   api-endpoints:
     1250: http://{siteIP}/poll_data.xml
@@ -6,9 +92,9 @@ nexus:
   credentials: your-credentials
   use-sample-data: false
   sample-data-paths: 
-   1250: src/main/resources/samples/10.219.32.76_nexus_1250.xml
-   1450: src/main/resources/samples/nexus_1450.json
-   1500: src/main/resources/samples/10.193.40.75_nexus1500.xml
+    1250: src/main/resources/samples/10.219.32.76_nexus_1250.xml
+    1450: src/main/resources/samples/nexus_1450.json
+    1500: src/main/resources/samples/10.193.40.75_nexus1500.xml
 
 scheduler:
    cron: 0 */15 * * * *
@@ -19,10 +105,146 @@ db:
   stpName: eclipse.get_avl_stream_devices_fvo_1psc_test1
 
 vmb:
-  #serviceUrl: ${VMB_SERVICE_URL:pulsar+ssl://vmb-aws-us-west-2-nonprod.verizon.com:6651}
   serviceUrl: ${VMB_SERVICE_URL:pulsar+ssl://vmb-aws-us-east-1-nonprod.verizon.com:6651}
   partitionCount: ${VMB_PARTITION_COUNT:16}
   topicName: ${TL1_VMB_TOPIC:persistent://enmv/psc-alarm/nexus-meter-lov}
   tlsCertFile: ${VMB_TLS_CERT_FILE:/prod/eclapp/vmb/ssl/enmv.cert.pem}
   tlsKeyFile: ${VMB_TLS_KEY_FILE:/prod/eclapp/vmb/ssl/enmv.key-pk8.pem}
   tlsTrustCertsFile: ${VMB_TRUST_CERTS_FILE:/prod/eclapp/vmb/ssl/ca.cert.pem}
+
+4. NexusService.java (Main service logic)
+
+No significant change here other than integrating the PulsarProducerService when the device is unreachable.
+
+package com.verizon.ucs.service;
+
+import com.verizon.ucs.model.DeviceInfo;
+import com.verizon.ucs.model.NexusData;
+import org.apache.pulsar.client.api.PulsarClientException;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+@Service
+public class NexusService {
+
+    @Autowired
+    private PulsarProducerService pulsarProducerService;
+
+    // Main logic to fetch Nexus data, and send notification if device is unreachable
+    public NexusData getNexusData(DeviceInfo device) throws Exception {
+        NexusData data;
+        try {
+            data = fetchDataFromDevice(device);
+            if (data == null) {
+                sendUnreachableNotification(device);
+            }
+        } catch (Exception e) {
+            sendUnreachableNotification(device);
+            throw e;
+        }
+        return data;
+    }
+
+    // Send notification when device is unreachable
+    private void sendUnreachableNotification(DeviceInfo device) {
+        String message = "Device " + device.getDeviceName() + " (" + device.getDeviceIP() + ") is unreachable.";
+        pulsarProducerService.sendMessage(message);
+    }
+
+    // The existing fetchDataFromDevice and other methods remain unchanged
+}
+
+5. DeviceInfo.java (Model class already provided)
+
+This is the model class for representing device information.
+
+package com.verizon.ucs.model;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+public class DeviceInfo {
+
+    @JsonProperty("device_name")
+    private String deviceName;
+
+    @JsonProperty("device_ip")
+    private String deviceIP;
+
+    @JsonProperty("pollercluster")
+    private String pollerCluster;
+
+    @JsonProperty("model")
+    private String model;
+
+    @JsonProperty("frequency")
+    private String frequency;
+
+    // Getters and Setters
+    public String getDeviceName() {
+        return deviceName;
+    }
+
+    public void setDeviceName(String deviceName) {
+        this.deviceName = deviceName;
+    }
+
+    public String getDeviceIP() {
+        return deviceIP;
+    }
+
+    public void setDeviceIP(String deviceIP) {
+        this.deviceIP = deviceIP;
+    }
+
+    public String getPollerCluster() {
+        return pollerCluster;
+    }
+
+    public void setPollerCluster(String pollerCluster) {
+        this.pollerCluster = pollerCluster;
+    }
+
+    public String getModel() {
+        return model;
+    }
+
+    public void setModel(String model) {
+        this.model = model;
+    }
+
+    public String getFrequency() {
+        return frequency;
+    }
+
+    public void setFrequency(String frequency) {
+        this.frequency = frequency;
+    }
+
+    @Override
+    public String toString() {
+        return "DeviceData [deviceName=" + deviceName + ", deviceIP=" + deviceIP + ", pollerCluster=" + pollerCluster
+                + ", model=" + model + ", frequency=" + frequency + "]";
+    }
+}
+
+
+---
+
+Flow Overview:
+
+1. Configuration: The PulsarConfig reads connection properties from application.yaml, setting up the Pulsar connection with TLS certificates.
+
+
+2. Device Retrieval: When a device is unreachable in NexusService, an alert is sent through Pulsar using the PulsarProducerService.
+
+
+3. Sending Alerts: If a device is unreachable, a message like "Device <DeviceName> (<DeviceIP>) is unreachable." is sent to the Pulsar topic specified in application.yaml.
+
+
+
+With this approach, your service maintains the current logic, and now it sends an alert to Pulsar whenever a device is unreachable, ensuring system responsiveness and alerting.
+
+Let me know if you need any further modifications!
+
