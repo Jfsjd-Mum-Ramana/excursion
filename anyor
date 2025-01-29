@@ -114,172 +114,24 @@ public class NexusService {
 }
 
 
-package com.verizon.ucs.scheduler;
-
-import java.io.IOException;
-import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.stereotype.Component;
-
-import com.verizon.ucs.model.DeviceInfo;
-import com.verizon.ucs.service.DBService;
-import com.verizon.ucs.service.NexusService;
-
-@Component
-public class NexusScheduler {
-	private static final Logger logger = LoggerFactory.getLogger(NexusScheduler.class);
-	private final ExecutorService executorService = Executors.newFixedThreadPool(3);
-	
-    @Autowired
-    private DBService dBService;
-    
-    @Autowired
-    private NexusService nexusService;
-
-    @Scheduled(fixedRate = 900000)
-    //@Scheduled(cron = "${scheduler.cron}", zone = "${scheduler.zone}")
-    public void scheduleTask() {
-        List<DeviceInfo> devices;
-        try {
-            // Fetch device details from the database
-            devices = dBService.fetchDeviceDetails();
-            logger.info("devices from DB::  {}", devices);
-            
-            // Process each device separately
-            for (DeviceInfo device : devices) {
-                executorService.submit(() -> {
-                    try {
-                        nexusService.getNexusData(device);
-                    } catch (Exception e) {
-                        logger.info("Exception while processing device: {} , {}",device,e);
-                    }
-                });
-            }
-        } catch (IOException e) {
-            logger.info("Exception while processing devices: {}",e);
-        }
-    }
-}
-
-package com.verizon.ucs.parser;
-
-import java.util.Map;
-
-import com.google.gson.Gson;
-import com.verizon.ucs.model.NexusData;
-
-public class Nexus1450Parser implements NexusParser {
-
-    @Override
-    public NexusData parse(String response) {
-        Gson gson = new Gson();
-        Map<String, Object> jsonResponse = gson.fromJson(response, Map.class);
-
-        NexusData data = new NexusData();
-        data.setSerial((String) jsonResponse.get("dev.serial"));
-        data.setDeviceName((String) jsonResponse.get("dev.designation"));
-        data.setDeviceType((String) jsonResponse.get("dev.type"));
-        data.setFirmware((String) jsonResponse.get("dev.data_definition.version"));
-        data.setMac((String) jsonResponse.get("dev.eth0_mac"));
-        data.setVan(jsonResponse.get("reading.1sec.volt.an").toString());
-        data.setVbn(jsonResponse.get("reading.1sec.volt.bn").toString());
-        data.setVcn(jsonResponse.get("reading.1sec.volt.cn").toString());
-        data.setVab(jsonResponse.get("reading.1sec.volt.ab").toString());
-        data.setVbc(jsonResponse.get("reading.1sec.volt.bc").toString());
-        data.setVca(jsonResponse.get("reading.1sec.volt.ca").toString());
-        data.setIa(jsonResponse.get("reading.1sec.current.a").toString());
-        data.setIb(jsonResponse.get("reading.1sec.current.b").toString());
-        data.setIc(jsonResponse.get("reading.1sec.current.c").toString());
-        data.setFreq(jsonResponse.get("reading.1sec.freq").toString());
-        data.setPf(jsonResponse.get("reading.1sec.pf.total").toString());
-        data.setWatt(jsonResponse.get("reading.1sec.power.watt.total").toString());
-        data.setWattHr(jsonResponse.get("reading.1sec.energy.watthr.q14.total").toString());
-        return data;
-    }
-}
-package com.verizon.ucs.controller;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
-
-import com.verizon.ucs.model.DeviceInfo;
-import com.verizon.ucs.model.NexusData;
-import com.verizon.ucs.service.NexusService;
-
-@RestController
-@RequestMapping("/api/nexus")
-public class PSCController {
-
-	private static final Logger logger = LoggerFactory.getLogger(PSCController.class);
-	
-    @Autowired
-    private NexusService service;
-
-    @GetMapping("/data/{deviceType}")
-    public ResponseEntity<NexusData> getNexusData(@PathVariable String deviceIP,@PathVariable String deviceType) {
-        try {
-        	DeviceInfo info = new DeviceInfo();
-        	info.setDeviceIP(deviceIP);
-        	info.setModel(deviceType);
-            NexusData data = service.getNexusData(info);
-            return ResponseEntity.ok(data);
-        } catch (Exception e) {
-        	logger.error("Exception at api /data/deviceType {}",e);
-            return ResponseEntity.status(500).body(null);
-        }
-    }
-}
-
-
-nexus:
-  api-endpoints:
-    1250: http://{siteIP}/poll_data.xml
-    1450: http://{siteIP}/api/dm/data
-    1500: http://{siteIP}/I/pdata.xml
-  credentials: your-credentials
-  use-sample-data: false
-  sample-data-paths: 
-   1250: src/main/resources/samples/10.219.32.76_nexus_1250.xml
-   1450: src/main/resources/samples/nexus_1450.json
-   1500: src/main/resources/samples/10.193.40.75_nexus1500.xml
-
-scheduler:
-   cron: 0 */15 * * * *
-   zone: UTC
-
-db:
-  dbCallUrl: ${DB_URL:https://ucs-api-np-bbg1-idn.vzwnet.com/papi/api/call}
-  stpName: eclipse.get_avl_stream_devices_fvo_1psc_test1
-
 vmb:
   #serviceUrl: ${VMB_SERVICE_URL:pulsar+ssl://vmb-aws-us-west-2-nonprod.verizon.com:6651}
   serviceUrl: ${VMB_SERVICE_URL:pulsar+ssl://vmb-aws-us-east-1-nonprod.verizon.com:6651}
   partitionCount: ${VMB_PARTITION_COUNT:16}
-  topicName: ${TL1_VMB_TOPIC:persistent://enmv/psc-alarm/nexus-meter-lov}
-  tlsCertFile: ${VMB_TLS_CERT_FILE:/prod/eclapp/vmb/ssl/enmv.cert.pem}
-  tlsKeyFile: ${VMB_TLS_KEY_FILE:/prod/eclapp/vmb/ssl/enmv.key-pk8.pem}
-  tlsTrustCertsFile: ${VMB_TRUST_CERTS_FILE:/prod/eclapp/vmb/ssl/ca.cert.pem}
+  topicName: ${TOPIC_NAME:persistent://enmv/psc-alarm/nexus-meter-lov}
+  tlsCertFile: ${VMB_TLS_CERT_FILE:src/main/resources/ssl/vmb-ple-certs/enmv.cert.pem}
+  tlsKeyFile: ${VMB_TLS_KEY_FILE:src/main/resources/ssl/vmb-ple-certs/enmv.key-pk8.pem}
+  tlsTrustCertsFile: ${VMB_TRUST_CERTS_FILE:src/main/resources/ssl/vmb-ple-certs/ca.cert.pem}
 
-For the aboce project please obersver and monitor by using below requirements:
-AC-1: Given a Nexus 1450 device is reachable, when UCS requests data, record all the metrics in Newrelic AC-2: Given a Nexus 1450 device is unreachable, when UCS requests data, send an lov notification to vmb topic
+For the above code plss provide this requirements develop here they are 
 
-As a UCS developer, I want to see NR dashboards, lov for all the nexus 14xx models
-RK-1: Nexus 1450 API changes unexpectedly.,RK-2: VMB communication issues.
-AS-1: Nexus 1450 API documentation is available and accurate.,AS-2: 1PSC VMB is available and configured.
+As a UCS developer, I want to normalize the power data retrieved from the Nexus 15xx model and publish it to the VMB so that 1PSC can consume the data in a consistent format.
+RK-1: VMB instability may affect data publishing.
+AS-1: VMB topic is configured and available.
 *Technical Specifications*:
-{"apiEndPoints":"\"UCS internal API endpoint for Nexus 1450 data retrieval. Method: GET. Version: v1\"","requestPayloadStructure":"\"Nexus 1450 IP address, credentials, specific data points requested (kW, kWh, Frequency)\"","responsePayloadStructure":"\"JSON format:
 
-{\\\"timestamp\\\": \\\"<timestamp>\\\", \\\"kW\\\": <value>, \\\"kWh\\\": <value>, \\\"Frequency\\\": <value>}
-, Status Codes: 200 (OK), 400 (Bad Request), 401 (Unauthorized), 500 (Internal Server Error)\"","authentication":"\"TLS/SSL mutual authentication\"","errorHandling":"\"Error codes for connection failures, data retrieval errors, invalid data formats. Retry mechanism (3 attempts, 10-second interval). Error notification to monitoring system.\"","versioningInformation":"\"v1\"","performanceRequirementCriteria":"\"Data retrieval within 10 seconds, normalization within 2 seconds, publishing to VMB within 5 seconds.\"","backwardCompatibility":"\"Not applicable (new feature)\"","businessRules":"\"None\"","loggingAndMonitoring":"\"Logging of errors, connection attempts, data retrieval, and publishing. Monitoring of API performance and error rates.\"","securityConsiderations":"\"TLS/SSL encryption\"","complianceRegulations":"\"None\"","documentationImpact":"\"Update UCS API documentation with Nexus 1450 integration details.\""}
+{"apiEndPoints":"\"UCS internal API endpoint for VMB publishing.\"","requestPayloadStructure":"\"Normalized power data (kW, kWh, etc.), timestamp.\"","responsePayloadStructure":"\"Success/failure status. HTTP status codes (200, 500).\"","authentication":"\"Secure communication between UCS and VMB.\"","errorHandling":"\"Error codes for publishing failures. Retry mechanism.\"","versioningInformation":"\"v1.0\"","performanceRequirementCriteria":"\"Publishing within 15 seconds\"","backwardCompatibility":"\"Yes\"","businessRules":"\"Data normalization rules.\"","loggingAndMonitoring":"\"Logs for successful/failed publishing attempts.\"","securityConsiderations":"\"Secure communication channel.\"","complianceRegulations":"\"N/A\"","documentationImpact":"\"Update documentation on VMB topic and data format.\""}
+
+AC-1: Given normalized Nexus data, when UCS publishes, then data is sent to the correct VMB topic wit
+
+these are the requirements plss give me all the requirements and code
