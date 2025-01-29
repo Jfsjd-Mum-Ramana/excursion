@@ -13,7 +13,6 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.retry.RetryCallback;
 import org.springframework.retry.RetryContext;
-import org.springframework.retry.RetryListener;
 import org.springframework.retry.support.RetryTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -31,6 +30,7 @@ import com.verizon.ucs.parser.NexusParser;
 @Service
 public class NexusService {
 	private static final Logger logger = LoggerFactory.getLogger(NexusService.class);
+
     @Autowired
     private NexusConfig config;
 
@@ -40,6 +40,8 @@ public class NexusService {
     @Autowired
     private RetryTemplate retryTemplate;
 
+    @Autowired
+    private PulsarProducerService pulsarProducerService;  // Add PulsarProducerService
 
     public NexusData getNexusData(DeviceInfo device) throws Exception {
         String response;
@@ -48,41 +50,44 @@ public class NexusService {
         if (config.isUseSampleData()) {
             response = new String(Files.readAllBytes(Paths.get(config.getSampleDataPaths().get(deviceType))));
         } else {
-            response = fetchDataFromDevice(deviceType,device.getDeviceIP());
+            response = fetchDataFromDevice(deviceType, device.getDeviceIP());
         }
 
         NexusParser parser = getParser(deviceType);
         NexusData data = parser.parse(response);
         logger.info("NexusData::  {}", data);
-        //validateData(data);
-        //yourservice.publish(data,"kk");
+
+        // If the data is null, consider the device unreachable and send notification
+        if (data == null) {
+            sendUnreachableNotification(device);
+        }
+
         return data;
     }
 
-    private String fetchDataFromDevice(String deviceType,String deviceIP) throws Exception {
+    private String fetchDataFromDevice(String deviceType, String deviceIP) throws Exception {
         return retryTemplate.execute(context -> {
-
-        	String url = config.getApiEndpoints().get(deviceType).replace("{siteIP}", deviceIP);
-
-        	 switch (deviceType) {
-             case "1250":
-            	 return restTemplate.getForObject(url, String.class);
-             case "1450":
-            	 return restTemplate.postForObject(url, getHttpEntity(), String.class);
-             case "1500":
-            	 return restTemplate.getForObject(url, String.class);
-             default:
-                 throw new IllegalArgumentException("Unsupported device type: " + deviceType);
-         }
-
+            String url = config.getApiEndpoints().get(deviceType).replace("{siteIP}", deviceIP);
+            switch (deviceType) {
+                case "1250":
+                    return restTemplate.getForObject(url, String.class);
+                case "1450":
+                    return restTemplate.postForObject(url, getHttpEntity(), String.class);
+                case "1500":
+                    return restTemplate.getForObject(url, String.class);
+                default:
+                    throw new IllegalArgumentException("Unsupported device type: " + deviceType);
+            }
         });
     }
+
     private HttpEntity<String> getHttpEntity() {
-    	HttpHeaders headers = new HttpHeaders();
+        HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         HttpEntity<String> entity = new HttpEntity<>(createRequestPayload(Constants.REQUEST_BODY_1450), headers);
         return entity;
     }
+
     private String createRequestPayload(String[] chans) {
         ObjectMapper mapper = new ObjectMapper();
         Map<String, Object> payloadMap = Map.of("chans", chans);
@@ -107,9 +112,20 @@ public class NexusService {
         }
     }
 
+    // Send notification to Pulsar if device is unreachable
+    private void sendUnreachableNotification(DeviceInfo device) {
+        String message = String.format("Device %s (%s) is unreachable.", device.getDeviceName(), device.getDeviceIP());
+        try {
+            pulsarProducerService.sendMessage(message);  // Sending the message to Pulsar
+            logger.info("Unreachable device notification sent to Pulsar: {}", message);
+        } catch (Exception e) {
+            logger.error("Error sending Pulsar message for unreachable device: {}", device.getDeviceName(), e);
+        }
+    }
+
     private void validateData(NexusData data) throws Exception {
-    	if(data !=null && data.getDeviceName()!=null) {
-    		return;
-    	}
+        if (data != null && data.getDeviceName() != null) {
+            return;
+        }
     }
 }
