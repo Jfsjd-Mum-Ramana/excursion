@@ -1,80 +1,325 @@
-(C:\Users\margara\Apps\ms-psc-polling\target\classes started by MARGARA in C:\Users\margara\Apps\ms-psc-polling)
-[2025-01-30 00:37:45,972 UTC] [INFO ] main com.verizon.ucs.UCSApplication - No active profile set, falling back to 1 default profile: "default"
-[2025-01-30 00:37:47,112 UTC] [INFO ] main org.springframework.boot.web.embedded.tomcat.TomcatWebServer - Tomcat initialized with port 8080 (http)
-[2025-01-30 00:37:47,123 UTC] [INFO ] main org.apache.coyote.http11.Http11NioProtocol - Initializing ProtocolHandler ["http-nio-8080"]
-[2025-01-30 00:37:47,126 UTC] [INFO ] main org.apache.catalina.core.StandardService - Starting service [Tomcat]
-[2025-01-30 00:37:47,126 UTC] [INFO ] main org.apache.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/10.1.28]
-[2025-01-30 00:37:47,196 UTC] [INFO ] main org.apache.catalina.core.ContainerBase.[Tomcat].[localhost].[/] - Initializing Spring embedded WebApplicationContext
-[2025-01-30 00:37:47,198 UTC] [INFO ] main org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext - Root WebApplicationContext: initialization completed in 1171 ms
-[2025-01-30 00:37:47,699 UTC] [WARN ] main org.apache.pulsar.common.util.netty.DnsResolverUtil - Cannot get DNS TTL settings from sun.net.InetAddressCachePolicy class
-java.lang.IllegalAccessException: class org.apache.pulsar.common.util.netty.DnsResolverUtil cannot access class sun.net.InetAddressCachePolicy (in module java.base) because module java.base does not export sun.net to unnamed module @18bf3d14
-	at java.base/jdk.internal.reflect.Reflection.newIllegalAccessException(Reflection.java:392)
-	at java.base/java.lang.reflect.AccessibleObject.checkAccess(AccessibleObject.java:674)
-	at java.base/java.lang.reflect.Method.invoke(Method.java:560)
-	at org.apache.pulsar.common.util.netty.DnsResolverUtil.<clinit>(DnsResolverUtil.java:46)
-	at org.apache.pulsar.client.impl.ConnectionPool.createAddressResolver(ConnectionPool.java:121)
-	at org.apache.pulsar.client.impl.ConnectionPool.lambda$new$1(ConnectionPool.java:109)
-	at java.base/java.util.Optional.orElseGet(Optional.java:364)
-	at org.apache.pulsar.client.impl.ConnectionPool.<init>(ConnectionPool.java:109)
-	at org.apache.pulsar.client.impl.ConnectionPool.<init>(ConnectionPool.java:78)
-	at org.apache.pulsar.client.impl.ConnectionPool.<init>(ConnectionPool.java:73)
-	at org.apache.pulsar.client.impl.PulsarClientImpl.<init>(PulsarClientImpl.java:194)
-	at org.apache.pulsar.client.impl.PulsarClientImpl.<init>(PulsarClientImpl.java:150)
-	at org.apache.pulsar.client.impl.ClientBuilderImpl.build(ClientBuilderImpl.java:67)
-	at com.verizon.ucs.config.PulsarConfig.pulsarClient(PulsarConfig.java:19)
-	at com.verizon.ucs.config.PulsarConfig$$SpringCGLIB$$0.CGLIB$pulsarClient$0(<generated>)
-	at com.verizon.ucs.config.PulsarConfig$$SpringCGLIB$$FastClass$$1.invoke(<generated>)
-	at org.springframework.cglib.proxy.MethodProxy.invokeSuper(MethodProxy.java:258)
-	at org.springframework.context.annotation.ConfigurationClassEnhancer$BeanMethodInterceptor.intercept(ConfigurationClassEnhancer.java:348)
-	at com.verizon.ucs.config.PulsarConfig$$SpringCGLIB$$0.pulsarClient(<generated>)
-	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
-	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)
-	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
-	at java.base/java.lang.reflect.Method.invoke(Method.java:568)
-	at org.springframework.beans.factory.support.SimpleInstantiationStrategy.instantiate(SimpleInstantiationStrategy.java:146)
-	at org.springframework.beans.factory.support.ConstructorResolver.instantiate(ConstructorResolver.java:644)
-	at org.springframework.beans.factory.support.ConstructorResolver.instantiateUsingFactoryMethod(ConstructorResolver.java:485)
-	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.instantiateUsingFactoryMethod(AbstractAutowireCapableBeanFactory.java:1355)
-	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.createBeanInstance(AbstractAutowireCapableBeanFactory.java:1185)
-	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.doCreateBean(AbstractAutowireCapableBeanFactory.java:562)
-	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.createBean(AbstractAutowireCapableBeanFactory.java:522)
-	at org.springframework.beans.factory.support.AbstractBeanFactory.lambda$doGetBean$0(AbstractBeanFactory.java:337)
-	at org.springframework.beans.factory.support.DefaultSingletonBeanRegistry.getSingleton(DefaultSingletonBeanRegistry.java:234)
-	at org.springframework.beans.factory.support.AbstractBeanFactory.doGetBean(AbstractBeanFactory.java:335)
-	at org.springframework.beans.factory.support.AbstractBeanFactory.getBean(AbstractBeanFactory.java:200)
-	at org.springframework.beans.factory.config.DependencyDescriptor.resolveCandidate(DependencyDescriptor.java:254)
-	at org.springframework.beans.factory.support.DefaultListableBeanFactory.doResolveDependency(DefaultListableBeanFactory.java:1443)
-	at org.springframework.beans.factory.support.DefaultListableBeanFactory.resolveDependency(DefaultListableBeanFactory.java:1353)
-	at org.springframework.beans.factory.annotation.AutowiredAnnotationBeanPostProcessor$AutowiredFieldElement.resolveFieldValue(AutowiredAnnotationBeanPostProcessor.java:785)
-	at org.springframework.beans.factory.annotation.AutowiredAnnotationBeanPostProcessor$AutowiredFieldElement.inject(AutowiredAnnotationBeanPostProcessor.java:768)
-	at org.springframework.beans.factory.annotation.InjectionMetadata.inject(InjectionMetadata.java:145)
-	at org.springframework.beans.factory.annotation.AutowiredAnnotationBeanPostProcessor.postProcessProperties(AutowiredAnnotationBeanPostProcessor.java:509)
-	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.populateBean(AbstractAutowireCapableBeanFactory.java:1439)
-	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.doCreateBean(AbstractAutowireCapableBeanFactory.java:599)
-	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.createBean(AbstractAutowireCapableBeanFactory.java:522)
-	at org.springframework.beans.factory.support.AbstractBeanFactory.lambda$doGetBean$0(AbstractBeanFactory.java:337)
-	at org.springframework.beans.factory.support.DefaultSingletonBeanRegistry.getSingleton(DefaultSingletonBeanRegistry.java:234)
-	at org.springframework.beans.factory.support.AbstractBeanFactory.doGetBean(AbstractBeanFactory.java:335)
-	at org.springframework.beans.factory.support.AbstractBeanFactory.getBean(AbstractBeanFactory.java:200)
-	at org.springframework.beans.factory.support.DefaultListableBeanFactory.preInstantiateSingletons(DefaultListableBeanFactory.java:975)
-	at org.springframework.context.support.AbstractApplicationContext.finishBeanFactoryInitialization(AbstractApplicationContext.java:971)
-	at org.springframework.context.support.AbstractApplicationContext.refresh(AbstractApplicationContext.java:625)
-	at org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext.refresh(ServletWebServerApplicationContext.java:146)
-	at org.springframework.boot.SpringApplication.refresh(SpringApplication.java:754)
-	at org.springframework.boot.SpringApplication.refreshContext(SpringApplication.java:456)
-	at org.springframework.boot.SpringApplication.run(SpringApplication.java:335)
-	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1363)
-	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1352)
-	at com.verizon.ucs.UCSApplication.main(UCSApplication.java:13)
-[2025-01-30 00:37:48,135 UTC] [INFO ] main org.apache.coyote.http11.Http11NioProtocol - Starting ProtocolHandler ["http-nio-8080"]
-[2025-01-30 00:37:48,165 UTC] [INFO ] main org.springframework.boot.web.embedded.tomcat.TomcatWebServer - Tomcat started on port 8080 (http) with context path '/'
-[2025-01-30 00:37:48,185 UTC] [INFO ] main com.verizon.ucs.UCSApplication - Started UCSApplication in 2.615 seconds (process running for 3.142)
-[2025-01-30 00:37:48,250 UTC] [INFO ] scheduling-1 com.verizon.ucs.service.DBService - requestPayload in fetchDeviceDetails: '[{"stp":"eclipse.get_avl_stream_devices_fvo_1psc_test1"},{"param":""}]'
-[2025-01-30 00:37:49,928 UTC] [INFO ] scheduling-1 com.verizon.ucs.service.DBService - ResponseEntity in fetchDeviceDetails: '<200 OK OK,[[[{"device_name":"Azusa_CCC","device_ip":"10.218.104.42","pollercluster":null,"model":"Nexus 1450","frequency":null}, {"device_name":"Azusa_BB","device_ip":"10.218.104.5","pollercluster":null,"model":"Nexus 1450","frequency":null}, {"device_name":"Duff Dr - B-Tie","device_ip":"10.219.32.79","pollercluster":null,"model":"Nexus 1250","frequency":null}, {"device_name":"Duff Dr - C-Tie","device_ip":"10.219.32.76","pollercluster":null,"model":"Nexus 1250","frequency":null}, {"device_name":"[~DEVICE_LABEL]","device_ip":"10.193.40.75","pollercluster":null,"model":"Nexus 1500","frequency":null}]]],[Content-Length:"597", Content-Type:"text/plain;charset=UTF-8", Date:"Wed, 29 Jan 2025 19:07:49 GMT", X-Ratelimit-Limit:"0", X-Ratelimit-Remaining:"0", X-Ratelimit-Reset:"0"]>'
-[2025-01-30 00:37:49,929 UTC] [INFO ] scheduling-1 com.verizon.ucs.service.DBService - Cleaned final response in fetchDeviceDetails: '[[[{"device_name":"Azusa_CCC","device_ip":"10.218.104.42","pollercluster":null,"model":"Nexus 1450","frequency":null}, {"device_name":"Azusa_BB","device_ip":"10.218.104.5","pollercluster":null,"model":"Nexus 1450","frequency":null}, {"device_name":"Duff Dr - B-Tie","device_ip":"10.219.32.79","pollercluster":null,"model":"Nexus 1250","frequency":null}, {"device_name":"Duff Dr - C-Tie","device_ip":"10.219.32.76","pollercluster":null,"model":"Nexus 1250","frequency":null}, {"device_name":"[~DEVICE_LABEL]","device_ip":"10.193.40.75","pollercluster":null,"model":"Nexus 1500","frequency":null}]]]'
-[2025-01-30 00:37:49,956 UTC] [INFO ] scheduling-1 com.verizon.ucs.service.DBService - devices from DB size: 5
-[2025-01-30 00:37:49,956 UTC] [INFO ] scheduling-1 com.verizon.ucs.scheduler.NexusScheduler - devices from DB::  [DeviceData [deviceName=Azusa_CCC, deviceIP=10.218.104.42, pollerCluster=null, model=Nexus 1450, frequency=null], DeviceData [deviceName=Azusa_BB, deviceIP=10.218.104.5, pollerCluster=null, model=Nexus 1450, frequency=null], DeviceData [deviceName=Duff Dr - B-Tie, deviceIP=10.219.32.79, pollerCluster=null, model=Nexus 1250, frequency=null], DeviceData [deviceName=Duff Dr - C-Tie, deviceIP=10.219.32.76, pollerCluster=null, model=Nexus 1250, frequency=null], DeviceData [deviceName=[~DEVICE_LABEL], deviceIP=10.193.40.75, pollerCluster=null, model=Nexus 1500, frequency=null]]
-[2025-01-30 00:37:49,959 UTC] [ERROR] pool-2-thread-1 com.verizon.ucs.service.NexusService - Invalid value: null or empty string.
-[2025-01-30 00:37:49,960 UTC] [ERROR] pool-2-thread-1 com.verizon.ucs.service.NexusService - Invalid value: null or empty string.
+package com.verizon.ucs.service;
 
-Now getting this error plss resolve 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.protobuf.MessageOrBuilder;
+import com.google.protobuf.util.JsonFormat;
+import com.verizon.ucs.config.VMBProperties;
+import com.verizon.ucs.model.NexusData;
+import com.verizon.ucs.service.pulsar.PulsarPublisherService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.stereotype.Service;
+import com.verizon.ucs.data.UcgDataPacket;
+
+import java.text.SimpleDateFormat;
+import java.util.Base64;
+import java.util.Date;
+import java.util.Map;
+import java.util.Iterator;
+
+@Service
+@EnableConfigurationProperties({ VMBProperties.class })
+public class NormaliseReactorService {
+
+	private static final Logger logger = LoggerFactory.getLogger(NormaliseReactorService.class);
+
+	@Autowired
+	private PulsarPublisherService pulsarPublisherService;
+
+	@Autowired
+	private VMBProperties vmbProperties;
+
+	public void handleAndPublishData(NexusData data, String deviceIp) throws Exception {
+		SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX");
+		String timestamp = dateFormat.format(new Date());
+
+		// Convert NexusData to JSON and trim spaces from all string values
+		ObjectMapper objectMapper = new ObjectMapper();
+		ObjectNode ucgRawDataNode = (ObjectNode) objectMapper.valueToTree(data);
+		Iterator<Map.Entry<String, JsonNode>> fields = ucgRawDataNode.fields();
+		while (fields.hasNext()) {
+			Map.Entry<String, JsonNode> field = fields.next();
+			if (field.getValue().isTextual()) {
+				ucgRawDataNode.put(field.getKey(), field.getValue().asText().replaceAll("\\s+$", ""));
+			}
+		}
+
+		String ucgRawData = objectMapper.writeValueAsString(ucgRawDataNode);
+		logger.info("UCGRAW  JSON DATA:" + ucgRawData);
+
+		Map<String, Object> ucgData = Map.of(
+				"ucgTimestamp", timestamp,
+				"ucgSource", deviceIp,
+				"ucgRawData", ucgRawData,
+				"ucgDeviceName", data.getDeviceName().trim(),
+				"ucgType", "LIVE",
+				"ucgTopic", vmbProperties.getTopicName());
+
+		String ucgDataJsonString = new ObjectMapper().writeValueAsString(ucgData);
+		logger.info("UCG JSON DATA:" + ucgDataJsonString);
+		pulsarPublisherService.publishMessage(ucgDataJsonString);
+	}
+}
+
+package com.verizon.ucs.service;
+
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.Map;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.retry.RetryCallback;
+import org.springframework.retry.RetryContext;
+import org.springframework.retry.RetryListener;
+import org.springframework.retry.support.RetryTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.verizon.ucs.config.Constants;
+import com.verizon.ucs.config.NexusConfig;
+import com.verizon.ucs.model.DeviceInfo;
+import com.verizon.ucs.model.NexusData;
+import com.verizon.ucs.parser.Nexus1250Parser;
+import com.verizon.ucs.parser.Nexus1450Parser;
+import com.verizon.ucs.parser.NexusParser;
+
+@Service
+public class NexusService {
+    private static final Logger logger = LoggerFactory.getLogger(NexusService.class);
+    @Autowired
+    private NexusConfig config;
+
+    @Autowired
+    private RestTemplate restTemplate;
+
+    @Autowired
+    private RetryTemplate retryTemplate;
+
+    @Autowired
+    private NormaliseReactorService normaliseReactorService;
+
+
+    public NexusData getNexusData(DeviceInfo device) throws Exception {
+        String response;
+        String deviceType = device.getModel().replace("Nexus ", "");
+
+        if (config.isUseSampleData()) {
+            response = new String(Files.readAllBytes(Paths.get(config.getSampleDataPaths().get(deviceType))));
+        } else {
+            response = fetchDataFromDevice(deviceType,device.getDeviceIP());
+        }
+
+        NexusParser parser = getParser(deviceType);
+        NexusData data = parser.parse(response);
+        logger.info("NexusData::  {}", data);
+        validateData(data);
+        normaliseReactorService.handleAndPublishData(data,"kk");
+        return data;
+    }
+
+    public String fetchDataFromDevice(String deviceType, String deviceIP) throws Exception {
+        return retryTemplate.execute(context -> {
+            String url = config.getApiEndpoints().get(deviceType).replace("{siteIP}", deviceIP);
+            System.out.println("Attempting to fetch data from device: " + deviceType + " at IP: " + deviceIP);
+            switch (deviceType) {
+                case "1250":
+                    return restTemplate.getForObject(url, String.class);
+                case "1450":
+                    return restTemplate.postForObject(url, getHttpEntity(), String.class);
+                case "1500":
+                    return restTemplate.getForObject(url, String.class);
+                default:
+                    throw new IllegalArgumentException("Unsupported device type: " + deviceType);
+            }
+        }, context -> {
+            // Recovery logic
+            System.out.println("All retry attempts failed. Executing recovery logic.");
+            return "Recovery response";
+        });
+    }
+    private HttpEntity<String> getHttpEntity() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpEntity<String> entity = new HttpEntity<>(createRequestPayload(Constants.REQUEST_BODY_1450), headers);
+        return entity;
+    }
+    private String createRequestPayload(String[] chans) {
+        ObjectMapper mapper = new ObjectMapper();
+        Map<String, Object> payloadMap = Map.of("chans", chans);
+        try {
+            return mapper.writeValueAsString(payloadMap);
+        } catch (JsonProcessingException e) {
+            logger.error("Error creating JSON request payload", e);
+            return null;
+        }
+    }
+
+    private NexusParser getParser(String deviceType) {
+        switch (deviceType) {
+            case "1250":
+                return new Nexus1250Parser();
+            case "1450":
+                return new Nexus1450Parser();
+            case "1500":
+                return new Nexus1250Parser();
+            default:
+                throw new IllegalArgumentException("Unsupported device type: " + deviceType);
+        }
+    }
+
+    private void validateData(NexusData data) throws Exception {
+        if(data !=null && data.getDeviceName()!=null) {
+            return;
+        }
+    }
+}
+
+
+
+
+package com.verizon.ucs.config;
+
+import lombok.Data;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
+
+@Data
+@Component
+@ConfigurationProperties("vmb")
+public class PulsarProperties {
+
+    private String serviceUrl;
+    private String topicName;
+    private boolean compressionEnabled;
+    private String tlsCertFile;
+    private String tlsKeyFile;
+    private String tlsTrustCertsFile;
+}
+
+
+package com.verizon.ucs.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.retry.RetryCallback;
+import org.springframework.retry.RetryContext;
+import org.springframework.retry.RetryListener;
+import org.springframework.retry.backoff.FixedBackOffPolicy;
+import org.springframework.retry.policy.SimpleRetryPolicy;
+import org.springframework.retry.support.RetryTemplate;
+
+@Configuration
+public class RetryConfig {
+    @Bean
+    public RetryTemplate retryTemplate() {
+        RetryTemplate retryTemplate = new RetryTemplate();
+        // Configure retry policy
+        SimpleRetryPolicy retryPolicy = new SimpleRetryPolicy();
+        retryPolicy.setMaxAttempts(3); // Number of retry attempts
+        retryTemplate.setRetryPolicy(retryPolicy);
+        // Configure backoff policy
+        FixedBackOffPolicy backOffPolicy = new FixedBackOffPolicy();
+        backOffPolicy.setBackOffPeriod(2000); // 2 seconds backoff period
+        retryTemplate.setBackOffPolicy(backOffPolicy);
+        // Add retry listener for logging
+        retryTemplate.registerListener(new RetryListener() {
+            @Override
+            public <T, E extends Throwable> boolean open(RetryContext context, RetryCallback<T, E> callback) {
+                return true;
+            }
+
+            @Override
+            public <T, E extends Throwable> void close(RetryContext context, RetryCallback<T, E> callback,
+                                                       Throwable throwable) {
+            }
+
+            @Override
+            public <T, E extends Throwable> void onError(RetryContext context, RetryCallback<T, E> callback,
+                                                         Throwable throwable) {
+                System.out.println(
+                        "Retry attempt " + context.getRetryCount() + " failed due to: " + throwable.getMessage());
+            }
+        });
+        return retryTemplate;
+    }
+}
+package com.verizon.ucs.config;
+
+import com.verizon.eclipse.pulsar.producer.EclipsePulsarProducerNr;
+import com.verizon.ucs.config.PulsarProperties;
+import com.verizon.ucs.scheduler.NexusScheduler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
+import org.springframework.stereotype.Component;
+
+@Component
+public class PulsarConfig {
+
+    private static Logger logger = LoggerFactory.getLogger(PulsarConfig.class);
+
+    @Autowired
+    private PulsarProperties pulsarProperties;
+
+    private static EclipsePulsarProducerNr pulsarProducer;
+
+    @Bean
+    public EclipsePulsarProducerNr getTl1lAlarmReplayTopicPulsarClient() {
+        try {
+            if (pulsarProducer == null) {
+                pulsarProducer = new EclipsePulsarProducerNr(true, pulsarProperties.getServiceUrl(), pulsarProperties.getTlsTrustCertsFile(),
+                        pulsarProperties.getTlsKeyFile(), pulsarProperties.getTlsCertFile(),
+                        pulsarProperties.getTopicName());
+            } else {
+                logger.info(" pulsarProducer object exists");
+                return pulsarProducer;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            logger.error("Exception while creating TL1 pulsar client.", e);
+        }
+        return pulsarProducer;
+    }
+
+}
+
+AC-1: Given a Nexus 1450 device is reachable, when UCS requests data, record all the metrics in Newrelic AC-2: Given a Nexus 1450 device is unreachable, when UCS requests data, send an lov notification to vmb topic
+
+and here the applcation.yaml file
+
+nexus:
+  api-endpoints:
+    1250: http://{siteIP}/poll_data.xml
+    1450: http://{siteIP}/api/dm/data
+    1500: http://{siteIP}/I/pdata.xml
+  credentials: your-credentials
+  use-sample-data: true
+  sample-data-paths: 
+   1250: src/main/resources/samples/10.219.32.76_nexus_1250.xml
+   1450: src/main/resources/samples/nexus_1450.json
+   1500: src/main/resources/samples/10.193.40.75_nexus1500.xml
+   #15min
+vmb:
+  #serviceUrl: ${VMB_SERVICE_URL:pulsar+ssl://vmb-aws-us-west-2-nonprod.verizon.com:6651}
+  serviceUrl: ${VMB_SERVICE_URL:pulsar+ssl://vmb-aws-us-east-1-nonprod.verizon.com:6651}
+  partitionCount: ${VMB_PARTITION_COUNT:16}
+  topicName: ${TOPIC_NAME:persistent://enmv/psc/nexus-meter}
+  tlsCertFile: ${VMB_TLS_CERT_FILE:src/main/resources/ssl/vmb-ple-certs/enmv.cert.pem}
+  tlsKeyFile: ${VMB_TLS_KEY_FILE:src/main/resources/ssl/vmb-ple-certs/enmv.key-pk8.pem}
+  tlsTrustCertsFile: ${VMB_TRUST_CERTS_FILE:src/main/resources/ssl/vmb-ple-certs/ca.cert.pem}
+
+db:
+  dbCallUrl: ${DB_URL:https://ucs-api-np-bbg1-idn.vzwnet.com/papi/api/call}
+  stpName: eclipse.get_avl_stream_devices_fvo_1psc_test1
