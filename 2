@@ -1,67 +1,134 @@
-The error duplicate key value violates unique constraint unique_collection_metric indicates that the combination of collection_id and collection_date already exists in the ucsp_alarm_metrics table, violating the unique constraint unique_collection_metric.
+package com.verizon.ucs.service;
 
-To resolve this error, we need to ensure that each collection_id and collection_date combination is unique in the table. If you're trying to insert new data for collection_id = 1, you may need to either:
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.Map;
 
-1. Update Existing Records for the same collection_id and collection_date if they already exist.
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.retry.support.RetryTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.verizon.ucs.config.Constants;
+import com.verizon.ucs.config.NexusConfig;
+import com.verizon.ucs.model.DeviceInfo;
+import com.verizon.ucs.model.NexusData;
+import com.verizon.ucs.parser.Nexus1250Parser;
+import com.verizon.ucs.parser.Nexus1450Parser;
+import com.verizon.ucs.parser.Nexus1500Parser;
+import com.verizon.ucs.parser.NexusParser;
+import com.verizon.ucs.service.pulsar.PulsarPublisherService;
 
-2. Insert Data with New collection_date values, ensuring no duplicates occur.
+@Service
+public class NexusService {
+    private static final Logger logger = LoggerFactory.getLogger(NexusService.class);
 
+    @Autowired
+    private NexusConfig config;
 
+    @Autowired
+    private RestTemplate restTemplate;
 
-If you need to update existing records for collection_id = 1, you can use an UPDATE query instead of INSERT. Here's an example:
+    @Autowired
+    private RetryTemplate retryTemplate;
 
-1. Update Query
+    @Autowired
+    private PulsarPublisherService pulsarPublisherService;
 
--- Update existing records for collection_id = 1
-UPDATE ucsp_alarm_metrics
-SET number_of_msgs = 1500, size_of_msgs = 410000
-WHERE collection_id = 1 AND collection_date = '2024-12-01 10:30:00';
+    @Autowired
+    private NormaliseReactorService normaliseReactorService;
 
-UPDATE ucsp_alarm_metrics
-SET number_of_msgs = 1600, size_of_msgs = 430000
-WHERE collection_id = 1 AND collection_date = '2024-12-02 11:00:00';
+    public NexusData getNexusData(DeviceInfo device) {
+        try {
+            String response;
 
--- Repeat for other collection_dates
+            // Read from file if sample data is enabled
+            if (config.isUseSampleData()) {
+                response = readSampleData(device);
+            } else {
+                response = fetchDataFromDevice(device);
+            }
 
-2. Insert New Data (Ensuring Unique Dates)
+            // Parse the response based on device type
+            NexusParser parser = getParser(device.getModel());
+            NexusData data = parser.parse(response);
 
-If you are trying to insert new data, make sure that the collection_date is unique for each collection_id. Here’s an example with updated collection_date values to avoid duplicates:
+            // Validate and publish data
+            validateData(data);
+            publishData(data, device.getDeviceIP());
 
--- Insert new records for collection_id = 1 with unique collection_date
-INSERT INTO ucsp_alarm_metrics (collection_id, collection_date, number_of_msgs, size_of_msgs)
-VALUES
-(1, '2024-12-01 10:30:00', 1000, 204800),
-(1, '2024-12-02 11:00:00', 1200, 250000),
-(1, '2024-12-03 11:30:00', 950, 210000),
--- Add more unique dates for each collection_id...
+        } catch (Exception e) {
+            logger.error("Failed to process device {}: {}", device.getDeviceIP(), e.getMessage());
+            if ("Nexus 1450".equals(device.getModel())) {
+                sendLovNotification(device.getDeviceIP());
+            }
+        }
+        return null;
+    }
 
-3. Check for Existing Records
+    private String readSampleData(DeviceInfo device) throws Exception {
+        String deviceType = device.getModel().replace("Nexus ", "").trim();
+        String filePath = config.getSampleDataPaths().get(deviceType);
+        return new String(Files.readAllBytes(Paths.get(filePath)));
+    }
 
-To prevent the error from happening, you can also check if a record exists for a given collection_id and collection_date before inserting. If the record already exists, update it instead of inserting new data.
+    private String fetchDataFromDevice(DeviceInfo device) throws Exception {
+        String deviceType = device.getModel().replace("Nexus ", "").trim();
+        String url = config.getApiEndpoints().get(deviceType).replace("{siteIP}", device.getDeviceIP());
 
-For example, you can use a SELECT query to check if a record exists:
+        return retryTemplate.execute(context -> restTemplate.getForObject(url, String.class));
+    }
 
--- Check if the record already exists
-SELECT * FROM ucsp_alarm_metrics
-WHERE collection_id = 1 AND collection_date = '2024-12-01 10:30:00';
+    private HttpEntity<String> getHttpEntity() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        return new HttpEntity<>(createRequestPayload(Constants.REQUEST_BODY_1450), headers);
+    }
 
-If the record exists, update it; otherwise, insert a new one.
+    private String createRequestPayload(String[] chans) {
+        try {
+            return new ObjectMapper().writeValueAsString(Map.of("chans", chans));
+        } catch (Exception e) {
+            logger.error("Error creating JSON request payload", e);
+            return null;
+        }
+    }
 
+    // Correct device type handling: parsing Nexus 1250, 1450, and 1500
+    private NexusParser getParser(String deviceType) {
+        return switch (deviceType) {
+            case "1250" -> new Nexus1250Parser();  // Parse Nexus 1250 (XML format)
+            case "1450" -> new Nexus1450Parser();  // Parse Nexus 1450 (JSON format)
+            case "1500" -> new Nexus1500Parser();  // Parse Nexus 1500 (XML format)
+            default -> throw new IllegalArgumentException("Unsupported device type: " + deviceType);
+        };
+    }
 
----
+    private void validateData(NexusData data) throws Exception {
+        if (data == null || data.getDeviceName() == null || data.getDeviceName().trim().isEmpty()) {
+            throw new Exception("Invalid Nexus data: missing device name");
+        }
+    }
 
-Summary of Solutions:
+    private void publishData(NexusData data, String deviceIp) throws Exception {
+        String jsonData = new ObjectMapper().writeValueAsString(data);
+        pulsarPublisherService.publishMessage(jsonData);
+        logger.info("Published data for device: {}", deviceIp);
+    }
 
-1. Use UPDATE to modify existing data if it already exists for the given collection_id and collection_date.
-
-
-2. Ensure collection_date is unique when inserting new records.
-
-
-3. Check for existing records before performing an INSERT to avoid duplicate entries.
-
-
-
-If you'd like, I can help you craft the SQL based on your exact requirements. Let me know what you'd like to do next!
-
+    private void sendLovNotification(String deviceIP) {
+        String lovMessage = String.format("{\"event\": \"LOV\", \"device\": \"%s\", \"status\": \"unreachable\"}", deviceIP);
+        try {
+            pulsarPublisherService.publishMessage(lovMessage);
+            logger.info("LOV notification sent for device {}", deviceIP);
+        } catch (Exception e) {
+            logger.error("Failed to send LOV notification: {}", e.getMessage());
+        }
+    }
+}
