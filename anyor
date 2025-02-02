@@ -1,39 +1,69 @@
-[2025-02-02 20:41:56,362 UTC] [WARN ] main org.springframework.boot.web.servlet.context.AnnotationConfigServletWebServerApplicationContext - Exception encountered during context initialization - cancelling refresh attempt: org.springframework.beans.factory.BeanCreationException: Error creating bean with name 'pulsarConsumerService': Invocation of init method failed
-[2025-02-02 20:41:56,365 UTC] [INFO ] main org.apache.catalina.core.StandardService - Stopping service [Tomcat]
-[2025-02-02 20:41:56,374 UTC] [INFO ] main org.springframework.boot.autoconfigure.logging.ConditionEvaluationReportLogger - 
+package com.verizon.ucs.service.pulsar;
 
-Error starting ApplicationContext. To display the condition evaluation report re-run your application with 'debug' enabled.
-[2025-02-02 20:41:56,391 UTC] [ERROR] main org.springframework.boot.SpringApplication - Application run failed
-org.springframework.beans.factory.BeanCreationException: Error creating bean with name 'pulsarConsumerService': Invocation of init method failed
-	at org.springframework.beans.factory.annotation.InitDestroyAnnotationBeanPostProcessor.postProcessBeforeInitialization(InitDestroyAnnotationBeanPostProcessor.java:222)
-	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.applyBeanPostProcessorsBeforeInitialization(AbstractAutowireCapableBeanFactory.java:422)
-	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.initializeBean(AbstractAutowireCapableBeanFactory.java:1798)
-	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.doCreateBean(AbstractAutowireCapableBeanFactory.java:600)
-	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.createBean(AbstractAutowireCapableBeanFactory.java:522)
-	at org.springframework.beans.factory.support.AbstractBeanFactory.lambda$doGetBean$0(AbstractBeanFactory.java:337)
-	at org.springframework.beans.factory.support.DefaultSingletonBeanRegistry.getSingleton(DefaultSingletonBeanRegistry.java:234)
-	at org.springframework.beans.factory.support.AbstractBeanFactory.doGetBean(AbstractBeanFactory.java:335)
-	at org.springframework.beans.factory.support.AbstractBeanFactory.getBean(AbstractBeanFactory.java:200)
-	at org.springframework.beans.factory.support.DefaultListableBeanFactory.preInstantiateSingletons(DefaultListableBeanFactory.java:975)
-	at org.springframework.context.support.AbstractApplicationContext.finishBeanFactoryInitialization(AbstractApplicationContext.java:971)
-	at org.springframework.context.support.AbstractApplicationContext.refresh(AbstractApplicationContext.java:625)
-	at org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext.refresh(ServletWebServerApplicationContext.java:146)
-	at org.springframework.boot.SpringApplication.refresh(SpringApplication.java:754)
-	at org.springframework.boot.SpringApplication.refreshContext(SpringApplication.java:456)
-	at org.springframework.boot.SpringApplication.run(SpringApplication.java:335)
-	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1363)
-	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1352)
-	at com.verizon.ucs.UCSApplication.main(UCSApplication.java:13)
-Caused by: java.lang.ClassCastException: class org.apache.pulsar.client.impl.PulsarClientImpl cannot be cast to class org.apache.pulsar.client.api.PulsarClient (org.apache.pulsar.client.impl.PulsarClientImpl and org.apache.pulsar.client.api.PulsarClient are in unnamed module of loader 'app')
-	at com.verizon.ucs.service.pulsar.PulsarConsumerService.init(PulsarConsumerService.java:34)
-	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
-	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)
-	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
-	at java.base/java.lang.reflect.Method.invoke(Method.java:568)
-	at org.springframework.beans.factory.annotation.InitDestroyAnnotationBeanPostProcessor$LifecycleMethod.invoke(InitDestroyAnnotationBeanPostProcessor.java:457)
-	at org.springframework.beans.factory.annotation.InitDestroyAnnotationBeanPostProcessor$LifecycleMetadata.invokeInitMethods(InitDestroyAnnotationBeanPostProcessor.java:401)
-	at org.springframework.beans.factory.annotation.InitDestroyAnnotationBeanPostProcessor.postProcessBeforeInitialization(InitDestroyAnnotationBeanPostProcessor.java:219)
-	... 18 common frames omitted
+import com.verizon.ucs.config.VMBProperties;
+import org.apache.pulsar.client.api.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
 
+import javax.annotation.PostConstruct;
 
-Getting this error please resolve it
+@Service
+public class PulsarConsumerService {
+    private static final Logger logger = LoggerFactory.getLogger(PulsarConsumerService.class);
+
+    @Autowired
+    private VMBProperties properties;
+
+    private PulsarClient pulsarClient;
+    private Consumer<byte[]> consumer;
+
+    @PostConstruct
+    public void init() {
+        try {
+            logger.info("Initializing Pulsar Consumer for topic: {}", properties.getTopicName());
+
+            // Create PulsarClient without incorrect casting
+            pulsarClient = PulsarClient.builder()
+                    .serviceUrl(properties.getServiceUrl())
+                    .tlsTrustCertsFilePath(properties.getTlsTrustCertsFile())
+                    .authentication(AuthenticationFactory.TLS(properties.getTlsCertFile(), properties.getTlsKeyFile())) 
+                    .enableTls(true)
+                    .build();
+
+            consumer = pulsarClient.newConsumer()
+                    .topic(properties.getTopicName())
+                    .subscriptionName("nexus-subscription")
+                    .subscriptionType(SubscriptionType.Shared)
+                    .messageListener((c, msg) -> {
+                        try {
+                            String receivedMessage = new String(msg.getData());
+                            logger.info("Received Pulsar message: {}", receivedMessage);
+                            c.acknowledge(msg);
+                        } catch (Exception e) {
+                            logger.error("Failed to process message", e);
+                            c.negativeAcknowledge(msg);
+                        }
+                    })
+                    .subscribe();
+
+            logger.info("Pulsar Consumer started successfully.");
+        } catch (PulsarClientException e) {
+            logger.error("Failed to initialize Pulsar Consumer", e);
+        }
+    }
+
+    public void close() {
+        try {
+            if (consumer != null) {
+                consumer.close();
+            }
+            if (pulsarClient != null) {
+                pulsarClient.close();
+            }
+        } catch (PulsarClientException e) {
+            logger.error("Error closing Pulsar resources", e);
+        }
+    }
+}
