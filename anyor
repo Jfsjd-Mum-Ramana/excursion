@@ -1,5 +1,115 @@
-[2025-02-02 20:47:16,529 UTC] [INFO ] pulsar-client-io-1-7 org.apache.pulsar.client.impl.ClientCnx - [id: 0xec870eab, L:/10.73.64.51:58586 ! R:vmb-aws-us-east-1-nonprod.verizon.com/10.118.225.9:6651] Disconnected
-[2025-02-02 20:47:16,529 UTC] [WARN ] pulsar-client-io-1-7 org.apache.pulsar.client.impl.ConnectionPool - [[id: 0xec870eab, L:/10.73.64.51:58586 ! R:vmb-aws-us-east-1-nonprod.verizon.com/10.118.225.9:6651]] Connection handshake failed: org.apache.pulsar.client.api.PulsarClientException: Connection already closed
-[2025-02-02 20:47:16,924 UTC] [WARN ] pulsar-client-scheduled-38-1 org.apache.pulsar.client.impl.PulsarClientImpl - [topic: persistent://enmv/psc/nexus-meter] Could not get connection while getPartitionedTopicMetadata -- Will try again in 379 ms
-[2025-02-02 20:47:17,195 UTC] [INFO ] pulsar-client-io-1-9 org.apache.pulsar.client.impl.ConnectionPool - [[id: 0xe97a4ef6, L:/10.73.64.51:58587 - R:vmb-aws-us-east-1-nonprod.verizon.com/10.118.225.9:6651]] Connected to server
-[2025-02-02 20:47:17,732 UTC] [WARN ] pulsar-client-io-1-9 org.apache.pulsar.client.impl.ClientCnx - [vmb-aws-us-east-1-nonprod.verizon.com/10.118.225.9:6651] Got exception org.apache.pulsar.shade.io.netty.handler.codec.DecoderException: org.apache.pulsar.shade.io.netty.handler.ssl.ReferenceCountedOpenSslEngine$OpenSslException: error:10000415:SSL routines:OPENSSL_internal:SSLV3_ALERT_CERTIFICATE_EXPIRED
+pulsar+ssl://vmb-aws-us-east-1-nonprod.verizon.com:6651
+[2025-02-02 21:08:33,116 UTC] [ERROR] pool-2-thread-3 com.verizon.ucs.service.NexusService - Failed to process device 10.219.32.79: Unsupported device type: Nexus 1250
+[2025-02-02 21:08:33,336 UTC] [ERROR] pool-2-thread-1 com.verizon.ucs.service.NexusService - Failed to send LOV notification: class org.apache.pulsar.client.impl.PulsarClientImpl cannot be cast to class org.apache.pulsar.client.api.PulsarClient (org.apache.pulsar.client.impl.PulsarClientImpl and org.apache.pulsar.client.api.PulsarClient are in unnamed module of loader 'app')
+[2025-02-02 21:08:33,337 UTC] [ERROR] pool-2-thread-2 com.verizon.ucs.service.NexusService - Failed to send LOV notification: class org.apache.pulsar.client.impl.PulsarClientImpl cannot be cast to class org.apache.pulsar.client.api.PulsarClient (org.apache.pulsar.client.impl.PulsarClientImpl and org.apache.pulsar.client.api.PulsarClient are in unnamed module of loader 'app')
+[2025-02-02 21:08:35,252 UTC] [ERROR] pool-2-thread-1 com.verizon.ucs.service.NexusService - Failed to process device 10.193.40.75: Unsupported device type: Nexus 1500
+[2025-02-02 21:08:40,267 UTC] [ERROR] pool-2-thread-3 com.verizon.ucs.service.NexusService - Failed to process device 10.219.32.76: Unsupported device type: Nexus 1250
+
+
+Please resolve this error here this is the old service file 
+package com.verizon.ucs.service;
+
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.Map;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.retry.support.RetryTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.verizon.ucs.config.Constants;
+import com.verizon.ucs.config.NexusConfig;
+import com.verizon.ucs.model.DeviceInfo;
+import com.verizon.ucs.model.NexusData;
+import com.verizon.ucs.parser.Nexus1250Parser;
+import com.verizon.ucs.parser.Nexus1450Parser;
+import com.verizon.ucs.parser.NexusParser;
+
+@Service
+public class NexusService {
+    private static final Logger logger = LoggerFactory.getLogger(NexusService.class);
+
+    @Autowired
+    private NexusConfig config;
+
+    @Autowired
+    private RestTemplate restTemplate;
+
+    @Autowired
+    private RetryTemplate retryTemplate;
+
+    @Autowired
+    private NormaliseReactorService normaliseReactorService;
+
+    public NexusData getNexusData(DeviceInfo device) throws Exception {
+        String response;
+        String deviceType = device.getModel().replace("Nexus ", "").trim();
+
+        if (config.isUseSampleData()) {
+            response = new String(Files.readAllBytes(Paths.get(config.getSampleDataPaths().get(deviceType))));
+        } else {
+            response = fetchDataFromDevice(deviceType, device.getDeviceIP());
+        }
+
+        NexusParser parser = getParser(deviceType);
+        NexusData data = parser.parse(response);
+        validateData(data);
+
+        logger.info("Publishing data for device: {}", device.getDeviceIP());
+        normaliseReactorService.handleAndPublishData(data, device.getDeviceIP());
+        return data;
+    }
+
+    public String fetchDataFromDevice(String deviceType, String deviceIP) throws Exception {
+        return retryTemplate.execute(context -> {
+            String url = config.getApiEndpoints().get(deviceType).replace("{siteIP}", deviceIP);
+            logger.info("Fetching data from {} at IP: {}", deviceType, deviceIP);
+
+            return switch (deviceType) {
+                case "1250", "1500" -> restTemplate.getForObject(url, String.class);
+                case "1450" -> restTemplate.postForObject(url, getHttpEntity(), String.class);
+                default -> throw new IllegalArgumentException("Unsupported device type: " + deviceType);
+            };
+        }, context -> {
+            logger.error("All retry attempts failed for device {}", deviceIP);
+            return "Recovery response";
+        });
+    }
+
+    private HttpEntity<String> getHttpEntity() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        return new HttpEntity<>(createRequestPayload(Constants.REQUEST_BODY_1450), headers);
+    }
+
+    private String createRequestPayload(String[] chans) {
+        try {
+            return new ObjectMapper().writeValueAsString(Map.of("chans", chans));
+        } catch (Exception e) {
+            logger.error("Error creating JSON request payload", e);
+            return null;
+        }
+    }
+
+    private NexusParser getParser(String deviceType) {
+        return switch (deviceType) {
+            case "1250" -> new Nexus1250Parser();
+            case "1450" -> new Nexus1450Parser();
+            case "1500" -> new Nexus1250Parser();
+            default -> throw new IllegalArgumentException("Unsupported device type: " + deviceType);
+        };
+    }
+
+    private void validateData(NexusData data) throws Exception {
+        if (data == null || data.getDeviceName() == null || data.getDeviceName().trim().isEmpty()) {
+            throw new Exception("Invalid Nexus data: missing device name");
+        }
+    }
+}
