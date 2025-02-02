@@ -1,30 +1,285 @@
--Tie","ucgTimestamp":"2025-02-02T20:06:59.509+05:30","ucgTopic":"persistent://enmv/psc/nexus-meter"}
-[2025-02-02 20:06:59,511 UTC] [INFO ] pool-2-thread-2 com.verizon.ucs.scheduler.NexusScheduler - In Publisher !!! VMBProperties [serviceUrl=pulsar+ssl://vmb-aws-us-east-1-nonprod.verizon.com:6651, topicName=persistent://enmv/psc/nexus-meter, tlsCertFile=src/main/resources/vmb-ple-certs/enmv.cert.pem, tlsKeyFile=src/main/resources/vmb-ple-certs/enmv.key-pk8.pem, tlsTrustCertsFile=src/main/resources/vmb-ple-certs/ca.cert.pem]
-[2025-02-02 20:06:59,545 UTC] [INFO ] pool-2-thread-2 com.verizon.ucs.scheduler.NexusScheduler - Exception while processing device: DeviceData [deviceName=Duff Dr - B-Tie, deviceIP=10.219.32.79, pollerCluster=null, model=Nexus 1250, frequency=null] , {}
-java.lang.ClassCastException: class org.apache.pulsar.client.impl.PulsarClientImpl cannot be cast to class org.apache.pulsar.client.api.PulsarClient (org.apache.pulsar.client.impl.PulsarClientImpl and org.apache.pulsar.client.api.PulsarClient are in unnamed module of loader 'app')
-	at com.verizon.ucs.service.pulsar.PulsarPublisherService.publishMessage(PulsarPublisherService.java:37)
-	at com.verizon.ucs.service.NormaliseReactorService.handleAndPublishData(NormaliseReactorService.java:61)
-	at com.verizon.ucs.service.NexusService.getNexusData(NexusService.java:61)
-	at com.verizon.ucs.scheduler.NexusScheduler.lambda$scheduleTask$0(NexusScheduler.java:42)
-	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539)
-	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
-	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
-	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
-	at java.base/java.lang.Thread.run(Thread.java:833)
-[2025-02-02 20:07:03,093 UTC] [INFO ] pool-2-thread-3 com.verizon.ucs.service.NexusService - Publishing data for device: 10.219.32.76
-[2025-02-02 20:07:03,095 UTC] [INFO ] pool-2-thread-3 com.verizon.ucs.service.NormaliseReactorService - UCGRAW JSON DATA: {"firmware":"","deviceName":"Duff Dr - B-Tie","deviceType":"Nexus 1250","van":"0.00","vbn":"0.00","vcn":"0.00","vab":"484.35","vbc":"487.60","vca":"487.04","ia":"0.00","ib":"0.00","ic":"0.00","freq":"60.00","pf":"+1.000","watt":"0.00","wattHr":"0 k","serial":null,"mac":null}
-[2025-02-02 20:07:03,095 UTC] [INFO ] pool-2-thread-3 com.verizon.ucs.service.NormaliseReactorService - UCG JSON DATA: {"ucgSource":"10.219.32.76","ucgRawData":"{\"firmware\":\"\",\"deviceName\":\"Duff Dr - B-Tie\",\"deviceType\":\"Nexus 1250\",\"van\":\"0.00\",\"vbn\":\"0.00\",\"vcn\":\"0.00\",\"vab\":\"484.35\",\"vbc\":\"487.60\",\"vca\":\"487.04\",\"ia\":\"0.00\",\"ib\":\"0.00\",\"ic\":\"0.00\",\"freq\":\"60.00\",\"pf\":\"+1.000\",\"watt\":\"0.00\",\"wattHr\":\"0 k\",\"serial\":null,\"mac\":null}","ucgType":"LIVE","ucgDeviceName":"Duff Dr - B-Tie","ucgTimestamp":"2025-02-02T20:07:03.094+05:30","ucgTopic":"persistent://enmv/psc/nexus-meter"}
-[2025-02-02 20:07:03,096 UTC] [INFO ] pool-2-thread-3 com.verizon.ucs.scheduler.NexusScheduler - In Publisher !!! VMBProperties [serviceUrl=pulsar+ssl://vmb-aws-us-east-1-nonprod.verizon.com:6651, topicName=persistent://enmv/psc/nexus-meter, tlsCertFile=src/main/resources/vmb-ple-certs/enmv.cert.pem, tlsKeyFile=src/main/resources/vmb-ple-certs/enmv.key-pk8.pem, tlsTrustCertsFile=src/main/resources/vmb-ple-certs/ca.cert.pem]
-[2025-02-02 20:07:03,128 UTC] [INFO ] pool-2-thread-3 com.verizon.ucs.scheduler.NexusScheduler - Exception while processing device: DeviceData [deviceName=Duff Dr - C-Tie, deviceIP=10.219.32.76, pollerCluster=null, model=Nexus 1250, frequency=null] , {}
-java.lang.ClassCastException: class org.apache.pulsar.client.impl.PulsarClientImpl cannot be cast to class org.apache.pulsar.client.api.PulsarClient (org.apache.pulsar.client.impl.PulsarClientImpl and org.apache.pulsar.client.api.PulsarClient are in unnamed module of loader 'app')
-	at com.verizon.ucs.service.pulsar.PulsarPublisherService.publishMessage(PulsarPublisherService.java:37)
-	at com.verizon.ucs.service.NormaliseReactorService.handleAndPublishData(NormaliseReactorService.java:61)
-	at com.verizon.ucs.service.NexusService.getNexusData(NexusService.java:61)
-	at com.verizon.ucs.scheduler.NexusScheduler.lambda$scheduleTask$0(NexusScheduler.java:42)
-	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539)
-	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
-	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
-	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
-	at java.base/java.lang.Thread.run(Thread.java:833)
+Fixing ClassCastException and Internal Server Error
 
-And aso while accesing the host http://localhost:8080/api/nexus/data/1500 again showing internal server error pls resolve 
+Issue 1: ClassCastException in PulsarPublisherService
+
+Error:
+
+java.lang.ClassCastException: class org.apache.pulsar.client.impl.PulsarClientImpl 
+cannot be cast to class org.apache.pulsar.client.api.PulsarClient
+
+Cause:
+
+The issue occurs because the PulsarClient.builder().build() method already returns a PulsarClient instance.
+
+An explicit cast is incorrectly applied.
+
+
+Fix:
+Modify PulsarPublisherService.java to remove the incorrect cast.
+
+Updated PulsarPublisherService.java
+
+package com.verizon.ucs.service.pulsar;
+
+import com.verizon.ucs.config.VMBProperties;
+import org.apache.pulsar.client.api.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.util.HashMap;
+import java.util.Map;
+
+@Service
+public class PulsarPublisherService {
+    private static final Logger logger = LoggerFactory.getLogger(PulsarPublisherService.class);
+
+    @Autowired
+    private VMBProperties properties;
+
+    private PulsarClient pulsarClient;
+    private Producer<byte[]> producer;
+
+    public void init() throws PulsarClientException {
+        logger.info("Initializing Pulsar Client with URL: {}", properties.getServiceUrl());
+
+        Map<String, String> authParams = new HashMap<>();
+        authParams.put("tlsCertFile", properties.getTlsCertFile());
+        authParams.put("tlsKeyFile", properties.getTlsKeyFile());
+
+        pulsarClient = PulsarClient.builder()
+                .serviceUrl(properties.getServiceUrl())
+                .tlsTrustCertsFilePath(properties.getTlsTrustCertsFile())
+                .authentication("org.apache.pulsar.client.impl.auth.AuthenticationTls", authParams)
+                .enableTls(true)
+                .build();
+
+        producer = pulsarClient.newProducer()
+                .topic(properties.getTopicName())
+                .create();
+
+        logger.info("Pulsar Producer initialized successfully.");
+    }
+
+    public void publishMessage(String message) {
+        try {
+            if (pulsarClient == null || producer == null) {
+                init(); // Ensure client and producer are initialized
+            }
+
+            producer.send(message.getBytes());
+            logger.info("Message published successfully: {}", message);
+        } catch (PulsarClientException e) {
+            logger.error("Failed to publish message: {}", e.getMessage());
+        }
+    }
+
+    public void close() {
+        try {
+            if (producer != null) {
+                producer.close();
+            }
+            if (pulsarClient != null) {
+                pulsarClient.close();
+            }
+        } catch (PulsarClientException e) {
+            logger.error("Error closing Pulsar resources: {}", e.getMessage());
+        }
+    }
+}
+
+
+---
+
+Issue 2: Internal Server Error for /api/nexus/data/1500
+
+Cause:
+
+The fetchDataFromDevice() method in NexusService.java may be handling API failures incorrectly.
+
+Possible misconfiguration in application.yaml.
+
+
+Step 1: Verify Configuration
+
+Check application.yaml to ensure 1500 is properly configured:
+
+nexus:
+  api-endpoints:
+    1500: http://{siteIP}/I/pdata.xml
+
+If {siteIP} is not replaced correctly, it could be causing an invalid API request.
+
+Step 2: Improve Error Handling in fetchDataFromDevice()
+
+Updated NexusService.java
+
+package com.verizon.ucs.service;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.verizon.ucs.config.NexusConfig;
+import com.verizon.ucs.model.DeviceInfo;
+import com.verizon.ucs.service.pulsar.PulsarPublisherService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.retry.support.RetryTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.ResourceAccessException;
+
+@Service
+public class NexusService {
+    private static final Logger logger = LoggerFactory.getLogger(NexusService.class);
+
+    @Autowired
+    private NexusConfig config;
+
+    @Autowired
+    private RestTemplate restTemplate;
+
+    @Autowired
+    private RetryTemplate retryTemplate;
+
+    @Autowired
+    private PulsarPublisherService pulsarPublisherService;
+
+    public void getNexusData(DeviceInfo device) {
+        try {
+            String response = fetchDataFromDevice(device);
+            logger.info("Data received from Nexus {}: {}", device.getModel(), response);
+        } catch (Exception e) {
+            logger.error("Failed to retrieve data from device {}: {}", device.getDeviceIP(), e.getMessage());
+            if ("Nexus 1450".equals(device.getModel())) {
+                sendLovNotification(device.getDeviceIP());
+            }
+        }
+    }
+
+    private String fetchDataFromDevice(DeviceInfo device) throws Exception {
+        String deviceType = device.getModel().replace("Nexus ", "").trim();
+        String url = config.getApiEndpoints().get(deviceType).replace("{siteIP}", device.getDeviceIP());
+
+        return retryTemplate.execute(context -> {
+            try {
+                logger.info("Fetching data from device {} at URL {}", deviceType, url);
+                return restTemplate.getForObject(url, String.class);
+            } catch (HttpClientErrorException e) {
+                logger.error("HTTP error while accessing {}: {}", url, e.getMessage());
+                throw e;
+            } catch (ResourceAccessException e) {
+                logger.error("Timeout error while connecting to {}: {}", url, e.getMessage());
+                throw e;
+            } catch (Exception e) {
+                logger.error("Unexpected error: {}", e.getMessage());
+                throw e;
+            }
+        });
+    }
+
+    private void sendLovNotification(String deviceIP) {
+        String lovMessage = String.format("{\"event\": \"LOV\", \"device\": \"%s\", \"status\": \"unreachable\"}", deviceIP);
+        try {
+            pulsarPublisherService.publishMessage(lovMessage);
+            logger.info("LOV notification sent for device {}", deviceIP);
+        } catch (Exception e) {
+            logger.error("Failed to send LOV notification: {}", e.getMessage());
+        }
+    }
+}
+
+
+---
+
+Summary of Fixes
+
+✅ Fixed ClassCastException: Removed incorrect casting and properly initialized PulsarClient.
+✅ Handled Internal Server Error: Improved error handling in fetchDataFromDevice().
+✅ Logging Improvements: Added detailed logs for debugging API failures.
+✅ Timeout Handling: Catches ResourceAccessException for better handling of network issues.
+
+Try running the updated code and let me know if you encounter any further issues!
+
+
+
+
+To use Apache Pulsar in your Spring Boot application, you need to add the following dependencies in your pom.xml:
+
+Maven Dependencies
+
+<dependencies>
+    <!-- Apache Pulsar Client -->
+    <dependency>
+        <groupId>org.apache.pulsar</groupId>
+        <artifactId>pulsar-client</artifactId>
+        <version>3.1.0</version>
+    </dependency>
+
+    <!-- Pulsar TLS Authentication -->
+    <dependency>
+        <groupId>org.apache.pulsar</groupId>
+        <artifactId>pulsar-client-admin</artifactId>
+        <version>3.1.0</version>
+    </dependency>
+
+    <!-- SLF4J for Logging -->
+    <dependency>
+        <groupId>org.slf4j</groupId>
+        <artifactId>slf4j-api</artifactId>
+        <version>2.0.7</version>
+    </dependency>
+
+    <!-- Logback for Logging Implementation -->
+    <dependency>
+        <groupId>ch.qos.logback</groupId>
+        <artifactId>logback-classic</artifactId>
+        <version>1.4.7</version>
+    </dependency>
+
+    <!-- Spring Boot Starter Web -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+
+    <!-- Spring Boot Starter for Dependency Injection -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter</artifactId>
+    </dependency>
+</dependencies>
+
+Explanation of Dependencies
+
+1. pulsar-client → Provides Apache Pulsar Client for sending messages.
+
+
+2. pulsar-client-admin → Enables Pulsar TLS authentication support.
+
+
+3. slf4j-api & logback-classic → Required for logging messages properly.
+
+
+4. spring-boot-starter-web → Enables REST API support in Spring Boot.
+
+
+5. spring-boot-starter → Provides dependency injection and other essential Spring functionalities.
+
+
+
+Steps to Apply Changes
+
+1. Add the dependencies to your pom.xml.
+
+
+2. Run mvn clean install to download and resolve dependencies.
+
+
+3. Restart your Spring Boot application.
+
+
+
+This should properly configure Apache Pulsar for your Spring Boot project. Let me know if you face any issues!
+
