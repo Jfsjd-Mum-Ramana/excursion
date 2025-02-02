@@ -21,9 +21,7 @@ import com.verizon.ucs.model.DeviceInfo;
 import com.verizon.ucs.model.NexusData;
 import com.verizon.ucs.parser.Nexus1250Parser;
 import com.verizon.ucs.parser.Nexus1450Parser;
-import com.verizon.ucs.parser.Nexus1500Parser;
 import com.verizon.ucs.parser.NexusParser;
-import com.verizon.ucs.service.pulsar.PulsarPublisherService;
 
 @Service
 public class NexusService {
@@ -39,36 +37,28 @@ public class NexusService {
     private RetryTemplate retryTemplate;
 
     @Autowired
-    private PulsarPublisherService pulsarPublisherService;
+    private NormaliseReactorService normaliseReactorService;
 
     public NexusData getNexusData(DeviceInfo device) throws Exception {
         String response;
         String deviceType = device.getModel().replace("Nexus ", "").trim();
 
-        // Check if the device type is supported
-        NexusParser parser = getParser(deviceType);
-        if (parser == null) {
-            throw new IllegalArgumentException("Unsupported device type: " + deviceType);
-        }
-
-        // Read from sample data if enabled
         if (config.isUseSampleData()) {
-            String filePath = config.getSampleDataPaths().get(deviceType);
-            response = Files.readString(Paths.get(filePath));
+            response = new String(Files.readAllBytes(Paths.get(config.getSampleDataPaths().get(deviceType))));
         } else {
             response = fetchDataFromDevice(deviceType, device.getDeviceIP());
         }
 
-        // Parse data
+        NexusParser parser = getParser(deviceType);
         NexusData data = parser.parse(response);
         validateData(data);
 
-        // Publish data
-        publishData(data, device.getDeviceIP());
+        logger.info("Publishing data for device: {}", device.getDeviceIP());
+        normaliseReactorService.handleAndPublishData(data, device.getDeviceIP());
         return data;
     }
 
-    private String fetchDataFromDevice(String deviceType, String deviceIP) throws Exception {
+    public String fetchDataFromDevice(String deviceType, String deviceIP) throws Exception {
         return retryTemplate.execute(context -> {
             String url = config.getApiEndpoints().get(deviceType).replace("{siteIP}", deviceIP);
             logger.info("Fetching data from {} at IP: {}", deviceType, deviceIP);
@@ -80,8 +70,7 @@ public class NexusService {
             };
         }, context -> {
             logger.error("All retry attempts failed for device {}", deviceIP);
-            sendLovNotification(deviceIP);
-            return null;
+            return "Recovery response";
         });
     }
 
@@ -104,30 +93,14 @@ public class NexusService {
         return switch (deviceType) {
             case "1250" -> new Nexus1250Parser();
             case "1450" -> new Nexus1450Parser();
-            case "1500" -> new Nexus1500Parser();
-            default -> null;
+            case "1500" -> new Nexus1250Parser();
+            default -> throw new IllegalArgumentException("Unsupported device type: " + deviceType);
         };
     }
 
     private void validateData(NexusData data) throws Exception {
         if (data == null || data.getDeviceName() == null || data.getDeviceName().trim().isEmpty()) {
             throw new Exception("Invalid Nexus data: missing device name");
-        }
-    }
-
-    private void publishData(NexusData data, String deviceIp) throws Exception {
-        String jsonData = new ObjectMapper().writeValueAsString(data);
-        pulsarPublisherService.publishMessage(jsonData);
-        logger.info("Published data for device: {}", deviceIp);
-    }
-
-    private void sendLovNotification(String deviceIP) {
-        try {
-            String lovMessage = String.format("{\"event\": \"LOV\", \"device\": \"%s\", \"status\": \"unreachable\"}", deviceIP);
-            pulsarPublisherService.publishMessage(lovMessage);
-            logger.info("LOV notification sent for device {}", deviceIP);
-        } catch (Exception e) {
-            logger.error("Failed to send LOV notification", e);
         }
     }
 }
