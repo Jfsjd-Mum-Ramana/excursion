@@ -1,424 +1,138 @@
-availableAlarmCollectionTypes 
-{
-    availableAlarmCollectionTypes {
-        typeId
-        type
-    } 
-}
-6. alarmMetrics 
-{
-  alarmMetrics(alarmMetricsRequest:{
-    collectionType:"MCP",
-    fromDate:"2024-12-1",
-    toDate:"2024-12-3"
-  }){
-    date
-    totalSizeOfFilesBytes
-    totalNumberOfFiles
-    alarmMetricsDrillDownList {
-      time
-      sizeOfFilesBytes
-      numberOfFiles
-    }
-  }
-}
+package com.verizon.ucs.service;
 
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.Map;
 
-please use this two API's only and remove other API in the code and theh code is similar to the below code means everything the orientation and the size of grids and the spacing also please make sure the graph is similar to the below code and remove other things same as the below code please do not add or change anything.
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.retry.support.RetryTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
 
-import React, { useEffect, useState } from 'react';
-import axios from 'axios';
-import { __UCS_GRAPHQL_URL__ } from '../../api-endpoints';
-import { UNIQUE_UGS_SOURCE_QUERY, UNIQUE_PROJECT_QUERY, GET_DAILY_TRENDS_DATA } from '../../graphQL/graphqlQueries';
-import LoadingButton from "@mui/lab/LoadingButton";
-import { LineChart } from '@mui/x-charts/LineChart';
-import { AxisConfig, ChartsXAxisProps } from '@mui/x-charts';
-import { Box, FormControl, Grid, InputLabel, MenuItem, Select, SelectChangeEvent, TextField, Autocomplete, Button, Breadcrumbs, Link, Typography } from '@mui/material';
-import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import dayjs, { Dayjs } from 'dayjs';
-import { DatePicker } from "@mui/x-date-pickers/DatePicker";
-import { useTheme } from "@mui/material/styles";
-import { useSnackbar } from '../../utils/SnackbarContext';
-import NavigateNextIcon from '@mui/icons-material/NavigateNext';
-import HomeIcon from '@mui/icons-material/Home';
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.verizon.ucs.config.Constants;
+import com.verizon.ucs.config.NexusConfig;
+import com.verizon.ucs.model.DeviceInfo;
+import com.verizon.ucs.model.NexusData;
+import com.verizon.ucs.parser.Nexus1250Parser;
+import com.verizon.ucs.parser.Nexus1450Parser;
+import com.verizon.ucs.parser.Nexus1500Parser;
+import com.verizon.ucs.parser.NexusParser;
+import com.verizon.ucs.service.pulsar.PulsarPublisherService;
 
-const generateLast10Dates = () => {
-    const dates = [];
-    for (let i = 0; i < 10; i++) {
-        dates.push(dayjs().subtract(i, 'day').format('YYYY-MM-DD'));
-    }
-    return dates;
-};
+@Service
+public class NexusService {
+    private static final Logger logger = LoggerFactory.getLogger(NexusService.class);
 
-interface DataPoint {
-    date: string;
-    totalNumberOfFiles: number;
-    totalSizeOfFilesBytes: number;
-    trendsDrillDownList: DetailedDataPoint[];
-}
+    @Autowired
+    private NexusConfig config;
 
-interface DetailedDataPoint {
-    time: string;
-    sizeOfFilesBytes: number;
-    numberOfFiles: number;
-}
+    @Autowired
+    private RestTemplate restTemplate;
 
-const chartHeight = 450;
-const childChartHeight = 410;
+    @Autowired
+    private RetryTemplate retryTemplate;
 
-const ParentChart = ({ data, onDrillDown, setIsChildChartDisplayed }: { data: DataPoint[], onDrillDown: (date: string) => void, setIsChildChartDisplayed: (value: boolean) => void }) => {
-    const theme = useTheme();
+    @Autowired
+    private PulsarPublisherService pulsarPublisherService;
 
-    const transformedData = data.map(item => ({
-        collectionDate: item.date,
-        totalNumberOfFiles: item.totalNumberOfFiles,
-        totalSizeOfFilesBytes: item.totalSizeOfFilesBytes,
-    }));
+    @Autowired
+    private NormaliseReactorService normaliseReactorService;
 
-    const lineChartParams = {
-        series: [
-            {
-                id: 'totalNumberOfFiles',
-                datakey: 'totalNumberOfFiles',
-                label: 'Number of Files',
-                data: transformedData.map(item => item.totalNumberOfFiles),
-            },
-            {
-                id: 'totalSizeOfFilesBytes',
-                datakey: 'totalSizeOfFilesBytes',
-                label: 'Size of Files (Bytes)',
-                data: transformedData.map(item => item.totalSizeOfFilesBytes),
-            }
-        ],
-        xAxis: [{
-            data: transformedData.map(item => item.collectionDate),
-            id: 'axis1',
-            dataKey: 'collectionDate',
-            scaleType: "point",
-            label: "Collected Date",
-            tickLabelStyle: {
-                angle: -25,
-                textAnchor: 'end',
-                fontSize: 10,
-            },
-            labelStyle: { transform: "translateY(30px)" },
-            tickPlacement: 'middle', tickLabelPlacement: 'middle',
-        } as AxisConfig<'point', string, ChartsXAxisProps>],
-        height: chartHeight,
-        margin: {
-            left: 60,
-            right: 10,
-            top: 20,
-            bottom: 80,
-        },
-        colors: theme.palette.distinctLightPalette
-    };
+    public NexusData getNexusData(DeviceInfo device) throws Exception {
+        String response;
+        String deviceType = device.getModel().replace("Nexus ", "").trim();
 
-    return (
-        <Box width="100%">
-            <LineChart
-                {...lineChartParams}
-                onAxisClick={(event, d) => {
-                    if (d && d.axisValue) {
-                        setIsChildChartDisplayed(true);
-                        onDrillDown(String(d.axisValue));
-                    } else {
-                        console.error('collectionDate not found in data point');
-                    }
-                }}
-            />
-        </Box>
-    );
-};
-
-const ChildChart = ({ date, data }: { date: string, data: DetailedDataPoint[] }) => {
-    const theme = useTheme();
-    const detailedLineChartsParams = {
-        series: [
-            {
-                id: 'numberOfFiles',
-                datakey: 'numberOfFiles',
-                label: 'Number of Files',
-                data: data.map(item => item.numberOfFiles)
-            },
-            {
-                id: 'sizeOfFilesBytes',
-                datakey: 'sizeOfFilesBytes',
-                label: 'Size of Files (Bytes)',
-                data: data.map(item => item.sizeOfFilesBytes)
-            }
-        ],
-        xAxis: [{
-            data: data.map(item => item.time),
-            id: 'axis2',
-            dataKey: 'time',
-            scaleType: "point",
-            label: "Collected Time on " + date,
-        } as AxisConfig<'point', string, ChartsXAxisProps>],
-        height: childChartHeight,
-        colors: theme.palette.distinctLightPalette
-    };
-
-    return (
-        <Box width="100%">
-            <LineChart {...detailedLineChartsParams} />
-        </Box>
-    );
-};
-
-const DailyTrend: React.FC = () => {
-    const theme = useTheme();
-    const [projectList, setProjectList] = useState<any[]>([]);
-    const [ucgSourceList, setUcgSourceList] = useState<{ id: number, name: string }[]>([]);
-    const [selectedProject, setSelectedProject] = useState<any>(null);
-    const [selectedUCGSource, setSelectedUCGSource] = useState<number>(0);
-    const [fromDate, setSelectedFromDate] = useState<Dayjs>(dayjs().subtract(1, 'month'));
-    const [toDate, setSelectedToDate] = useState<Dayjs | null>(dayjs());
-    const [loading, setLoading] = useState<boolean>(false);
-    const [ucgsourceLoading, setUcgsourceLoading] = useState<boolean>(false);
-    const [dataFetched, setDataFetched] = useState<boolean>(false);
-    const [responseData, setResponseData] = useState<DataPoint[]>([]);
-    const [viewStack, setViewStack] = useState<string[]>([]);
-    const [isChildChartDisplayed, setIsChildChartDisplayed] = useState(false);
-    const { showSnackbar } = useSnackbar();
-    const last10Dates = generateLast10Dates();
-
-    useEffect(() => {
-        const fetchProjectData = async () => {
-            try {
-                const projectResponse = await axios.post(__UCS_GRAPHQL_URL__, {
-                    query: UNIQUE_PROJECT_QUERY,
-                });
-                if (projectResponse.data?.data?.uniqueUCSPProjects && projectResponse.data.data.uniqueUCSPProjects.length > 0) {
-                    setProjectList(projectResponse.data.data.uniqueUCSPProjects);
-                }
-            } catch (error) {
-                showSnackbar('Error fetching project data!');
-                console.error('Error fetching project data', error);
-            }
-        };
-        fetchProjectData();
-    }, []);
-
-    const handleProjectChange = async (options: any) => {
-        setSelectedProject(options);
-        setUcgsourceLoading(true);
-        setSelectedUCGSource(0);
-        setUcgSourceList([]);
-        if (options && options.id) {
-            try {
-                const ucgSourcesResponse = await axios.post(__UCS_GRAPHQL_URL__, {
-                    query: UNIQUE_UGS_SOURCE_QUERY,
-                    variables: { projectId: options.id },
-                });
-                if (ucgSourcesResponse.data?.data?.uniqueUCGSourcesByProject && ucgSourcesResponse.data.data.uniqueUCGSourcesByProject.length > 0) {
-                    setUcgSourceList(ucgSourcesResponse.data.data.uniqueUCGSourcesByProject);
-                } else {
-                    showSnackbar('No UCGsource exists for this Project!');
-                }
-            } catch (error) {
-                showSnackbar('Error fetching UCGsource data!');
-                console.error('Error fetching UCG source:', error);
-            } finally {
-                setUcgsourceLoading(false);
-            }
+        if (config.isUseSampleData()) {
+            // Reading data from sample file
+            response = new String(Files.readAllBytes(Paths.get(config.getSampleDataPaths().get(deviceType))));
+        } else {
+            // Fetching real-time data from the device
+            response = fetchDataFromDevice(deviceType, device.getDeviceIP());
         }
-    };
 
-    const handleSelectChange = (setter: React.Dispatch<React.SetStateAction<number>>) => (
-        event: SelectChangeEvent<number>) => {
-        setter(event.target.value as number);
-    };
+        // Get the appropriate parser based on device type and parse the response
+        NexusParser parser = getParser(deviceType);
+        NexusData data = parser.parse(response);
 
-    const handleReset = () => {
-        setSelectedProject(null);
-        setSelectedUCGSource(0);
-        setSelectedFromDate(dayjs().subtract(1, 'month'));
-        setSelectedToDate(dayjs());
-        setResponseData([]);
-        setViewStack([]);
-        setIsChildChartDisplayed(false);
-        setDataFetched(false);
-    };
+        // Validate parsed data
+        validateData(data);
 
-    const handleFetchClick = async () => {
-        setLoading(true);
-        setResponseData([]);
-        const formattedFromDate = dayjs(fromDate).format('YYYY-MM-DD');
-        const formattedToDate = dayjs(toDate).format('YYYY-MM-DD');
+        // Publish the data to Pulsar
+        logger.info("Publishing data for device: {}", device.getDeviceIP());
+        normaliseReactorService.handleAndPublishData(data, device.getDeviceIP());
+        return data;
+    }
 
-        const data = {
-            ucgSourceID: selectedUCGSource,
-            fromDate: formattedFromDate,
-            toDate: formattedToDate
-        };
+    public String fetchDataFromDevice(String deviceType, String deviceIP) throws Exception {
+        return retryTemplate.execute(context -> {
+            String url = config.getApiEndpoints().get(deviceType).replace("{siteIP}", deviceIP);
+            logger.info("Fetching data from {} at IP: {}", deviceType, deviceIP);
 
+            // Handle different device types with respective HTTP requests
+            return switch (deviceType) {
+                case "1250", "1500" -> restTemplate.getForObject(url, String.class);
+                case "1450" -> restTemplate.postForObject(url, getHttpEntity(), String.class);
+                default -> throw new IllegalArgumentException("Unsupported device type: " + deviceType);
+            };
+        }, context -> {
+            logger.error("All retry attempts failed for device {}", deviceIP);
+            return "Recovery response";
+        });
+    }
+
+    private HttpEntity<String> getHttpEntity() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        return new HttpEntity<>(createRequestPayload(Constants.REQUEST_BODY_1450), headers);
+    }
+
+    private String createRequestPayload(String[] chans) {
         try {
-            const response = await axios.post(__UCS_GRAPHQL_URL__, {
-                query: GET_DAILY_TRENDS_DATA,
-                variables: data,
-            });
-
-            if (response.data?.data?.dailyTrends && response.data.data.dailyTrends.length > 0) {
-                let data = response.data.data.dailyTrends || [];
-                console.log(data);
-                setResponseData(data);
-            } else {
-                showSnackbar("No Data Found!");
-            }
-            setDataFetched(true);
-        } catch (error) {
-            showSnackbar("Error While fetching the Data from the Server");
-            console.error('Error fetching data', error);
-        } finally {
-            setLoading(false);
+            return new ObjectMapper().writeValueAsString(Map.of("chans", chans));
+        } catch (Exception e) {
+            logger.error("Error creating JSON request payload", e);
+            return null;
         }
-    };
+    }
 
-    const handleDrillDown = (date: string) => {
-        setViewStack([...viewStack, date]);
-    };
+    // Get the appropriate parser based on device type
+    private NexusParser getParser(String deviceType) {
+        return switch (deviceType) {
+            case "1250" -> new Nexus1250Parser();  // Parse Nexus 1250
+            case "1450" -> new Nexus1450Parser();  // Parse Nexus 1450
+            case "1500" -> new Nexus1500Parser();  // Parse Nexus 1500
+            default -> throw new IllegalArgumentException("Unsupported device type: " + deviceType);  // Invalid device type
+        };
+    }
 
-    const handleBreadcrumbClick = (index: number) => {
-        setViewStack(viewStack.slice(0, index + 1));
-    };
+    // Validate parsed data, ensuring it has the required fields
+    private void validateData(NexusData data) throws Exception {
+        if (data == null || data.getDeviceName() == null || data.getDeviceName().trim().isEmpty()) {
+            throw new Exception("Invalid Nexus data: missing device name");
+        }
+    }
 
-    const currentView = viewStack[viewStack.length - 1];
-    const currentData = responseData.find(item => item.date === currentView)?.trendsDrillDownList || [];
+    // Publish parsed data to Pulsar
+    private void publishData(NexusData data, String deviceIp) throws Exception {
+        String jsonData = new ObjectMapper().writeValueAsString(data);
+        pulsarPublisherService.publishMessage(jsonData);
+        logger.info("Published data for device: {}", deviceIp);
+    }
 
-
-    const isButtonDisabled = () => {
-        return !selectedProject || !selectedUCGSource || !fromDate || !toDate;
-    };
-
-    return (
-        <Box sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            boxSizing: 'border-box',
-        }}>
-            <Grid container spacing={4} alignItems="flex-end">
-                <Grid item xs={12} sm={6} md>
-                    <Autocomplete
-                        value={selectedProject}
-                        onChange={(e, options) => handleProjectChange(options)}
-                        loading={loading}
-                        disablePortal
-                        options={projectList}
-                        getOptionLabel={(option) => option.name}
-                        renderInput={(params: any) => <TextField {...params} label="Project" placeholder="Project Name" />}
-                    />
-                </Grid>
-                <Grid item xs={12} sm={6} md>
-                    <FormControl variant="outlined" sx={{ width: '100%', height: '100%' }}>
-                        <InputLabel id="select-outlined-label">UCG Source</InputLabel>
-                        <Select
-                            labelId="select-outlined-label"
-                            id="select-outlined"
-                            label="UCG Source"
-                            value={selectedUCGSource}
-                            onChange={(event) => handleSelectChange(setSelectedUCGSource)(event)}
-                        >
-                            {ucgsourceLoading ? (
-                                <MenuItem disabled>
-                                    Loading…
-                                </MenuItem>
-                            ) : (
-                                ucgSourceList?.map((source, i) => (
-                                    <MenuItem
-                                        key={source.id}
-                                        id="dropDown"
-                                        value={source.id}
-                                    >
-                                        {source.name}
-                                    </MenuItem>
-                                ))
-                            )}
-                        </Select>
-                    </FormControl>
-                </Grid>
-                <Grid item xs={12} sm={6} md>
-                    <LocalizationProvider dateAdapter={AdapterDayjs}>
-                        <DatePicker
-                            label="Start Date"
-                            sx={{ width: '100%', height: '100%' }}
-                            value={fromDate}
-                            onChange={(newValue: Dayjs | null) => {
-                                setSelectedFromDate(newValue || dayjs());
-                                if (newValue && toDate && newValue.isAfter(toDate)) {
-                                    setSelectedToDate(null);
-                                }
-                            }}
-                        />
-                    </LocalizationProvider>
-                </Grid>
-                <Grid item xs={12} sm={6} md>
-                    <LocalizationProvider dateAdapter={AdapterDayjs}>
-                        <DatePicker
-                            label="End Date"
-                            sx={{ width: '100%', height: '100%' }}
-                            value={toDate}
-                            minDate={fromDate}
-                            onChange={(newValue) => setSelectedToDate(newValue)}
-                        />
-                    </LocalizationProvider>
-                </Grid>
-                <Grid item xs={2} sm={2} md={2} sx={{ display: 'flex' }}>
-                    <Button variant="contained" onClick={handleReset} color="primary" sx={{ marginRight: 2 }}>Reset</Button>
-                    <LoadingButton onClick={handleFetchClick} loading={loading} loadingIndicator="Fetching…" variant="contained"
-                        disabled={isButtonDisabled()}>
-                        <span>Fetch</span>
-                    </LoadingButton>
-                </Grid>
-            </Grid>
-
-            {dataFetched && !loading && (
-                <Box sx={{ mt: 4, width: '100%', borderRadius: 2, border: '1px solid #e0e0e0', bgcolor: 'white' }}>
-
-                    {isChildChartDisplayed && responseData.length > 0 && (
-                        <Breadcrumbs aria-label="breadcrumb" separator={<NavigateNextIcon fontSize="small" />} sx={{ padding: '1%' }}>
-                            <Link underline="hover" sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer', '&:hover': { textDecoration: 'underline !important', color: '#1976d2 !important' } }} color="primary" onClick={() => { setViewStack([]); setIsChildChartDisplayed(false); }} >
-                                <HomeIcon sx={{ mr: 0.4 }} fontSize="inherit" />
-                                Home
-                            </Link>
-                            {viewStack.map((view, index) => (
-                                <Link
-                                    key={view}
-                                    color="inherit"
-                                    sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}
-                                    underline="none"
-                                    onClick={() => handleBreadcrumbClick(index)}
-                                >
-                                    {view}
-                                </Link>
-                            ))}
-                        </Breadcrumbs>
-                    )}
-
-                    <Box mt={1} sx={{ width: '100%' }}>
-                        {responseData.length > 0 ? (
-                            <>
-                                {currentView ? (
-                                    <ChildChart date={currentView} data={currentData} />
-                                ) : (
-                                    <ParentChart data={responseData} onDrillDown={handleDrillDown} setIsChildChartDisplayed={setIsChildChartDisplayed} />
-                                )}
-                            </>
-                        ) : (
-                            <LineChart
-                                height={chartHeight}
-                                xAxis={[{ data: last10Dates, scaleType: 'point', }]}
-                                yAxis={[{ min: 0, max: 10 }]}
-                                series={[]}
-                            />
-                        )}
-                    </Box>
-                </Box>
-            )}
-        </Box>
-    );
+    // Send LOV (Loss of Visibility) notification if data cannot be fetched
+    private void sendLovNotification(String deviceIP) {
+        try {
+            String lovMessage = String.format("{\"event\": \"LOV\", \"device\": \"%s\", \"status\": \"unreachable\"}", deviceIP);
+            pulsarPublisherService.publishMessage(lovMessage);
+            logger.info("LOV notification sent for device {}", deviceIP);
+        } catch (Exception e) {
+            logger.error("Failed to send LOV notification", e);
+        }
+    }
 }
-
-export default DailyTrend;
