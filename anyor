@@ -1,19 +1,9 @@
-[2025-02-02 21:31:19,111 UTC] [ERROR] pool-2-thread-3 com.verizon.ucs.service.NexusService - Failed to process device 10.219.32.79: Unsupported device type: Nexus 1250
-[2025-02-02 21:31:19,361 UTC] [ERROR] pool-2-thread-1 com.verizon.ucs.service.NexusService - Failed to send LOV notification: class org.apache.pulsar.client.impl.PulsarClientImpl cannot be cast to class org.apache.pulsar.client.api.PulsarClient (org.apache.pulsar.client.impl.PulsarClientImpl and org.apache.pulsar.client.api.PulsarClient are in unnamed module of loader 'app')
-[2025-02-02 21:31:19,361 UTC] [ERROR] pool-2-thread-2 com.verizon.ucs.service.NexusService - Failed to send LOV notification: class org.apache.pulsar.client.impl.PulsarClientImpl cannot be cast to class org.apache.pulsar.client.api.PulsarClient (org.apache.pulsar.client.impl.PulsarClientImpl and org.apache.pulsar.client.api.PulsarClient are in unnamed module of loader 'app')
-[2025-02-02 21:31:21,533 UTC] [ERROR] pool-2-thread-1 com.verizon.ucs.service.NexusService - Failed to process device 10.193.40.75: Unsupported device type: Nexus 1500
-[2025-02-02 21:31:26,584 UTC] [ERROR] pool-2-thread-3 com.verizon.ucs.service.NexusService - Failed to process device 10.219.32.76: Unsupported device type: Nexus 1250
-
-
-Showing this error in the class the file type is xml file plss the logic needs to parse the device implement 
-
 package com.verizon.ucs.service;
 
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Map;
 
-import com.verizon.ucs.service.pulsar.PulsarPublisherService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -49,52 +39,39 @@ public class NexusService {
     @Autowired
     private NormaliseReactorService normaliseReactorService;
 
-    @Autowired
-    private PulsarPublisherService pulsarPublisherService;
+    public NexusData getNexusData(DeviceInfo device) throws Exception {
+        String response;
+        String deviceType = device.getModel().replace("Nexus ", "").trim();
 
-    public NexusData getNexusData(DeviceInfo device) {
-        try {
-            String response;
-
-            // Read from file if sample data is enabled
-            if (config.isUseSampleData()) {
-                response = readSampleData(device);
-            } else {
-                response = fetchDataFromDevice(device);
-            }
-
-            // Parse the response based on device type
-            NexusParser parser = getParser(device.getModel());
-            NexusData data = parser.parse(response);
-
-            // Validate and publish data
-            validateData(data);
-            publishData(data, device.getDeviceIP());
-
-        } catch (Exception e) {
-            logger.error("Failed to process device {}: {}", device.getDeviceIP(), e.getMessage());
-            if ("Nexus 1450".equals(device.getModel())) {
-                sendLovNotification(device.getDeviceIP());
-            }
+        if (config.isUseSampleData()) {
+            response = new String(Files.readAllBytes(Paths.get(config.getSampleDataPaths().get(deviceType))));
+        } else {
+            response = fetchDataFromDevice(deviceType, device.getDeviceIP());
         }
-        return null;
-    }
-    private String readSampleData(DeviceInfo device) throws Exception {
-        String deviceType = device.getModel().replace("Nexus ", "").trim();
-        String filePath = config.getSampleDataPaths().get(deviceType);
-        return new String(Files.readAllBytes(Paths.get(filePath)));
-    }
-    private void publishData(NexusData data, String deviceIp) throws Exception {
-        String jsonData = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(data);
-        pulsarPublisherService.publishMessage(jsonData);
-        logger.info("Published data for device: {}", deviceIp);
+
+        NexusParser parser = getParser(deviceType);
+        NexusData data = parser.parse(response);
+        validateData(data);
+
+        logger.info("Publishing data for device: {}", device.getDeviceIP());
+        normaliseReactorService.handleAndPublishData(data, device.getDeviceIP());
+        return data;
     }
 
-    private String fetchDataFromDevice(DeviceInfo device) throws Exception {
-        String deviceType = device.getModel().replace("Nexus ", "").trim();
-        String url = config.getApiEndpoints().get(deviceType).replace("{siteIP}", device.getDeviceIP());
+    public String fetchDataFromDevice(String deviceType, String deviceIP) throws Exception {
+        return retryTemplate.execute(context -> {
+            String url = config.getApiEndpoints().get(deviceType).replace("{siteIP}", deviceIP);
+            logger.info("Fetching data from {} at IP: {}", deviceType, deviceIP);
 
-        return retryTemplate.execute(context -> restTemplate.getForObject(url, String.class));
+            return switch (deviceType) {
+                case "1250", "1500" -> restTemplate.getForObject(url, String.class);
+                case "1450" -> restTemplate.postForObject(url, getHttpEntity(), String.class);
+                default -> throw new IllegalArgumentException("Unsupported device type: " + deviceType);
+            };
+        }, context -> {
+            logger.error("All retry attempts failed for device {}", deviceIP);
+            return "Recovery response";
+        });
     }
 
     private HttpEntity<String> getHttpEntity() {
@@ -124,16 +101,6 @@ public class NexusService {
     private void validateData(NexusData data) throws Exception {
         if (data == null || data.getDeviceName() == null || data.getDeviceName().trim().isEmpty()) {
             throw new Exception("Invalid Nexus data: missing device name");
-        }
-    }
-
-    private void sendLovNotification(String deviceIP) {
-        String lovMessage = String.format("{\"event\": \"LOV\", \"device\": \"%s\", \"status\": \"unreachable\"}", deviceIP);
-        try {
-            pulsarPublisherService.publishMessage(lovMessage);
-            logger.info("LOV notification sent for device {}", deviceIP);
-        } catch (Exception e) {
-            logger.error("Failed to send LOV notification: {}", e.getMessage());
         }
     }
 }
