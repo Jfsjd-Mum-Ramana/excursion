@@ -254,3 +254,23 @@ public class Nexus1500Parser implements NexusParser {
         return xml.substring(startIndex, endIndex).trim();
     }
 }
+The parser method is implemented below please use 
+
+ private NexusParser getParser(String deviceType) {
+        switch (deviceType) {
+            case "1250":
+                return new Nexus1250Parser();
+            case "1450":
+                return new Nexus1450Parser();
+            case "1500":
+                return new Nexus1250Parser();
+            default:
+                throw new IllegalArgumentException("Unsupported device type: " + deviceType);
+        }
+    }
+
+    private void validateData(NexusData data) throws Exception {
+    	if(data !=null && data.getDeviceName()!=null) {
+    		return;
+    	}
+    }
