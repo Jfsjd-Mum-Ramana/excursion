@@ -505,3 +505,19 @@ AS-1: VMB topic is configured and available.
 *Technical Specifications*:
 
 {"apiEndPoints":"\"UCS internal API endpoint for VMB publishing.\"","requestPayloadStructure":"\"Normalized power data (kW, kWh, etc.), timestamp.\"","responsePayloadStructure":"\"Success/failure status. HTTP status codes (200, 500).\"","authentication":"\"Secure communication between UCS and VMB.\"","errorHandling":"\"Error codes for publishing failures. Retry mechanism.\"","versioningInformation":"\"v1.0\"","performanceRequirementCriteria":"\"Publishing within 15 seconds\"","backwardCompatibility":"\"Yes\"","businessRules":"\"Data normalization rules.\"","loggingAndMonitoring":"\"Logs for successful/failed publishing attempts.\"","securityConsiderations":"\"Secure communication channel.\"","complianceRegulations":"\"N/A\"","documentationImpact":"\"Update documentation on VMB topic and data format.\""}
+
+
+Please resolve this errors also
+2025-02-02 19:52:00,183 UTC] [INFO ] pool-2-thread-2 com.verizon.ucs.scheduler.NexusScheduler - Exception while processing device: DeviceData [deviceName=Duff Dr - C-Tie, deviceIP=10.219.32.76, pollerCluster=null, model=Nexus 1250, frequency=null] , {}
+java.lang.ClassCastException: class org.apache.pulsar.client.impl.PulsarClientImpl cannot be cast to class org.apache.pulsar.client.api.PulsarClient (org.apache.pulsar.client.impl.PulsarClientImpl and org.apache.pulsar.client.api.PulsarClient are in unnamed module of loader 'app')
+	at com.verizon.ucs.service.pulsar.PulsarPublisherService.publishMessage(PulsarPublisherService.java:37)
+	at com.verizon.ucs.service.NormaliseReactorService.handleAndPublishData(NormaliseReactorService.java:61)
+	at com.verizon.ucs.service.NexusService.getNexusData(NexusService.java:61)
+	at com.verizon.ucs.scheduler.NexusScheduler.lambda$scheduleTask$0(NexusScheduler.java:42)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
+	at java.base/java.lang.Thread.run(Thread.java:833)
+
+http://localhost:8080/api/nexus/data/1500 ---> while accesig this host showing internal server error
