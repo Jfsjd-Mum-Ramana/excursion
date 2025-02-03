@@ -1,10 +1,8 @@
 package com.verizon.ucs.service.pulsar;
 
 import com.verizon.ucs.config.VMBProperties;
-import org.apache.pulsar.client.api.PulsarClient;
-import org.apache.pulsar.client.api.PulsarClientException;
+import org.apache.pulsar.client.api.*;
 import org.apache.pulsar.client.impl.auth.AuthenticationTls;
-import org.apache.pulsar.shade.client.api.v2.Producer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Service;
@@ -17,18 +15,26 @@ public class PulsarPublisherService {
     private VMBProperties properties;
 
     public void publishMessage(String message) throws PulsarClientException {
-        org.apache.pulsar.shade.client.api.v2.PulsarClient client = PulsarClient.builder()
-                .serviceUrl(properties.getServiceUrl())
-                .tlsTrustCertsFilePath(properties.getTlsTrustCertsFile())
-                .authentication(new AuthenticationTls(properties.getTlsCertFile(), properties.getTlsKeyFile()))
+        // Ensure that serviceUrl is correctly fetched
+        if (properties.getServiceUrl() == null || properties.getServiceUrl().isEmpty()) {
+            throw new IllegalArgumentException("Pulsar service URL must be provided in the configuration.");
+        }
+
+        PulsarClient client = PulsarClient.builder()
+                .serviceUrl(properties.getServiceUrl())  // Ensure the correct service URL
+                .tlsTrustCertsFilePath(properties.getTlsTrustCertsFile())  // TLS certs
+                .authentication(new AuthenticationTls(properties.getTlsCertFile(), properties.getTlsKeyFile())) // TLS auth
                 .build();
 
+        // Ensure the topic is correct
         Producer<byte[]> producer = client.newProducer()
-                .topic(properties.getTopicName())
+                .topic(properties.getTopicName())  // Use the correct topic name
                 .create();
 
+        // Send the message
         producer.send(message.getBytes());
 
+        // Clean up resources
         producer.close();
         client.close();
     }
