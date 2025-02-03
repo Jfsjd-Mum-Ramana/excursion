@@ -1,31 +1,34 @@
 package com.verizon.ucs.service;
 
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Map;
+import java.util.function.Function;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.retry.support.RetryTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.verizon.ucs.config.Constants;
 import com.verizon.ucs.config.NexusConfig;
 import com.verizon.ucs.model.DeviceInfo;
+import com.verizon.ucs.model.RecoveryResponse;
 import com.verizon.ucs.parser.Nexus1250Parser;
 import com.verizon.ucs.parser.Nexus1450Parser;
 import com.verizon.ucs.parser.Nexus1500Parser;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.retry.support.RetryTemplate;
-import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.util.Map;
-import java.util.function.Function;
 
 @Service
 public class NexusService {
-    
     private static final Logger logger = LoggerFactory.getLogger(NexusService.class);
 
     @Autowired
@@ -37,22 +40,11 @@ public class NexusService {
     @Autowired
     private RetryTemplate retryTemplate;
 
-    @Autowired
-    private PulsarPublisherService pulsarPublisherService; // For sending LOV notifications
-
     public Object processDevice(DeviceInfo device) throws Exception {
         String deviceType = device.getModel().replace("Nexus ", "");
         Function<String, ?> parser = getParser(deviceType);
-
         if (parser != null) {
-            Object data = getNexusData(device, parser);
-
-            // If Nexus 1450 device is unreachable, send LOV notification
-            if (Constants.DEVICE_TYPE_1450.equals(deviceType)) {
-                sendLovNotification(device.getDeviceIP());
-            }
-            
-            return data;
+            return getNexusData(device, parser);
         } else {
             logger.info("Unsupported device type: {}", deviceType);
             return null;
@@ -62,43 +54,78 @@ public class NexusService {
     private Function<String, ?> getParser(String deviceType) {
         switch (deviceType) {
             case Constants.DEVICE_TYPE_1250:
-                return response -> new Nexus1250Parser().parse(response);
+                return response -> {
+                    try {
+                        return new Nexus1250Parser().parse(response);
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                };
             case Constants.DEVICE_TYPE_1450:
                 return response -> new Nexus1450Parser().parse(response);
             case Constants.DEVICE_TYPE_1500:
-                return response -> new Nexus1500Parser().parse(response);
+                return response -> {
+                    try {
+                        return new Nexus1500Parser().parse(response);
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                };
             default:
                 return null;
         }
     }
 
     public <T> T getNexusData(DeviceInfo device, Function<String, T> parser) throws Exception {
-        String response = fetchDataFromDevice(device.getModel(), device.getDeviceIP());
-        return parser.apply(response);
+        String response;
+        String deviceType = device.getModel().replace("Nexus ", "");
+
+        if (config.isUseSampleData()) {
+            response = new String(Files.readAllBytes(Paths.get(config.getSampleDataPaths().get(deviceType))));
+        } else {
+            response = fetchDataFromDevice(deviceType, device.getDeviceIP());
+        }
+
+        T data = parser.apply(response);
+        logger.info("NexusData::  {}", data);
+        //validateData(data);
+        //yourservice.publish(data,"kk");
+        return data;
     }
 
     private String fetchDataFromDevice(String deviceType, String deviceIP) throws Exception {
         return retryTemplate.execute(context -> {
-            try {
-                String url = config.getApiEndpoints().get(deviceType).replace("{siteIP}", deviceIP);
-                switch (deviceType) {
-                    case Constants.DEVICE_TYPE_1250:
-                        return restTemplate.getForObject(url, String.class);
-                    case Constants.DEVICE_TYPE_1450:
-                        return restTemplate.postForObject(url, getHttpEntity(), String.class);
-                    case Constants.DEVICE_TYPE_1500:
-                        return restTemplate.getForObject(url, String.class);
-                    default:
-                        throw new IllegalArgumentException("Unsupported device type: " + deviceType);
-                }
-            } catch (Exception e) {
-                if (Constants.DEVICE_TYPE_1450.equals(deviceType)) {
-                    logger.error("Nexus 1450 device unreachable, sending LOV notification to VMB", e);
-                    sendLovNotification(deviceIP);
-                }
-                throw e;
+            String url = config.getApiEndpoints().get(deviceType).replace("{siteIP}", deviceIP);
+
+            switch (deviceType) {
+                case Constants.DEVICE_TYPE_1250:
+                    return restTemplate.getForObject(url, String.class);
+                case Constants.DEVICE_TYPE_1450:
+                    return restTemplate.postForObject(url, getHttpEntity(), String.class);
+                case Constants.DEVICE_TYPE_1500:
+                    return restTemplate.getForObject(url, String.class);
+                 default:
+                    throw new IllegalArgumentException("Unsupported device type: " + deviceType);
             }
         });
+    }
+    
+    private String generateRecoveryResponse(String deviceIP, String deviceName) {
+        RecoveryResponse recoveryResponse = new RecoveryResponse();
+        recoveryResponse.setUcgTimestamp(ZonedDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME));
+        recoveryResponse.setUcgSource(deviceIP);
+        recoveryResponse.setUcgRawData("DEVICE_OFFLINE");
+        recoveryResponse.setUcgDeviceName(deviceName);
+        recoveryResponse.setUcgType("LOV");
+        recoveryResponse.setUcgTopic("persistent://enmv/psc-alarm/nexus-meter-lov");
+
+        ObjectMapper mapper = new ObjectMapper();
+        try {
+            return mapper.writeValueAsString(recoveryResponse);
+        } catch (JsonProcessingException e) {
+            logger.error("Error creating JSON recovery response", e);
+            return "{}";
+        }
     }
 
     private HttpEntity<String> getHttpEntity() {
@@ -117,22 +144,89 @@ public class NexusService {
             return null;
         }
     }
+}
 
-    // Method to send LOV (Loss of Visibility) notification to Pulsar/VMB
-    private void sendLovNotification(String deviceIp) {
-        Map<String, Object> lovNotification = Map.of(
-            "timestamp", System.currentTimeMillis(),
-            "deviceIp", deviceIp,
-            "status", "LOV",
-            "message", "Nexus 1450 device is unreachable"
-        );
 
-        try {
-            String payload = new ObjectMapper().writeValueAsString(lovNotification);
-            pulsarPublisherService.publishMessage(payload);  // Assuming a method for publishing
-            logger.info("LOV notification sent for Nexus 1450: {}", deviceIp);
-        } catch (Exception e) {
-            logger.error("Failed to send LOV notification", e);
-        }
-    }
+This is the previous nexus service class plss do not remove any method in that service and implement this AC's 
+ Given a Nexus 1450 device is unreachable, when UCS requests data, send an lov notification to vmb topic
+AC-1: Given normalized Nexus data, when UCS publishes, then data is sent to the correct VMB topic within 15 seconds.AC-2: Given a publishing failure, when an error occurs, then UCS logs the error and retries.
+
+package com.verizon.ucs.service;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.verizon.ucs.config.VMBProperties;
+import com.verizon.ucs.model.NexusData1500;
+import com.verizon.ucs.service.pulsar.PulsarPublisherService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.retry.support.RetryTemplate;
+import org.springframework.stereotype.Service;
+
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Iterator;
+import java.util.Map;
+
+@Service
+public class NormaliseReactorService {
+
+	private static final Logger logger = LoggerFactory.getLogger(NormaliseReactorService.class);
+
+	@Autowired
+	private PulsarPublisherService pulsarPublisherService;
+
+	@Autowired
+	private VMBProperties vmbProperties;
+
+	@Autowired
+	private RetryTemplate retryTemplate;
+
+	public void handleAndPublishData(NexusData1500 data, String deviceIp) throws Exception {
+		long startTime = System.currentTimeMillis();
+
+		SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX");
+		String timestamp = dateFormat.format(new Date());
+
+		ObjectMapper objectMapper = new ObjectMapper();
+		ObjectNode ucgRawDataNode = (ObjectNode) objectMapper.valueToTree(data);
+		Iterator<Map.Entry<String, JsonNode>> fields = ucgRawDataNode.fields();
+		while (fields.hasNext()) {
+			Map.Entry<String, JsonNode> field = fields.next();
+			if (field.getValue().isTextual()) {
+				ucgRawDataNode.put(field.getKey(), field.getValue().asText().trim());
+			}
+		}
+
+		String ucgRawData = objectMapper.writeValueAsString(ucgRawDataNode);
+		Map<String, Object> ucgData = Map.of(
+				"ucgTimestamp", timestamp,
+				"ucgSource", deviceIp,
+				"ucgRawData", ucgRawData,
+				"ucgDeviceName", data.getDeviceType().trim(),
+				"ucgType", "LIVE",
+				"ucgTopic", vmbProperties.getTopicName()
+		);
+
+		String ucgDataJsonString = objectMapper.writeValueAsString(ucgData);
+
+		long elapsedTime = System.currentTimeMillis() - startTime;
+		if (elapsedTime > 15000) {
+			logger.warn("Publishing time exceeded 15 seconds for device: {}", deviceIp);
+			return;
+		}
+
+		retryTemplate.execute(context -> {
+			try {
+				pulsarPublisherService.publishMessage(ucgDataJsonString);
+				logger.info("Data successfully published to VMB");
+			} catch (Exception e) {
+				logger.error("Publishing failed, retrying... Attempt {}", context.getRetryCount(), e);
+				throw e;
+			}
+			return null;
+		});
+	}
 }
