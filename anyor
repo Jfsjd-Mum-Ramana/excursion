@@ -1,8 +1,322 @@
+package com.verizon.ucs.controller;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.verizon.ucs.model.DeviceInfo;
+import com.verizon.ucs.model.NexusData1250;
+import com.verizon.ucs.model.NexusData1450;
+import com.verizon.ucs.model.NexusData1500;
+import com.verizon.ucs.parser.Nexus1250Parser;
+import com.verizon.ucs.parser.Nexus1450Parser;
+import com.verizon.ucs.parser.Nexus1500Parser;
+import com.verizon.ucs.service.NexusService;
+
+@RestController
+@RequestMapping("/api/nexus")
+public class PSCController {
+
+	private static final Logger logger = LoggerFactory.getLogger(PSCController.class);
+	
+    @Autowired
+    private NexusService service;
+
+    @GetMapping("/data/{deviceIP}/{deviceType}")
+    public ResponseEntity<Object> getNexusData(@PathVariable String deviceIP, @PathVariable String deviceType) {
+        try {
+            DeviceInfo info = new DeviceInfo();
+            info.setDeviceIP(deviceIP);
+            info.setModel(deviceType);
+
+            Object data = service.processDevice(info);
+            return ResponseEntity.ok(data);
+        } catch (Exception e) {
+            logger.error("Exception at api /data/deviceType {}", e);
+            return ResponseEntity.status(500).body("Internal Server Error");
+        }
+    }
+}
+
+package com.verizon.ucs.model;
+
+public class NexusData1500 {
+	
+    // private String firmware;
+    // private String deviceName;
+    private String deviceType;
+    private String van;
+    private String vbn;
+    private String vcn;
+    private String vab;
+    private String vbc;
+    private String vca;
+    private String ia;
+    private String ib;
+    private String ic;
+    private String freq;
+    private String pf;
+    private String watt;
+    // private String wattHr;
+
+	// public String getFirmware() {
+	// 	return firmware;
+	// }
+	// public void setFirmware(String firmware) {
+	// 	this.firmware = firmware;
+	// }
+	// public String getDeviceName() {
+	// 	return deviceName;
+	// }
+	// public void setDeviceName(String deviceName) {
+	// 	this.deviceName = deviceName;
+	// }
+	public String getDeviceType() {
+		return deviceType;
+	}
+	public void setDeviceType(String deviceType) {
+		this.deviceType = deviceType;
+	}
+	public String getVan() {
+		return van;
+	}
+	public void setVan(String van) {
+		this.van = van;
+	}
+	public String getVbn() {
+		return vbn;
+	}
+	public void setVbn(String vbn) {
+		this.vbn = vbn;
+	}
+	public String getVcn() {
+		return vcn;
+	}
+	public void setVcn(String vcn) {
+		this.vcn = vcn;
+	}
+	public String getVab() {
+		return vab;
+	}
+	public void setVab(String vab) {
+		this.vab = vab;
+	}
+	public String getVbc() {
+		return vbc;
+	}
+	public void setVbc(String vbc) {
+		this.vbc = vbc;
+	}
+	public String getVca() {
+		return vca;
+	}
+	public void setVca(String vca) {
+		this.vca = vca;
+	}
+	public String getIa() {
+		return ia;
+	}
+	public void setIa(String ia) {
+		this.ia = ia;
+	}
+	public String getIb() {
+		return ib;
+	}
+	public void setIb(String ib) {
+		this.ib = ib;
+	}
+	public String getIc() {
+		return ic;
+	}
+	public void setIc(String ic) {
+		this.ic = ic;
+	}
+	public String getFreq() {
+		return freq;
+	}
+	public void setFreq(String freq) {
+		this.freq = freq;
+	}
+	public String getPf() {
+		return pf;
+	}
+	public void setPf(String pf) {
+		this.pf = pf;
+	}
+	public String getWatt() {
+		return watt;
+	}
+	public void setWatt(String watt) {
+		this.watt = watt;
+	}
+	// public String getWattHr() {
+	// 	return wattHr;
+	// }
+	// public void setWattHr(String wattHr) {
+	// 	this.wattHr = wattHr;
+	// }
+
+	// @Override
+	// public String toString() {
+	// 	return "NexusData [firmware=" + firmware + ", deviceName=" + deviceName + ", deviceType=" + deviceType
+	// 			+ ", van=" + van + ", vbn=" + vbn + ", vcn=" + vcn + ", vab=" + vab + ", vbc=" + vbc + ", vca=" + vca
+	// 			+ ", ia=" + ia + ", ib=" + ib + ", ic=" + ic + ", freq=" + freq + ", pf=" + pf + ", watt=" + watt
+	// 			+ ", wattHr=" + wattHr + "]";
+	// }
+	@Override
+	public String toString() {
+		return "NexusData [deviceType=" + deviceType
+				+ ", van=" + van + ", vbn=" + vbn + ", vcn=" + vcn + ", vab=" + vab + ", vbc=" + vbc + ", vca=" + vca
+				+ ", ia=" + ia + ", ib=" + ib + ", ic=" + ic + ", freq=" + freq + ", pf=" + pf + ", watt=" + watt
+				+  "]";
+	}
+
+    // Getters and Setters
+    
+}
+package com.verizon.ucs.scheduler;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
+
+import com.verizon.ucs.model.DeviceInfo;
+import com.verizon.ucs.model.NexusData1250;
+import com.verizon.ucs.model.NexusData1450;
+import com.verizon.ucs.model.NexusData1500;
+import com.verizon.ucs.parser.Nexus1250Parser;
+import com.verizon.ucs.parser.Nexus1450Parser;
+import com.verizon.ucs.parser.Nexus1500Parser;
+import com.verizon.ucs.service.DBService;
+import com.verizon.ucs.service.NexusService;
+
+import jakarta.annotation.PostConstruct;
+
+@Component
+public class NexusScheduler {
+	private static final Logger logger = LoggerFactory.getLogger(NexusScheduler.class);
+	
+	@Value("${scheduler.threadPoolSize}")
+    private int threadPoolSize;
+	
+    @Autowired
+    private DBService dBService;
+    
+    @Autowired
+    private NexusService nexusService;
+	
+	private ExecutorService executorService;
+	
+	@PostConstruct
+    public void init() {
+        this.executorService = Executors.newFixedThreadPool(threadPoolSize);
+    }
+	
+    @Scheduled(fixedRateString = "${scheduler.fixedRate}")
+    public void scheduleTask() {
+        List<DeviceInfo> devices;
+        try {
+            // Fetch device details from the database
+            devices = dBService.fetchDeviceDetails();
+            logger.info("devices from DB::  {}", devices);
+        
+            // Process each device separately
+            for (DeviceInfo device : devices) {
+                executorService.submit(() -> {
+                    try {
+                        nexusService.processDevice(device);
+                    } catch (Exception e) {
+                        logger.info("Exception while processing device: {} , {}", device, e);
+                    }
+                });
+            }
+        } catch (IOException e) {
+            logger.info("Exception while processing devices: {}", e);
+        }
+    }
+}
+package com.verizon.ucs.service;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.verizon.ucs.config.VMBProperties;
+import com.verizon.ucs.model.NexusData1500;
+import com.verizon.ucs.service.pulsar.PulsarPublisherService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.stereotype.Service;
+
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Iterator;
+import java.util.Map;
+
+@Service
+@EnableConfigurationProperties({ VMBProperties.class })
+public class NormaliseReactorService {
+
+	private static final Logger logger = LoggerFactory.getLogger(NormaliseReactorService.class);
+
+	@Autowired
+	private PulsarPublisherService pulsarPublisherService;
+
+	@Autowired
+	private VMBProperties vmbProperties;
+
+	public void handleAndPublishData(NexusData1500 data, String deviceIp) throws Exception {
+		SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX");
+		String timestamp = dateFormat.format(new Date());
+
+		// Convert NexusData to JSON and trim spaces from all string values
+		ObjectMapper objectMapper = new ObjectMapper();
+		ObjectNode ucgRawDataNode = (ObjectNode) objectMapper.valueToTree(data);
+		Iterator<Map.Entry<String, JsonNode>> fields = ucgRawDataNode.fields();
+		while (fields.hasNext()) {
+			Map.Entry<String, JsonNode> field = fields.next();
+			if (field.getValue().isTextual()) {
+				ucgRawDataNode.put(field.getKey(), field.getValue().asText().trim());
+			}
+		}
+
+		String ucgRawData = objectMapper.writeValueAsString(ucgRawDataNode);
+		logger.info("UCGRAW  JSON DATA:" + ucgRawData);
+
+		Map<String, Object> ucgData = Map.of(
+				"ucgTimestamp", timestamp,
+				"ucgSource", deviceIp,
+				"ucgRawData", ucgRawData,
+				"ucgDeviceName", data.getDeviceType().trim(),
+				"ucgType", "LIVE",
+				"ucgTopic", vmbProperties.getTopicName());
+
+		String ucgDataJsonString = new ObjectMapper().writeValueAsString(ucgData);
+		logger.info("UCG JSON DATA:" + ucgDataJsonString);
+		pulsarPublisherService.publishMessage(ucgDataJsonString);
+	}
+}
+
 package com.verizon.ucs.service;
 
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Map;
+import java.util.function.Function;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,16 +328,14 @@ import org.springframework.retry.support.RetryTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.verizon.ucs.config.Constants;
 import com.verizon.ucs.config.NexusConfig;
 import com.verizon.ucs.model.DeviceInfo;
-import com.verizon.ucs.model.NexusData;
 import com.verizon.ucs.parser.Nexus1250Parser;
 import com.verizon.ucs.parser.Nexus1450Parser;
 import com.verizon.ucs.parser.Nexus1500Parser;
-import com.verizon.ucs.parser.NexusParser;
-import com.verizon.ucs.service.pulsar.PulsarPublisherService;
 
 @Service
 public class NexusService {
@@ -38,59 +350,73 @@ public class NexusService {
     @Autowired
     private RetryTemplate retryTemplate;
 
-    @Autowired
-    private PulsarPublisherService pulsarPublisherService;
-
-    @Autowired
-    private NormaliseReactorService normaliseReactorService;
-
-    public void getNexusData(DeviceInfo device) {
-        try {
-            String response;
-            String deviceType = extractDeviceType(device.getModel());
-
-            if (config.isUseSampleData()) {
-                response = readSampleData(deviceType);
-            } else {
-                response = fetchDataFromDevice(deviceType, device.getDeviceIP());
-            }
-
-            // Get the correct parser for the device type
-            NexusParser parser = getParser(deviceType);
-            NexusData data = parser.parse(response);
-
-            // Validate and normalize data before publishing
-            validateData(data);
-            normaliseReactorService.handleAndPublishData(data, device.getDeviceIP());
-
-            logger.info("Data successfully published for device: {}", device.getDeviceIP());
-
-        } catch (Exception e) {
-            logger.error("Failed to process device {}: {}", device.getDeviceIP(), e.getMessage());
-            if ("1450".equals(extractDeviceType(device.getModel()))) {
-                sendLovNotification(device.getDeviceIP());
-            }
+    public Object processDevice(DeviceInfo device) throws Exception {
+        String deviceType = device.getModel().replace("Nexus ", "");
+        Function<String, ?> parser = getParser(deviceType);
+        if (parser != null) {
+            return getNexusData(device, parser);
+        } else {
+            logger.info("Unsupported device type: {}", deviceType);
+            return null;
         }
     }
 
-    private String extractDeviceType(String model) {
-        return model.replace("Nexus ", "").trim();
+    private Function<String, ?> getParser(String deviceType) {
+        switch (deviceType) {
+            case Constants.DEVICE_TYPE_1250:
+                return response -> {
+                    try {
+                        return new Nexus1250Parser().parse(response);
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                };
+            case Constants.DEVICE_TYPE_1450:
+                return response -> new Nexus1450Parser().parse(response);
+            case Constants.DEVICE_TYPE_1500:
+                return response -> {
+                    try {
+                        return new Nexus1500Parser().parse(response);
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                };
+            default:
+                return null;
+        }
     }
 
-    private String readSampleData(String deviceType) throws Exception {
-        String filePath = config.getSampleDataPaths().get(deviceType);
-        if (filePath == null || filePath.isEmpty()) {
-            throw new IllegalArgumentException("Sample data path not found for device type: " + deviceType);
+    public <T> T getNexusData(DeviceInfo device, Function<String, T> parser) throws Exception {
+        String response;
+        String deviceType = device.getModel().replace("Nexus ", "");
+
+        if (config.isUseSampleData()) {
+            response = new String(Files.readAllBytes(Paths.get(config.getSampleDataPaths().get(deviceType))));
+        } else {
+            response = fetchDataFromDevice(deviceType, device.getDeviceIP());
         }
-        return new String(Files.readAllBytes(Paths.get(filePath)));
+
+        T data = parser.apply(response);
+        logger.info("NexusData::  {}", data);
+        //validateData(data);
+        //yourservice.publish(data,"kk");
+        return data;
     }
 
     private String fetchDataFromDevice(String deviceType, String deviceIP) throws Exception {
-        String url = config.getApiEndpoints().get(deviceType).replace("{siteIP}", deviceIP);
-
         return retryTemplate.execute(context -> {
-            logger.info("Fetching data from device: {} at IP: {}", deviceType, deviceIP);
-            return restTemplate.getForObject(url, String.class);
+            String url = config.getApiEndpoints().get(deviceType).replace("{siteIP}", deviceIP);
+
+            switch (deviceType) {
+                case Constants.DEVICE_TYPE_1250:
+                    return restTemplate.getForObject(url, String.class);
+                case Constants.DEVICE_TYPE_1450:
+                    return restTemplate.postForObject(url, getHttpEntity(), String.class);
+                case Constants.DEVICE_TYPE_1500:
+                    return restTemplate.getForObject(url, String.class);
+                 default:
+                    throw new IllegalArgumentException("Unsupported device type: " + deviceType);
+            }
         });
     }
 
@@ -101,36 +427,18 @@ public class NexusService {
     }
 
     private String createRequestPayload(String[] chans) {
+        ObjectMapper mapper = new ObjectMapper();
+        Map<String, Object> payloadMap = Map.of("chans", chans);
         try {
-            return new ObjectMapper().writeValueAsString(Map.of("chans", chans));
-        } catch (Exception e) {
+            return mapper.writeValueAsString(payloadMap);
+        } catch (JsonProcessingException e) {
             logger.error("Error creating JSON request payload", e);
             return null;
         }
     }
-
-    private NexusParser getParser(String deviceType) {
-        return switch (deviceType) {
-            case "1250" -> new Nexus1250Parser();  // XML parser
-            case "1450" -> new Nexus1450Parser();  // JSON parser
-            case "1500" -> new Nexus1500Parser();  // XML parser
-            default -> throw new IllegalArgumentException("Unsupported device type: " + deviceType);
-        };
-    }
-
-    private void validateData(NexusData data) throws Exception {
-        if (data == null || data.getDeviceName() == null || data.getDeviceName().trim().isEmpty()) {
-            throw new Exception("Invalid Nexus data: missing device name");
-        }
-    }
-
-    private void sendLovNotification(String deviceIP) {
-        String lovMessage = String.format("{\"event\": \"LOV\", \"device\": \"%s\", \"status\": \"unreachable\"}", deviceIP);
-        try {
-            pulsarPublisherService.publishMessage(lovMessage);
-            logger.info("LOV notification sent for device {}", deviceIP);
-        } catch (Exception e) {
-            logger.error("Failed to send LOV notification: {}", e.getMessage());
-        }
-    }
 }
+
+AC-1: Given normalized Nexus data, when UCS publishes, then data is sent to the correct VMB topic within 15 seconds.AC-2: Given a publishing failure, when an error occurs, then UCS logs the error and retries.
+In this while accesssing showing 404 error give me the host to access 1500 model all the code is developed plss implement if anything is to develop and workable
+
+AC-1: Given a Nexus 1450 device is reachable, when UCS requests data, record all the metrics in Newrelic AC-2: Given a Nexus 1450 device is unreachable, when UCS requests data, send an lov notification to vmb topic
