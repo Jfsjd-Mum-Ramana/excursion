@@ -1,458 +1,652 @@
-Here is the full code with the adjustments you requested for the dashboard, integrating the GraphQL APIs and the updated schema:
+package com.verizon.ucs.model;
 
-import React, { useEffect, useState } from 'react';
-import axios from 'axios';
-import { __UCS_GRAPHQL_URL__ } from '../../api-endpoints';
-import { SEARCH_ALARM_INVENTORY_QUERY, AVAILABLE_ALARM_COLLECTION_TYPES_QUERY, ALARM_METRICS_QUERY } from '../../graphQL/graphqlQueries';
-import LoadingButton from "@mui/lab/LoadingButton";
-import { LineChart } from '@mui/x-charts/LineChart';
-import { AxisConfig, ChartsXAxisProps } from '@mui/x-charts';
-import { Box, FormControl, Grid, InputLabel, MenuItem, Select, SelectChangeEvent, TextField, Autocomplete, Button, Breadcrumbs, Link, Typography } from '@mui/material';
-import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import dayjs, { Dayjs } from 'dayjs';
-import { DatePicker } from "@mui/x-date-pickers/DatePicker";
-import { useTheme } from "@mui/material/styles";
-import { useSnackbar } from '../../utils/SnackbarContext';
-import NavigateNextIcon from '@mui/icons-material/NavigateNext';
-import HomeIcon from '@mui/icons-material/Home';
+public class RecoveryResponse {
+	private String ucgTimestamp;
+	private String ucgSource;
+	private String ucgRawData;
+	private String ucgDeviceName;
+	private String ucgType;
+	private String ucgTopic;
 
-// Generate last 10 dates for the chart
-const generateLast10Dates = () => {
-    const dates = [];
-    for (let i = 0; i < 10; i++) {
-        dates.push(dayjs().subtract(i, 'day').format('YYYY-MM-DD'));
-    }
-    return dates;
-};
+	// Getters and setters
+	public String getUcgTimestamp() {
+		return ucgTimestamp;
+	}
 
-// Data structures for the API response
-interface DataPoint {
-    date: string;
-    totalNumberOfFiles: number;
-    totalSizeOfFilesBytes: number;
-    trendsDrillDownList: DetailedDataPoint[];
+	public void setUcgTimestamp(String ucgTimestamp) {
+		this.ucgTimestamp = ucgTimestamp;
+	}
+
+	public String getUcgSource() {
+		return ucgSource;
+	}
+
+	public void setUcgSource(String ucgSource) {
+		this.ucgSource = ucgSource;
+	}
+
+	public String getUcgRawData() {
+		return ucgRawData;
+	}
+
+	public void setUcgRawData(String ucgRawData) {
+		this.ucgRawData = ucgRawData;
+	}
+
+	public String getUcgDeviceName() {
+		return ucgDeviceName;
+	}
+
+	public void setUcgDeviceName(String ucgDeviceName) {
+		this.ucgDeviceName = ucgDeviceName;
+	}
+
+	public String getUcgType() {
+		return ucgType;
+	}
+
+	public void setUcgType(String ucgType) {
+		this.ucgType = ucgType;
+	}
+
+	public String getUcgTopic() {
+		return ucgTopic;
+	}
+
+	public void setUcgTopic(String ucgTopic) {
+		this.ucgTopic = ucgTopic;
+	}
 }
 
-interface DetailedDataPoint {
-    time: string;
-    sizeOfFilesBytes: number;
-    numberOfFiles: number;
+package com.verizon.ucs.model;
+
+public class NexusData1500 {
+	
+    // private String firmware;
+    // private String deviceName;
+    private String deviceType;
+    private String van;
+    private String vbn;
+    private String vcn;
+    private String vab;
+    private String vbc;
+    private String vca;
+    private String ia;
+    private String ib;
+    private String ic;
+    private String freq;
+    private String pf;
+    private String watt;
+    // private String wattHr;
+
+	// public String getFirmware() {
+	// 	return firmware;
+	// }
+	// public void setFirmware(String firmware) {
+	// 	this.firmware = firmware;
+	// }
+	// public String getDeviceName() {
+	// 	return deviceName;
+	// }
+	// public void setDeviceName(String deviceName) {
+	// 	this.deviceName = deviceName;
+	// }
+	public String getDeviceType() {
+		return deviceType;
+	}
+	public void setDeviceType(String deviceType) {
+		this.deviceType = deviceType;
+	}
+	public String getVan() {
+		return van;
+	}
+	public void setVan(String van) {
+		this.van = van;
+	}
+	public String getVbn() {
+		return vbn;
+	}
+	public void setVbn(String vbn) {
+		this.vbn = vbn;
+	}
+	public String getVcn() {
+		return vcn;
+	}
+	public void setVcn(String vcn) {
+		this.vcn = vcn;
+	}
+	public String getVab() {
+		return vab;
+	}
+	public void setVab(String vab) {
+		this.vab = vab;
+	}
+	public String getVbc() {
+		return vbc;
+	}
+	public void setVbc(String vbc) {
+		this.vbc = vbc;
+	}
+	public String getVca() {
+		return vca;
+	}
+	public void setVca(String vca) {
+		this.vca = vca;
+	}
+	public String getIa() {
+		return ia;
+	}
+	public void setIa(String ia) {
+		this.ia = ia;
+	}
+	public String getIb() {
+		return ib;
+	}
+	public void setIb(String ib) {
+		this.ib = ib;
+	}
+	public String getIc() {
+		return ic;
+	}
+	public void setIc(String ic) {
+		this.ic = ic;
+	}
+	public String getFreq() {
+		return freq;
+	}
+	public void setFreq(String freq) {
+		this.freq = freq;
+	}
+	public String getPf() {
+		return pf;
+	}
+	public void setPf(String pf) {
+		this.pf = pf;
+	}
+	public String getWatt() {
+		return watt;
+	}
+	public void setWatt(String watt) {
+		this.watt = watt;
+	}
+	// public String getWattHr() {
+	// 	return wattHr;
+	// }
+	// public void setWattHr(String wattHr) {
+	// 	this.wattHr = wattHr;
+	// }
+
+	// @Override
+	// public String toString() {
+	// 	return "NexusData [firmware=" + firmware + ", deviceName=" + deviceName + ", deviceType=" + deviceType
+	// 			+ ", van=" + van + ", vbn=" + vbn + ", vcn=" + vcn + ", vab=" + vab + ", vbc=" + vbc + ", vca=" + vca
+	// 			+ ", ia=" + ia + ", ib=" + ib + ", ic=" + ic + ", freq=" + freq + ", pf=" + pf + ", watt=" + watt
+	// 			+ ", wattHr=" + wattHr + "]";
+	// }
+	@Override
+	public String toString() {
+		return "NexusData [deviceType=" + deviceType
+				+ ", van=" + van + ", vbn=" + vbn + ", vcn=" + vcn + ", vab=" + vab + ", vbc=" + vbc + ", vca=" + vca
+				+ ", ia=" + ia + ", ib=" + ib + ", ic=" + ic + ", freq=" + freq + ", pf=" + pf + ", watt=" + watt
+				+  "]";
+	}
+
+    // Getters and Setters
+    
+}
+package com.verizon.ucs.model;
+
+public class NexusData1450 {
+	
+	private String serial;
+    private String firmware;
+    private String deviceName;
+    private String deviceType;
+	private String mac;
+    private String van;
+    private String vbn;
+    private String vcn;
+    private String vab;
+    private String vbc;
+    private String vca;
+    private String ia;
+    private String ib;
+    private String ic;
+    private String freq;
+    private String pf;
+    private String watt;
+    private String wattHr;
+    
+    
+	public String getFirmware() {
+		return firmware;
+	}
+	public void setFirmware(String firmware) {
+		this.firmware = firmware;
+	}
+	public String getDeviceName() {
+		return deviceName;
+	}
+	public void setDeviceName(String deviceName) {
+		this.deviceName = deviceName;
+	}
+	public String getDeviceType() {
+		return deviceType;
+	}
+	public void setDeviceType(String deviceType) {
+		this.deviceType = deviceType;
+	}
+	public String getVan() {
+		return van;
+	}
+	public void setVan(String van) {
+		this.van = van;
+	}
+	public String getVbn() {
+		return vbn;
+	}
+	public void setVbn(String vbn) {
+		this.vbn = vbn;
+	}
+	public String getVcn() {
+		return vcn;
+	}
+	public void setVcn(String vcn) {
+		this.vcn = vcn;
+	}
+	public String getVab() {
+		return vab;
+	}
+	public void setVab(String vab) {
+		this.vab = vab;
+	}
+	public String getVbc() {
+		return vbc;
+	}
+	public void setVbc(String vbc) {
+		this.vbc = vbc;
+	}
+	public String getVca() {
+		return vca;
+	}
+	public void setVca(String vca) {
+		this.vca = vca;
+	}
+	public String getIa() {
+		return ia;
+	}
+	public void setIa(String ia) {
+		this.ia = ia;
+	}
+	public String getIb() {
+		return ib;
+	}
+	public void setIb(String ib) {
+		this.ib = ib;
+	}
+	public String getIc() {
+		return ic;
+	}
+	public void setIc(String ic) {
+		this.ic = ic;
+	}
+	public String getFreq() {
+		return freq;
+	}
+	public void setFreq(String freq) {
+		this.freq = freq;
+	}
+	public String getPf() {
+		return pf;
+	}
+	public void setPf(String pf) {
+		this.pf = pf;
+	}
+	public String getWatt() {
+		return watt;
+	}
+	public void setWatt(String watt) {
+		this.watt = watt;
+	}
+	public String getWattHr() {
+		return wattHr;
+	}
+	public void setWattHr(String wattHr) {
+		this.wattHr = wattHr;
+	}
+	public String getSerial() {
+		return serial;
+	}
+	public void setSerial(String serial) {
+		this.serial = serial;
+	}
+	public String getMac() {
+		return mac;
+	}
+	public void setMac(String mac) {
+		this.mac = mac;
+	}
+	@Override
+	public String toString() {
+		return "NexusData [firmware=" + firmware + ", deviceName=" + deviceName + ", deviceType=" + deviceType
+				+ ", van=" + van + ", vbn=" + vbn + ", vcn=" + vcn + ", vab=" + vab + ", vbc=" + vbc + ", vca=" + vca
+				+ ", ia=" + ia + ", ib=" + ib + ", ic=" + ic + ", freq=" + freq + ", pf=" + pf + ", watt=" + watt
+				+ ", wattHr=" + wattHr + ", serial=" + serial + ", mac=" + mac + "]";
+	}
+
+    // Getters and Setters
+    
 }
 
-const chartHeight = 450;
-const childChartHeight = 410;
+package com.verizon.ucs.model;
 
-// Parent chart component
-const ParentChart = ({ data, onDrillDown, setIsChildChartDisplayed }: { data: DataPoint[], onDrillDown: (date: string) => void, setIsChildChartDisplayed: (value: boolean) => void }) => {
-    const theme = useTheme();
+public class NexusData1250 {
+	
+    // private String firmware;
+    // private String deviceName;
+    private String deviceType;
+    private String van;
+    private String vbn;
+    private String vcn;
+    private String vab;
+    private String vbc;
+    private String vca;
+    private String ia;
+    private String ib;
+    private String ic;
+    private String freq;
+    private String pf;
+    private String watt;
+    // private String wattHr;
+    
+	// public String getFirmware() {
+	// 	return firmware;
+	// }
+	// public void setFirmware(String firmware) {
+	// 	this.firmware = firmware;
+	// }
+	// public String getDeviceName() {
+	// 	return deviceName;
+	// }
+	// public void setDeviceName(String deviceName) {
+	// 	this.deviceName = deviceName;
+	// }
+	public String getDeviceType() {
+		return deviceType;
+	}
+	public void setDeviceType(String deviceType) {
+		this.deviceType = deviceType;
+	}
+	public String getVan() {
+		return van;
+	}
+	public void setVan(String van) {
+		this.van = van;
+	}
+	public String getVbn() {
+		return vbn;
+	}
+	public void setVbn(String vbn) {
+		this.vbn = vbn;
+	}
+	public String getVcn() {
+		return vcn;
+	}
+	public void setVcn(String vcn) {
+		this.vcn = vcn;
+	}
+	public String getVab() {
+		return vab;
+	}
+	public void setVab(String vab) {
+		this.vab = vab;
+	}
+	public String getVbc() {
+		return vbc;
+	}
+	public void setVbc(String vbc) {
+		this.vbc = vbc;
+	}
+	public String getVca() {
+		return vca;
+	}
+	public void setVca(String vca) {
+		this.vca = vca;
+	}
+	public String getIa() {
+		return ia;
+	}
+	public void setIa(String ia) {
+		this.ia = ia;
+	}
+	public String getIb() {
+		return ib;
+	}
+	public void setIb(String ib) {
+		this.ib = ib;
+	}
+	public String getIc() {
+		return ic;
+	}
+	public void setIc(String ic) {
+		this.ic = ic;
+	}
+	public String getFreq() {
+		return freq;
+	}
+	public void setFreq(String freq) {
+		this.freq = freq;
+	}
+	public String getPf() {
+		return pf;
+	}
+	public void setPf(String pf) {
+		this.pf = pf;
+	}
+	public String getWatt() {
+		return watt;
+	}
+	public void setWatt(String watt) {
+		this.watt = watt;
+	}
+	// public String getWattHr() {
+	// 	return wattHr;
+	// }
+	// public void setWattHr(String wattHr) {
+	// 	this.wattHr = wattHr;
+	// }
+	// @Override
+	// public String toString() {
+	// 	return "NexusData [firmware=" + firmware + ", deviceName=" + deviceName + ", deviceType=" + deviceType
+	// 			+ ", van=" + van + ", vbn=" + vbn + ", vcn=" + vcn + ", vab=" + vab + ", vbc=" + vbc + ", vca=" + vca
+	// 			+ ", ia=" + ia + ", ib=" + ib + ", ic=" + ic + ", freq=" + freq + ", pf=" + pf + ", watt=" + watt
+	// 			+ ", wattHr=" + wattHr + "]";
+	// }	
+	@Override
+	public String toString() {
+		return "NexusData [deviceType=" + deviceType
+				+ ", van=" + van + ", vbn=" + vbn + ", vcn=" + vcn + ", vab=" + vab + ", vbc=" + vbc + ", vca=" + vca
+				+ ", ia=" + ia + ", ib=" + ib + ", ic=" + ic + ", freq=" + freq + ", pf=" + pf + ", watt=" + watt
+				+ "]";
+	}
 
-    const transformedData = data.map(item => ({
-        collectionDate: item.date,
-        totalNumberOfFiles: item.totalNumberOfFiles,
-        totalSizeOfFilesBytes: item.totalSizeOfFilesBytes,
-    }));
+    // Getters and Setters
+    
+}
 
-    const lineChartParams = {
-        series: [
-            {
-                id: 'totalNumberOfFiles',
-                datakey: 'totalNumberOfFiles',
-                label: 'Number of Files',
-                data: transformedData.map(item => item.totalNumberOfFiles),
-            },
-            {
-                id: 'totalSizeOfFilesBytes',
-                datakey: 'totalSizeOfFilesBytes',
-                label: 'Size of Files (Bytes)',
-                data: transformedData.map(item => item.totalSizeOfFilesBytes),
-            }
-        ],
-        xAxis: [{
-            data: transformedData.map(item => item.collectionDate),
-            id: 'axis1',
-            dataKey: 'collectionDate',
-            scaleType: "point",
-            label: "Collected Date",
-            tickLabelStyle: {
-                angle: -25,
-                textAnchor: 'end',
-                fontSize: 10,
-            },
-            labelStyle: { transform: "translateY(30px)" },
-            tickPlacement: 'middle', tickLabelPlacement: 'middle',
-        } as AxisConfig<'point', string, ChartsXAxisProps>],
-        height: chartHeight,
-        margin: {
-            left: 60,
-            right: 10,
-            top: 20,
-            bottom: 80,
-        },
-        colors: theme.palette.distinctLightPalette
-    };
+package com.verizon.ucs.model;
 
-    return (
-        <Box width="100%">
-            <LineChart
-                {...lineChartParams}
-                onAxisClick={(event, d) => {
-                    if (d && d.axisValue) {
-                        setIsChildChartDisplayed(true);
-                        onDrillDown(String(d.axisValue));
-                    } else {
-                        console.error('collectionDate not found in data point');
-                    }
-                }}
-            />
-        </Box>
-    );
-};
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
-// Child chart component
-const ChildChart = ({ date, data }: { date: string, data: DetailedDataPoint[] }) => {
-    const theme = useTheme();
-    const detailedLineChartsParams = {
-        series: [
-            {
-                id: 'numberOfFiles',
-                datakey: 'numberOfFiles',
-                label: 'Number of Files',
-                data: data.map(item => item.numberOfFiles)
-            },
-            {
-                id: 'sizeOfFilesBytes',
-                datakey: 'sizeOfFilesBytes',
-                label: 'Size of Files (Bytes)',
-                data: data.map(item => item.sizeOfFilesBytes)
-            }
-        ],
-        xAxis: [{
-            data: data.map(item => item.time),
-            id: 'axis2',
-            dataKey: 'time',
-            scaleType: "point",
-            label: "Collected Time on " + date,
-        } as AxisConfig<'point', string, ChartsXAxisProps>],
-        height: childChartHeight,
-        colors: theme.palette.distinctLightPalette
-    };
+@JsonIgnoreProperties(ignoreUnknown = true)
+public class DeviceInfo {
 
-    return (
-        <Box width="100%">
-            <LineChart {...detailedLineChartsParams} />
-        </Box>
-    );
-};
+	@JsonProperty("device_name")
+	private String deviceName;
 
-// Main component for daily trend dashboard
-const DailyTrend: React.FC = () => {
-    const theme = useTheme();
-    const [projectList, setProjectList] = useState<any[]>([]);
-    const [ucgSourceList, setUcgSourceList] = useState<{ id: number, name: string }[]>([]);
-    const [selectedProject, setSelectedProject] = useState<any>(null);
-    const [selectedUCGSource, setSelectedUCGSource] = useState<number>(0);
-    const [fromDate, setSelectedFromDate] = useState<Dayjs>(dayjs().subtract(1, 'month'));
-    const [toDate, setSelectedToDate] = useState<Dayjs | null>(dayjs());
-    const [loading, setLoading] = useState<boolean>(false);
-    const [ucgsourceLoading, setUcgsourceLoading] = useState<boolean>(false);
-    const [dataFetched, setDataFetched] = useState<boolean>(false);
-    const [responseData, setResponseData] = useState<DataPoint[]>([]);
-    const [viewStack, setViewStack] = useState<string[]>([]);
-    const [isChildChartDisplayed, setIsChildChartDisplayed] = useState(false);
-    const { showSnackbar } = useSnackbar();
-    const last10Dates = generateLast10Dates();
+	@JsonProperty("device_ip")
+	private String deviceIP;
 
-    useEffect(() => {
-        const fetchProjectData = async () => {
-            try {
-                const projectResponse = await axios.post(__UCS_GRAPHQL_URL__, {
-                    query: SEARCH_ALARM_INVENTORY_QUERY,
-                    variables: { collectionType: 'mcp' },
-                });
-                if (projectResponse.data?.data?.searchAlarmInventory && projectResponse.data.data.searchAlarmInventory.length > 0) {
-                    setProjectList(projectResponse.data.data.searchAlarmInventory);
-                }
-            } catch (error) {
-                showSnackbar('Error fetching project data!');
-                console.error('Error fetching project data', error);
-            }
-        };
-        fetchProjectData();
-    }, []);
+	@JsonProperty("pollercluster")
+	private String pollerCluster;
 
-    useEffect(() => {
-        const fetchCollectionTypes = async () => {
-            try {
-                const collectionTypesResponse = await axios.post(__UCS_GRAPHQL_URL__, {
-                    query: AVAILABLE_ALARM_COLLECTION_TYPES_QUERY,
-                });
-                if (collectionTypesResponse.data?.data?.availableAlarmCollectionTypes) {
-                    setUcgSourceList(collectionTypesResponse.data.data.availableAlarmCollectionTypes);
-                }
-            } catch (error) {
-                showSnackbar('Error fetching collection types!');
-                console.error('Error fetching collection types', error);
-            }
-        };
-        fetchCollectionTypes();
-    }, []);
+	@JsonProperty("model")
+	private String model;
 
-    const handleProjectChange = async (options: any) => {
-        setSelectedProject(options);
-        setUcgsourceLoading(true);
-        setSelectedUCGSource(0);
-        if (options && options.id) {
-            setUcgsourceLoading(false);
-        }
-    };
+	@JsonProperty("frequency")
+	private String frequency;
 
-    const handleSelectChange = (setter: React.Dispatch<React.SetStateAction<number>>) => (
-        event: SelectChangeEvent<number>) => {
-        setter(event.target.value as number);
-    };
+	public String getDeviceName() {
+		return deviceName;
+	}
 
-    const handleReset = () => {
-        setSelectedProject(null);
-        setSelectedUCGSource(0);
-        setSelectedFromDate(dayjs().subtract(1, 'month'));
-        setSelectedToDate(dayjs());
-        setResponseData([]);
-        setViewStack([]);
-        setIsChildChartDisplayed(false);
-        setDataFetched(false);
-    };
+	public void setDeviceName(String deviceName) {
+		this.deviceName = deviceName;
+	}
 
-    const handleFetchClick = async () => {
-        setLoading(true);
-        setResponseData([]);
-        const formattedFromDate = dayjs(fromDate).format('YYYY-MM-DD');
-        const formattedToDate = dayjs(toDate).format('YYYY-MM-DD');
+	public String getDeviceIP() {
+		return deviceIP;
+	}
 
-        const data = {
-            collectionType: "mcp",
-            fromDate: formattedFromDate,
-            toDate: formattedToDate
-        };
+	public void setDeviceIP(String deviceIP) {
+		this.deviceIP = deviceIP;
+	}
 
+	public String getPollerCluster() {
+		return pollerCluster;
+	}
+
+	public void setPollerCluster(String pollerCluster) {
+		this.pollerCluster = pollerCluster;
+	}
+
+	public String getModel() {
+		return model;
+	}
+
+	public void setModel(String model) {
+		this.model = model;
+	}
+
+	public String getFrequency() {
+		return frequency;
+	}
+
+	public void setFrequency(String frequency) {
+		this.frequency = frequency;
+	}
+
+	@Override
+	public String toString() {
+		return "DeviceData [deviceName=" + deviceName + ", deviceIP=" + deviceIP + ", pollerCluster=" + pollerCluster
+				+ ", model=" + model + ", frequency=" + frequency + "]";
+	}
+
+}
+
+
+package com.verizon.ucs.controller;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.verizon.ucs.model.DeviceInfo;
+import com.verizon.ucs.model.NexusData1250;
+import com.verizon.ucs.model.NexusData1450;
+import com.verizon.ucs.model.NexusData1500;
+import com.verizon.ucs.parser.Nexus1250Parser;
+import com.verizon.ucs.parser.Nexus1450Parser;
+import com.verizon.ucs.parser.Nexus1500Parser;
+import com.verizon.ucs.service.NexusService;
+
+@RestController
+@RequestMapping("/api/nexus")
+public class PSCController {
+
+	private static final Logger logger = LoggerFactory.getLogger(PSCController.class);
+	
+    @Autowired
+    private NexusService service;
+
+    @GetMapping("/data/{deviceIP}/{deviceType}")
+    public ResponseEntity<Object> getNexusData(@PathVariable String deviceIP, @PathVariable String deviceType) {
         try {
-            const response = await axios.post(__UCS_GRAPHQL_URL__, {
-                query: ALARM_METRICS_QUERY,
-                variables: data,
-            });
+            DeviceInfo info = new DeviceInfo();
+            info.setDeviceIP(deviceIP);
+            info.setModel(deviceType);
 
-            if (response.data?.data?.alarmMetrics && response.data.data.alarmMetrics.length > 0) {
-                setResponseData(response.data.data.alarmMetrics);
-            } else {
-                showSnackbar("No Data Found for the selected filters.");
-            }
-        } catch (error) {
-            showSnackbar("Error fetching alarm metrics.");
-            console.error(error);
-        } finally {
-            setLoading(false);
+            Object data = service.processDevice(info);
+            return ResponseEntity.ok(data);
+        } catch (Exception e) {
+            logger.error("Exception at api /data/deviceType {}", e);
+            return ResponseEntity.status(500).body("Internal Server Error");
         }
-    };
-
-    return (
-        <Box>
-            <Grid container spacing={2}>
-                <Grid item xs={12} md={3}>
-                    <FormControl fullWidth>
-                        <InputLabel>Project</InputLabel>
-                        <Select value={selectedProject?.id || ''} onChange={handleProjectChange}>
-                            {projectList.map(project => (
-                                <MenuItem key={project.id} value={project.id}>{project.collectionName}</MenuItem>
-                            ))}
-                        </Select>
-                    </FormControl>
-                </Grid>
-                <Grid item xs={12} md={3}>
-                    <FormControl fullWidth>
-                        <InputLabel>UCG Source</InputLabel>
-                        <Select value={selectedUCGSource} onChange={handleSelectChange(setSelectedUCGSource)}>
-                            {ucgSourceList.map(ucgSource => (
-                                <MenuItem key={ucgSource.id} value={ucgSource.id}>{ucgSource.name}</MenuItem>
-                            ))}
-                        </Select>
-                    </FormControl>
-                </Grid>
-                <Grid item xs={12} md={2}>
-                    <LocalizationProvider dateAdapter={AdapterDayjs}>
-                        <DatePicker label="From Date" value={fromDate} onChange={(newValue) => setSelectedFromDate(newValue)} />
-                    </LocalizationProvider>
-                </Grid>
-                <Grid item xs={12} md={2}>
-                    <LocalizationProvider dateAdapter={AdapterDayjs}>
-                        <DatePicker label="To Date" value={toDate} onChange={(newValue) => setSelectedToDate(newValue)} />
-                    </LocalizationProvider>
-                </Grid>
-                <Grid item xs={12} md={2}>
-                    <LoadingButton
-                        loading={loading}
-                        variant="contained"
-                        onClick={handleFetchClick}
-                    >
-                        Fetch Data
-                    </LoadingButton>
-                </Grid>
-            </Grid>
-
-            {isChildChartDisplayed ? (
-                <ChildChart date={viewStack[0]} data={responseData[0].trendsDrillDownList} />
-            ) : (
-                <ParentChart
-                    data={responseData}
-                    onDrillDown={(date) => setViewStack([date])}
-                    setIsChildChartDisplayed={setIsChildChartDisplayed}
-                />
-            )}
-
-            <Box mt={2}>
-                <Button variant="outlined" onClick={handleReset}>Reset Filters</Button>
-            </Box>
-        </Box>
-    );
-};
-
-export default DailyTrend;
-
-Explanation of Key Changes:
-
-1. GraphQL Queries: This code integrates the SEARCH_ALARM_INVENTORY_QUERY, AVAILABLE_ALARM_COLLECTION_TYPES_QUERY, and ALARM_METRICS_QUERY GraphQL queries.
-
-
-2. State Management: It handles the state for projects, UCG sources, date ranges, chart data, and loading states.
-
-
-3. Date Handling: The date range is managed with the DatePicker component from MUI.
-
-
-4. Fetching Data: The data is fetched via GraphQL queries when the user clicks the "Fetch Data" button.
-
-
-5. Chart Components: The ParentChart component displays the initial aggregated data, while the ChildChart component is used for drill-down data when a date is clicked.
-
-
-
-This code should work in your dashboard application, fetching data from your GraphQL endpoint and rendering it dynamically based on user selections.
-
-
-
-
-Here are the GraphQL queries used in the provided code:
-
-1. Search Alarm Inventory Query:
-
-This query is used to fetch a list of available alarm inventory projects, filtered by a specific collectionType (e.g., mcp).
-
-export const SEARCH_ALARM_INVENTORY_QUERY = `
-  query SearchAlarmInventory($collectionType: String!) {
-    searchAlarmInventory(collectionType: $collectionType) {
-      id
-      collectionName
-      deviceName
-      deviceIp
-      ucgSource
-      vendor
     }
-  }
-`;
+}
 
-Variables:
+package com.verizon.ucs.config;
 
-collectionType: This can be any type you want to filter on (e.g., mcp).
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.retry.RetryCallback;
+import org.springframework.retry.RetryContext;
+import org.springframework.retry.RetryListener;
+import org.springframework.retry.backoff.FixedBackOffPolicy;
+import org.springframework.retry.policy.SimpleRetryPolicy;
+import org.springframework.retry.support.RetryTemplate;
 
+@Configuration
+public class RetryConfig {
+	@Autowired
+	private RetryProperties retryProperties;
 
-Response: This query returns a list of alarm inventory items with fields like:
+	@Bean
+	public RetryTemplate retryTemplate() {
+		RetryTemplate retryTemplate = new RetryTemplate();
+		// Configure retry policy
+		SimpleRetryPolicy retryPolicy = new SimpleRetryPolicy();
+		retryPolicy.setMaxAttempts(retryProperties.getMaxAttempts());
+		retryTemplate.setRetryPolicy(retryPolicy);
+		// Configure backoff policy
+		FixedBackOffPolicy backOffPolicy = new FixedBackOffPolicy();
+		backOffPolicy.setBackOffPeriod(retryProperties.getBackOffPeriod());
+		retryTemplate.setBackOffPolicy(backOffPolicy);
+		// Add retry listener for logging
+		retryTemplate.registerListener(new RetryListener() {
+			@Override
+			public <T, E extends Throwable> boolean open(RetryContext context, RetryCallback<T, E> callback) {
+				return true;
+			}
 
-id
+			@Override
+			public <T, E extends Throwable> void close(RetryContext context, RetryCallback<T, E> callback,
+					Throwable throwable) {
+			}
 
-collectionName
+			@Override
+			public <T, E extends Throwable> void onError(RetryContext context, RetryCallback<T, E> callback,
+					Throwable throwable) {
+				System.out.println(
+						"Retry attempt " + context.getRetryCount() + " failed due to: " + throwable.getMessage());
+			}
+		});
+		return retryTemplate;
+	}
+}
 
-deviceName
+As a UCS developer, I want to normalize the power data retrieved from the Nexus 15xx model and publish it to the VMB so that 1PSC can consume the data in a consistent format.
+RK-1: VMB instability may affect data publishing.
+AS-1: VMB topic is configured and available.
+*Technical Specifications*:
 
-deviceIp
+{"apiEndPoints":"\"UCS internal API endpoint for VMB publishing.\"","requestPayloadStructure":"\"Normalized power data (kW, kWh, etc.), timestamp.\"","responsePayloadStructure":"\"Success/failure status. HTTP status codes (200, 500).\"","authentication":"\"Secure communication between UCS and VMB.\"","errorHandling":"\"Error codes for publishing failures. Retry mechanism.\"","versioningInformation":"\"v1.0\"","performanceRequirementCriteria":"\"Publishing within 15 seconds\"","backwardCompatibility":"\"Yes\"","businessRules":"\"Data normalization rules.\"","loggingAndMonitoring":"\"Logs for successful/failed publishing attempts.\"","securityConsiderations":"\"Secure communication channel.\"","complianceRegulations":"\"N/A\"","documentationImpact":"\"Update documentation on VMB topic and data format.\""}
 
-ucgSource
-
-vendor
-
-
-
-2. Available Alarm Collection Types Query:
-
-This query retrieves the list of available collection types.
-
-export const AVAILABLE_ALARM_COLLECTION_TYPES_QUERY = `
-  query AvailableAlarmCollectionTypes {
-    availableAlarmCollectionTypes {
-      id
-      name
-    }
-  }
-`;
-
-Response: This returns a list of available alarm collection types:
-
-id
-
-name (e.g., the protocol or source type like SNMP, WSS).
-
-
-
-3. Alarm Metrics Query:
-
-This query fetches alarm metrics data based on a date range, filtering by collection type and alarm type.
-
-export const ALARM_METRICS_QUERY = `
-  query AlarmMetrics($collectionType: String!, $fromDate: String!, $toDate: String!) {
-    alarmMetrics(collectionType: $collectionType, fromDate: $fromDate, toDate: $toDate) {
-      collectionName
-      alarmType
-      numberOfMsgs
-      sizeOfMsgs
-      lastUpdated
-      trendsDrillDownList {
-        time
-        numberOfFiles
-        sizeOfFilesBytes
-      }
-    }
-  }
-`;
-
-Variables:
-
-collectionType: The collection type (e.g., mcp).
-
-fromDate: The start date for the data range (e.g., '2024-12-01').
-
-toDate: The end date for the data range (e.g., '2024-12-31').
-
-
-Response: This query returns:
-
-collectionName
-
-alarmType
-
-numberOfMsgs: Total number of messages during the given period.
-
-sizeOfMsgs: Total size of messages (in bytes).
-
-lastUpdated: Last updated timestamp.
-
-trendsDrillDownList: A list of detailed data points for the selected time period (e.g., hourly data), which includes:
-
-time: The timestamp of the detailed data.
-
-numberOfFiles: The number of files processed during that time.
-
-sizeOfFilesBytes: The size of the files in bytes.
-
-
-
-
-These queries are executed in the provided React component, where they are used to fetch the necessary data based on user selections such as project, UCG source, and date range. The GraphQL responses are then used to populate the charts and other UI components.
-
+AC-2: Given a Nexus 1450 device is unreachable, when UCS requests data, send an lov notification to vmb
