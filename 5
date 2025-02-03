@@ -1,121 +1,18 @@
-You should inject and call the PulsarConsumerService in a Spring-managed component such as a Controller, Service, or Configuration class.
+Error starting ApplicationContext. To display the condition evaluation report re-run your application with 'debug' enabled.
+[2025-02-03 19:35:14,550 UTC] [ERROR] main org.springframework.boot.diagnostics.LoggingFailureAnalysisReporter - 
 
-Here are the steps to inject and start consuming messages from the Pulsar topic:
+***************************
+APPLICATION FAILED TO START
+***************************
 
-1️⃣ Creating a New Spring Component (e.g., Service) to Start Consumer
+Description:
 
-Since the consumer needs to listen for messages when the application starts, it is best to put this logic in a Service class or Configuration class that runs during the Spring context initialization.
+Field pulsarClient in com.verizon.ucs.service.pulsar.PulsarConsumerService required a bean of type 'org.apache.pulsar.client.api.PulsarClient' that could not be found.
 
-Example: PulsarConsumerStarterService
-
-package com.verizon.ucs.service.pulsar;
-
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-import javax.annotation.PostConstruct;
-
-@Service
-public class PulsarConsumerStarterService {
-
-    @Autowired
-    private PulsarConsumerService pulsarConsumerService;
-
-    @PostConstruct
-    public void startConsuming() {
-        // Start listening to the topic as soon as the application starts
-        pulsarConsumerService.consumeMessages("persistent://enmv/psc-alarm/nexus-meter-lov");
-    }
-}
-
-Explanation:
-
-@Service: Marks this as a Spring service component, so it will be automatically managed by Spring's dependency injection.
-
-@PostConstruct: Ensures that the startConsuming() method runs once the Spring context is fully initialized and the bean is ready to be used.
-
-consumeMessages(): Starts the consumer that listens to the Pulsar topic (persistent://enmv/psc-alarm/nexus-meter-lov).
+The injection point has the following annotations:
+	- @org.springframework.beans.factory.annotation.Autowired(required=true)
 
 
-2️⃣ Add the Pulsar Consumer Configuration to Spring Boot
+Action:
 
-Now that you have the consumer service, make sure to scan the package where PulsarConsumerStarterService and PulsarConsumerService are located.
-
-Example: @SpringBootApplication
-
-If you're using Spring Boot, the main class annotated with @SpringBootApplication should automatically scan for all beans in the same or sub-packages. If the classes are in a different package, you can explicitly specify the base package for scanning:
-
-package com.verizon.ucs;
-
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.context.annotation.ComponentScan;
-
-@SpringBootApplication
-@ComponentScan(basePackages = "com.verizon.ucs")
-public class Application {
-
-    public static void main(String[] args) {
-        SpringApplication.run(Application.class, args);
-    }
-}
-
-This ensures that Spring will correctly scan and inject the PulsarConsumerService into PulsarConsumerStarterService.
-
-
----
-
-3️⃣ Run the Application
-
-Once you’ve added the PulsarConsumerStarterService to your Spring application:
-
-1. Start the application as you normally would (e.g., mvn spring-boot:run or running the main method in your Spring Boot application).
-
-
-2. The consumer should start listening to the Pulsar topic (persistent://enmv/psc-alarm/nexus-meter-lov) automatically.
-
-
-3. Verify that your application logs show that the consumer is successfully receiving messages and processing them.
-
-
-
-4️⃣ Optional: Create an Endpoint to Trigger Consumer (for Testing)
-
-If you want to trigger the consumer manually for testing, you can expose an endpoint in a Controller that starts the consumer when you call it.
-
-For example, in a Controller:
-
-package com.verizon.ucs.controller;
-
-import com.verizon.ucs.service.pulsar.PulsarConsumerService;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RestController;
-
-@RestController
-public class PulsarConsumerController {
-
-    @Autowired
-    private PulsarConsumerService pulsarConsumerService;
-
-    @GetMapping("/start-consumer")
-    public String startConsumer() {
-        pulsarConsumerService.consumeMessages("persistent://enmv/psc-alarm/nexus-meter-lov");
-        return "Pulsar consumer started!";
-    }
-}
-
-This exposes an endpoint /start-consumer that you can hit to start the consumer manually via an HTTP request.
-
-Conclusion
-
-PulsarConsumerStarterService is injected and called in the Spring lifecycle, starting the consumer as soon as the application context is initialized.
-
-PulsarConsumerService listens to the Pulsar topic (persistent://enmv/psc-alarm/nexus-meter-lov) and processes messages.
-
-If needed, you can also manually start the consumer via an HTTP endpoint like /start-consumer.
-
-
-Now, when the application starts, the Pulsar consumer will automatically start listening to the specified Pulsar topic and process incoming messages.
-
-Let me know if you need further assistance or modifications!
-
+Consider defining a bean of type 'org.apache.pulsar.client.api.PulsarClient' in your configuration.
