@@ -1,41 +1,158 @@
-package com.verizon.ucs.service.pulsar;
+package com.verizon.ucs.service;
 
-import com.verizon.ucs.config.VMBProperties;
-import org.apache.pulsar.client.api.*;
-import org.apache.pulsar.client.impl.auth.AuthenticationTls;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Map;
+import java.util.function.Function;
+
+import com.verizon.ucs.service.pulsar.PulsarPublisherService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.retry.support.RetryTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.verizon.ucs.config.Constants;
+import com.verizon.ucs.config.NexusConfig;
+import com.verizon.ucs.model.DeviceInfo;
+import com.verizon.ucs.parser.Nexus1250Parser;
+import com.verizon.ucs.parser.Nexus1450Parser;
+import com.verizon.ucs.parser.Nexus1500Parser;
 
 @Service
-@EnableConfigurationProperties({ VMBProperties.class })
-public class PulsarPublisherService {
+public class NexusService {
+    private static final Logger logger = LoggerFactory.getLogger(NexusService.class);
 
     @Autowired
-    private VMBProperties properties;
+    private NexusConfig config;
 
-    public void publishMessage(String message) throws PulsarClientException {
-        // Ensure that serviceUrl is correctly fetched
-        if (properties.getServiceUrl() == null || properties.getServiceUrl().isEmpty()) {
-            throw new IllegalArgumentException("Pulsar service URL must be provided in the configuration.");
+    @Autowired
+    private RestTemplate restTemplate;
+
+    @Autowired
+    private RetryTemplate retryTemplate;
+
+    @Autowired
+    private PulsarPublisherService pulsarPublisherService; // To send LOV notifications
+
+    public Object processDevice(DeviceInfo device) throws Exception {
+        String deviceType = device.getModel().replace("Nexus ", "");
+        Function<String, ?> parser = getParser(deviceType);
+        if (parser != null) {
+            return getNexusData(device, parser);
+        } else {
+            logger.info("Unsupported device type: {}", deviceType);
+            return null;
+        }
+    }
+
+    private Function<String, ?> getParser(String deviceType) {
+        switch (deviceType) {
+            case Constants.DEVICE_TYPE_1250:
+                return response -> {
+                    try {
+                        return new Nexus1250Parser().parse(response);
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                };
+            case Constants.DEVICE_TYPE_1450:
+                return response -> new Nexus1450Parser().parse(response);
+            case Constants.DEVICE_TYPE_1500:
+                return response -> {
+                    try {
+                        return new Nexus1500Parser().parse(response);
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                };
+            default:
+                return null;
+        }
+    }
+
+    public <T> T getNexusData(DeviceInfo device, Function<String, T> parser) throws Exception {
+        String response;
+        String deviceType = device.getModel().replace("Nexus ", "");
+
+        if (config.isUseSampleData()) {
+            response = new String(Files.readAllBytes(Paths.get(config.getSampleDataPaths().get(deviceType))));
+        } else {
+            response = fetchDataFromDevice(deviceType, device.getDeviceIP());
         }
 
-        PulsarClient client = PulsarClient.builder()
-                .serviceUrl(properties.getServiceUrl())  // Ensure the correct service URL
-                .tlsTrustCertsFilePath(properties.getTlsTrustCertsFile())  // TLS certs
-                .authentication(new AuthenticationTls(properties.getTlsCertFile(), properties.getTlsKeyFile())) // TLS auth
-                .build();
+        T data = parser.apply(response);
+        logger.info("NexusData::  {}", data);
+        return data;
+    }
 
-        // Ensure the topic is correct
-        Producer<byte[]> producer = client.newProducer()
-                .topic(properties.getTopicName())  // Use the correct topic name
-                .create();
+    private String fetchDataFromDevice(String deviceType, String deviceIP) throws Exception {
+        return retryTemplate.execute(context -> {
+            String url = config.getApiEndpoints().get(deviceType).replace("{siteIP}", deviceIP);
 
-        // Send the message
-        producer.send(message.getBytes());
+            try {
+                switch (deviceType) {
+                    case Constants.DEVICE_TYPE_1250:
+                        return restTemplate.getForObject(url, String.class);
+                    case Constants.DEVICE_TYPE_1450:
+                        return restTemplate.postForObject(url, getHttpEntity(), String.class);
+                    case Constants.DEVICE_TYPE_1500:
+                        return restTemplate.getForObject(url, String.class);
+                    default:
+                        throw new IllegalArgumentException("Unsupported device type: " + deviceType);
+                }
+            } catch (Exception e) {
+                if (Constants.DEVICE_TYPE_1450.equals(deviceType)) {
+                    // Send LOV notification for unreachable Nexus 1450 device
+                    sendLovNotification(deviceIP);
+                }
+                throw e;
+            }
+        });
+    }
 
-        // Clean up resources
-        producer.close();
-        client.close();
+    // Method to send LOV (Loss of Visibility) notification to Pulsar/VMB
+    private void sendLovNotification(String deviceIp) {
+        Map<String, Object> lovNotification = Map.of(
+                "timestamp", ZonedDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                "deviceIp", deviceIp,
+                "status", "LOV",
+                "message", "Nexus 1450 device is unreachable"
+        );
+
+        try {
+            String payload = new ObjectMapper().writeValueAsString(lovNotification);
+            pulsarPublisherService.publishMessage(payload);  // Assuming a method for publishing
+            logger.info("LOV notification sent for Nexus 1450: {}", deviceIp);
+        } catch (Exception e) {
+            logger.error("Failed to send LOV notification", e);
+        }
+    }
+
+    private HttpEntity<String> getHttpEntity() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        return new HttpEntity<>(createRequestPayload(Constants.REQUEST_BODY_1450), headers);
+    }
+
+    private String createRequestPayload(String[] chans) {
+        ObjectMapper mapper = new ObjectMapper();
+        Map<String, Object> payloadMap = Map.of("chans", chans);
+        try {
+            return mapper.writeValueAsString(payloadMap);
+        } catch (JsonProcessingException e) {
+            logger.error("Error creating JSON request payload", e);
+            return null;
+        }
     }
 }
+
+In 1450 accssing the device it is not saying LOV notification sent message please check and resolve 
