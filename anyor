@@ -1,21 +1,324 @@
-{
-    "_STATUS": "OK",
-    "dev.serial": "0000000266427229",
-    "dev.designation": "Azusa_CCC       ",
-    "dev.type": "Nexus 1450",
-    "dev.data_definition.version": "0005.0004.240205.163407",
-    "dev.eth0_mac": "00:01:58:01:A4:50",
-    "reading.1sec.volt.an": "279.510326",
-    "reading.1sec.volt.bn": "280.500377",
-    "reading.1sec.volt.cn": "278.965990",
-    "reading.1sec.volt.ab": "485.524604",
-    "reading.1sec.volt.bc": "484.603327",
-    "reading.1sec.volt.ca": "483.022614",
-    "reading.1sec.current.a": "323.260963",
-    "reading.1sec.current.b": "321.786791",
-    "reading.1sec.current.c": "315.946341",
-    "reading.1sec.freq": "59.995148",
-    "reading.1sec.pf.total": "1.007901",
-    "reading.1sec.power.watt.total": "266630.946145",
-    "reading.1sec.energy.watthr.q14.total": "9239226402.224863"
+package com.verizon.ucs.controller;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.verizon.ucs.model.DeviceInfo;
+import com.verizon.ucs.service.NexusService;
+
+@RestController
+@RequestMapping("/api/nexus")
+public class PSCController {
+
+    private static final Logger logger = LoggerFactory.getLogger(PSCController.class);
+
+    @Autowired
+    private NexusService service;
+
+    @GetMapping("/data/{deviceIP}/{deviceType}")
+    public ResponseEntity<Object> getNexusData(@PathVariable String deviceIP, @PathVariable String deviceType) {
+        try {
+            DeviceInfo info = new DeviceInfo();
+            info.setDeviceIP(deviceIP);
+            info.setModel("Nexus " + deviceType);  // Ensure proper model name
+
+            Object data = service.processDevice(info);
+            if (data == null) {
+                return ResponseEntity.status(404).body("Device not found or unsupported.");
+            }
+            return ResponseEntity.ok(data);
+        } catch (Exception e) {
+            logger.error("Exception at /data/{}/{}", deviceIP, deviceType, e);
+            return ResponseEntity.status(500).body("Internal Server Error");
+        }
+    }
+}
+
+
+package com.verizon.ucs.model;
+
+public class NexusData1500 {
+	
+    // private String firmware;
+    // private String deviceName;
+    private String deviceType;
+    private String van;
+    private String vbn;
+    private String vcn;
+    private String vab;
+    private String vbc;
+    private String vca;
+    private String ia;
+    private String ib;
+    private String ic;
+    private String freq;
+    private String pf;
+    private String watt;
+    // private String wattHr;
+
+	// public String getFirmware() {
+	// 	return firmware;
+	// }
+	// public void setFirmware(String firmware) {
+	// 	this.firmware = firmware;
+	// }
+	// public String getDeviceName() {
+	// 	return deviceName;
+	// }
+	// public void setDeviceName(String deviceName) {
+	// 	this.deviceName = deviceName;
+	// }
+	public String getDeviceType() {
+		return deviceType;
+	}
+	public void setDeviceType(String deviceType) {
+		this.deviceType = deviceType;
+	}
+	public String getVan() {
+		return van;
+	}
+	public void setVan(String van) {
+		this.van = van;
+	}
+	public String getVbn() {
+		return vbn;
+	}
+	public void setVbn(String vbn) {
+		this.vbn = vbn;
+	}
+	public String getVcn() {
+		return vcn;
+	}
+	public void setVcn(String vcn) {
+		this.vcn = vcn;
+	}
+	public String getVab() {
+		return vab;
+	}
+	public void setVab(String vab) {
+		this.vab = vab;
+	}
+	public String getVbc() {
+		return vbc;
+	}
+	public void setVbc(String vbc) {
+		this.vbc = vbc;
+	}
+	public String getVca() {
+		return vca;
+	}
+	public void setVca(String vca) {
+		this.vca = vca;
+	}
+	public String getIa() {
+		return ia;
+	}
+	public void setIa(String ia) {
+		this.ia = ia;
+	}
+	public String getIb() {
+		return ib;
+	}
+	public void setIb(String ib) {
+		this.ib = ib;
+	}
+	public String getIc() {
+		return ic;
+	}
+	public void setIc(String ic) {
+		this.ic = ic;
+	}
+	public String getFreq() {
+		return freq;
+	}
+	public void setFreq(String freq) {
+		this.freq = freq;
+	}
+	public String getPf() {
+		return pf;
+	}
+	public void setPf(String pf) {
+		this.pf = pf;
+	}
+	public String getWatt() {
+		return watt;
+	}
+	public void setWatt(String watt) {
+		this.watt = watt;
+	}
+	// public String getWattHr() {
+	// 	return wattHr;
+	// }
+	// public void setWattHr(String wattHr) {
+	// 	this.wattHr = wattHr;
+	// }
+
+	// @Override
+	// public String toString() {
+	// 	return "NexusData [firmware=" + firmware + ", deviceName=" + deviceName + ", deviceType=" + deviceType
+	// 			+ ", van=" + van + ", vbn=" + vbn + ", vcn=" + vcn + ", vab=" + vab + ", vbc=" + vbc + ", vca=" + vca
+	// 			+ ", ia=" + ia + ", ib=" + ib + ", ic=" + ic + ", freq=" + freq + ", pf=" + pf + ", watt=" + watt
+	// 			+ ", wattHr=" + wattHr + "]";
+	// }
+	@Override
+	public String toString() {
+		return "NexusData [deviceType=" + deviceType
+				+ ", van=" + van + ", vbn=" + vbn + ", vcn=" + vcn + ", vab=" + vab + ", vbc=" + vbc + ", vca=" + vca
+				+ ", ia=" + ia + ", ib=" + ib + ", ic=" + ic + ", freq=" + freq + ", pf=" + pf + ", watt=" + watt
+				+  "]";
+	}
+
+    // Getters and Setters
+    
+}
+
+
+package com.verizon.ucs.model;
+
+public class NexusData1450 {
+	
+	private String serial;
+    private String firmware;
+    private String deviceName;
+    private String deviceType;
+	private String mac;
+    private String van;
+    private String vbn;
+    private String vcn;
+    private String vab;
+    private String vbc;
+    private String vca;
+    private String ia;
+    private String ib;
+    private String ic;
+    private String freq;
+    private String pf;
+    private String watt;
+    private String wattHr;
+    
+    
+	public String getFirmware() {
+		return firmware;
+	}
+	public void setFirmware(String firmware) {
+		this.firmware = firmware;
+	}
+	public String getDeviceName() {
+		return deviceName;
+	}
+	public void setDeviceName(String deviceName) {
+		this.deviceName = deviceName;
+	}
+	public String getDeviceType() {
+		return deviceType;
+	}
+	public void setDeviceType(String deviceType) {
+		this.deviceType = deviceType;
+	}
+	public String getVan() {
+		return van;
+	}
+	public void setVan(String van) {
+		this.van = van;
+	}
+	public String getVbn() {
+		return vbn;
+	}
+	public void setVbn(String vbn) {
+		this.vbn = vbn;
+	}
+	public String getVcn() {
+		return vcn;
+	}
+	public void setVcn(String vcn) {
+		this.vcn = vcn;
+	}
+	public String getVab() {
+		return vab;
+	}
+	public void setVab(String vab) {
+		this.vab = vab;
+	}
+	public String getVbc() {
+		return vbc;
+	}
+	public void setVbc(String vbc) {
+		this.vbc = vbc;
+	}
+	public String getVca() {
+		return vca;
+	}
+	public void setVca(String vca) {
+		this.vca = vca;
+	}
+	public String getIa() {
+		return ia;
+	}
+	public void setIa(String ia) {
+		this.ia = ia;
+	}
+	public String getIb() {
+		return ib;
+	}
+	public void setIb(String ib) {
+		this.ib = ib;
+	}
+	public String getIc() {
+		return ic;
+	}
+	public void setIc(String ic) {
+		this.ic = ic;
+	}
+	public String getFreq() {
+		return freq;
+	}
+	public void setFreq(String freq) {
+		this.freq = freq;
+	}
+	public String getPf() {
+		return pf;
+	}
+	public void setPf(String pf) {
+		this.pf = pf;
+	}
+	public String getWatt() {
+		return watt;
+	}
+	public void setWatt(String watt) {
+		this.watt = watt;
+	}
+	public String getWattHr() {
+		return wattHr;
+	}
+	public void setWattHr(String wattHr) {
+		this.wattHr = wattHr;
+	}
+	public String getSerial() {
+		return serial;
+	}
+	public void setSerial(String serial) {
+		this.serial = serial;
+	}
+	public String getMac() {
+		return mac;
+	}
+	public void setMac(String mac) {
+		this.mac = mac;
+	}
+	@Override
+	public String toString() {
+		return "NexusData [firmware=" + firmware + ", deviceName=" + deviceName + ", deviceType=" + deviceType
+				+ ", van=" + van + ", vbn=" + vbn + ", vcn=" + vcn + ", vab=" + vab + ", vbc=" + vbc + ", vca=" + vca
+				+ ", ia=" + ia + ", ib=" + ib + ", ic=" + ic + ", freq=" + freq + ", pf=" + pf + ", watt=" + watt
+				+ ", wattHr=" + wattHr + ", serial=" + serial + ", mac=" + mac + "]";
+	}
+
+    // Getters and Setters
+    
 }
