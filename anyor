@@ -1,3 +1,180 @@
+Given the classes you’ve provided, we can now implement the changes to handle LOV notifications when a Nexus 1450 device is unreachable. The goal is to send a Loss of Visibility (LOV) notification when the device is unreachable and ensure that the correct VMB topic is being used for publishing.
+
+I'll also modify the NexusService to process the Nexus 1450 and Nexus 1500 devices and trigger the LOV notification if the device is unreachable.
+
+Here’s how you can modify the NexusService and other related components.
+
+
+---
+
+1️⃣ Modify the NexusService.java
+
+We will modify the NexusService to detect if the device is unreachable (e.g., if it’s a Nexus 1450 device) and send the LOV notification.
+
+package com.verizon.ucs.service;
+
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Map;
+import java.util.function.Function;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.retry.support.RetryTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.verizon.ucs.config.Constants;
+import com.verizon.ucs.config.NexusConfig;
+import com.verizon.ucs.model.DeviceInfo;
+import com.verizon.ucs.model.RecoveryResponse;
+import com.verizon.ucs.parser.Nexus1250Parser;
+import com.verizon.ucs.parser.Nexus1450Parser;
+import com.verizon.ucs.parser.Nexus1500Parser;
+
+@Service
+public class NexusService {
+    private static final Logger logger = LoggerFactory.getLogger(NexusService.class);
+
+    @Autowired
+    private NexusConfig config;
+
+    @Autowired
+    private RestTemplate restTemplate;
+
+    @Autowired
+    private RetryTemplate retryTemplate;
+
+    @Autowired
+    private PulsarPublisherService pulsarPublisherService; // To send LOV notifications
+
+    public Object processDevice(DeviceInfo device) throws Exception {
+        String deviceType = device.getModel().replace("Nexus ", "");
+        Function<String, ?> parser = getParser(deviceType);
+        if (parser != null) {
+            return getNexusData(device, parser);
+        } else {
+            logger.info("Unsupported device type: {}", deviceType);
+            return null;
+        }
+    }
+
+    private Function<String, ?> getParser(String deviceType) {
+        switch (deviceType) {
+            case Constants.DEVICE_TYPE_1250:
+                return response -> {
+                    try {
+                        return new Nexus1250Parser().parse(response);
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                };
+            case Constants.DEVICE_TYPE_1450:
+                return response -> new Nexus1450Parser().parse(response);
+            case Constants.DEVICE_TYPE_1500:
+                return response -> {
+                    try {
+                        return new Nexus1500Parser().parse(response);
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                };
+            default:
+                return null;
+        }
+    }
+
+    public <T> T getNexusData(DeviceInfo device, Function<String, T> parser) throws Exception {
+        String response;
+        String deviceType = device.getModel().replace("Nexus ", "");
+
+        if (config.isUseSampleData()) {
+            response = new String(Files.readAllBytes(Paths.get(config.getSampleDataPaths().get(deviceType))));
+        } else {
+            response = fetchDataFromDevice(deviceType, device.getDeviceIP());
+        }
+
+        T data = parser.apply(response);
+        logger.info("NexusData::  {}", data);
+        return data;
+    }
+
+    private String fetchDataFromDevice(String deviceType, String deviceIP) throws Exception {
+        return retryTemplate.execute(context -> {
+            String url = config.getApiEndpoints().get(deviceType).replace("{siteIP}", deviceIP);
+
+            try {
+                switch (deviceType) {
+                    case Constants.DEVICE_TYPE_1250:
+                        return restTemplate.getForObject(url, String.class);
+                    case Constants.DEVICE_TYPE_1450:
+                        return restTemplate.postForObject(url, getHttpEntity(), String.class);
+                    case Constants.DEVICE_TYPE_1500:
+                        return restTemplate.getForObject(url, String.class);
+                    default:
+                        throw new IllegalArgumentException("Unsupported device type: " + deviceType);
+                }
+            } catch (Exception e) {
+                if (Constants.DEVICE_TYPE_1450.equals(deviceType)) {
+                    // Send LOV notification for unreachable Nexus 1450 device
+                    sendLovNotification(deviceIP);
+                }
+                throw e;
+            }
+        });
+    }
+
+    // Method to send LOV (Loss of Visibility) notification to Pulsar/VMB
+    private void sendLovNotification(String deviceIp) {
+        Map<String, Object> lovNotification = Map.of(
+            "timestamp", ZonedDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+            "deviceIp", deviceIp,
+            "status", "LOV",
+            "message", "Nexus 1450 device is unreachable"
+        );
+
+        try {
+            String payload = new ObjectMapper().writeValueAsString(lovNotification);
+            pulsarPublisherService.publishMessage(payload);  // Assuming a method for publishing
+            logger.info("LOV notification sent for Nexus 1450: {}", deviceIp);
+        } catch (Exception e) {
+            logger.error("Failed to send LOV notification", e);
+        }
+    }
+
+    private HttpEntity<String> getHttpEntity() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        return new HttpEntity<>(createRequestPayload(Constants.REQUEST_BODY_1450), headers);
+    }
+
+    private String createRequestPayload(String[] chans) {
+        ObjectMapper mapper = new ObjectMapper();
+        Map<String, Object> payloadMap = Map.of("chans", chans);
+        try {
+            return mapper.writeValueAsString(payloadMap);
+        } catch (JsonProcessingException e) {
+            logger.error("Error creating JSON request payload", e);
+            return null;
+        }
+    }
+}
+
+
+---
+
+2️⃣ Modify the PSCController.java
+
+Ensure that the PSCController correctly routes requests for Nexus 1450 and Nexus 1500 devices, and triggers the logic in NexusService for processing device data.
+
 package com.verizon.ucs.controller;
 
 import org.slf4j.Logger;
@@ -41,284 +218,54 @@ public class PSCController {
 }
 
 
-package com.verizon.ucs.model;
+---
 
-public class NexusData1500 {
-	
-    // private String firmware;
-    // private String deviceName;
-    private String deviceType;
-    private String van;
-    private String vbn;
-    private String vcn;
-    private String vab;
-    private String vbc;
-    private String vca;
-    private String ia;
-    private String ib;
-    private String ic;
-    private String freq;
-    private String pf;
-    private String watt;
-    // private String wattHr;
+3️⃣ Verify the LOV Notification
 
-	// public String getFirmware() {
-	// 	return firmware;
-	// }
-	// public void setFirmware(String firmware) {
-	// 	this.firmware = firmware;
-	// }
-	// public String getDeviceName() {
-	// 	return deviceName;
-	// }
-	// public void setDeviceName(String deviceName) {
-	// 	this.deviceName = deviceName;
-	// }
-	public String getDeviceType() {
-		return deviceType;
-	}
-	public void setDeviceType(String deviceType) {
-		this.deviceType = deviceType;
-	}
-	public String getVan() {
-		return van;
-	}
-	public void setVan(String van) {
-		this.van = van;
-	}
-	public String getVbn() {
-		return vbn;
-	}
-	public void setVbn(String vbn) {
-		this.vbn = vbn;
-	}
-	public String getVcn() {
-		return vcn;
-	}
-	public void setVcn(String vcn) {
-		this.vcn = vcn;
-	}
-	public String getVab() {
-		return vab;
-	}
-	public void setVab(String vab) {
-		this.vab = vab;
-	}
-	public String getVbc() {
-		return vbc;
-	}
-	public void setVbc(String vbc) {
-		this.vbc = vbc;
-	}
-	public String getVca() {
-		return vca;
-	}
-	public void setVca(String vca) {
-		this.vca = vca;
-	}
-	public String getIa() {
-		return ia;
-	}
-	public void setIa(String ia) {
-		this.ia = ia;
-	}
-	public String getIb() {
-		return ib;
-	}
-	public void setIb(String ib) {
-		this.ib = ib;
-	}
-	public String getIc() {
-		return ic;
-	}
-	public void setIc(String ic) {
-		this.ic = ic;
-	}
-	public String getFreq() {
-		return freq;
-	}
-	public void setFreq(String freq) {
-		this.freq = freq;
-	}
-	public String getPf() {
-		return pf;
-	}
-	public void setPf(String pf) {
-		this.pf = pf;
-	}
-	public String getWatt() {
-		return watt;
-	}
-	public void setWatt(String watt) {
-		this.watt = watt;
-	}
-	// public String getWattHr() {
-	// 	return wattHr;
-	// }
-	// public void setWattHr(String wattHr) {
-	// 	this.wattHr = wattHr;
-	// }
+To verify the LOV notification, follow these steps:
 
-	// @Override
-	// public String toString() {
-	// 	return "NexusData [firmware=" + firmware + ", deviceName=" + deviceName + ", deviceType=" + deviceType
-	// 			+ ", van=" + van + ", vbn=" + vbn + ", vcn=" + vcn + ", vab=" + vab + ", vbc=" + vbc + ", vca=" + vca
-	// 			+ ", ia=" + ia + ", ib=" + ib + ", ic=" + ic + ", freq=" + freq + ", pf=" + pf + ", watt=" + watt
-	// 			+ ", wattHr=" + wattHr + "]";
-	// }
-	@Override
-	public String toString() {
-		return "NexusData [deviceType=" + deviceType
-				+ ", van=" + van + ", vbn=" + vbn + ", vcn=" + vcn + ", vab=" + vab + ", vbc=" + vbc + ", vca=" + vca
-				+ ", ia=" + ia + ", ib=" + ib + ", ic=" + ic + ", freq=" + freq + ", pf=" + pf + ", watt=" + watt
-				+  "]";
-	}
+1. Simulate Device Unreachability:
 
-    // Getters and Setters
-    
-}
+Disconnect the Nexus 1450 device or block its network access.
+
+This will simulate the device becoming unreachable.
 
 
-package com.verizon.ucs.model;
 
-public class NexusData1450 {
-	
-	private String serial;
-    private String firmware;
-    private String deviceName;
-    private String deviceType;
-	private String mac;
-    private String van;
-    private String vbn;
-    private String vcn;
-    private String vab;
-    private String vbc;
-    private String vca;
-    private String ia;
-    private String ib;
-    private String ic;
-    private String freq;
-    private String pf;
-    private String watt;
-    private String wattHr;
-    
-    
-	public String getFirmware() {
-		return firmware;
-	}
-	public void setFirmware(String firmware) {
-		this.firmware = firmware;
-	}
-	public String getDeviceName() {
-		return deviceName;
-	}
-	public void setDeviceName(String deviceName) {
-		this.deviceName = deviceName;
-	}
-	public String getDeviceType() {
-		return deviceType;
-	}
-	public void setDeviceType(String deviceType) {
-		this.deviceType = deviceType;
-	}
-	public String getVan() {
-		return van;
-	}
-	public void setVan(String van) {
-		this.van = van;
-	}
-	public String getVbn() {
-		return vbn;
-	}
-	public void setVbn(String vbn) {
-		this.vbn = vbn;
-	}
-	public String getVcn() {
-		return vcn;
-	}
-	public void setVcn(String vcn) {
-		this.vcn = vcn;
-	}
-	public String getVab() {
-		return vab;
-	}
-	public void setVab(String vab) {
-		this.vab = vab;
-	}
-	public String getVbc() {
-		return vbc;
-	}
-	public void setVbc(String vbc) {
-		this.vbc = vbc;
-	}
-	public String getVca() {
-		return vca;
-	}
-	public void setVca(String vca) {
-		this.vca = vca;
-	}
-	public String getIa() {
-		return ia;
-	}
-	public void setIa(String ia) {
-		this.ia = ia;
-	}
-	public String getIb() {
-		return ib;
-	}
-	public void setIb(String ib) {
-		this.ib = ib;
-	}
-	public String getIc() {
-		return ic;
-	}
-	public void setIc(String ic) {
-		this.ic = ic;
-	}
-	public String getFreq() {
-		return freq;
-	}
-	public void setFreq(String freq) {
-		this.freq = freq;
-	}
-	public String getPf() {
-		return pf;
-	}
-	public void setPf(String pf) {
-		this.pf = pf;
-	}
-	public String getWatt() {
-		return watt;
-	}
-	public void setWatt(String watt) {
-		this.watt = watt;
-	}
-	public String getWattHr() {
-		return wattHr;
-	}
-	public void setWattHr(String wattHr) {
-		this.wattHr = wattHr;
-	}
-	public String getSerial() {
-		return serial;
-	}
-	public void setSerial(String serial) {
-		this.serial = serial;
-	}
-	public String getMac() {
-		return mac;
-	}
-	public void setMac(String mac) {
-		this.mac = mac;
-	}
-	@Override
-	public String toString() {
-		return "NexusData [firmware=" + firmware + ", deviceName=" + deviceName + ", deviceType=" + deviceType
-				+ ", van=" + van + ", vbn=" + vbn + ", vcn=" + vcn + ", vab=" + vab + ", vbc=" + vbc + ", vca=" + vca
-				+ ", ia=" + ia + ", ib=" + ib + ", ic=" + ic + ", freq=" + freq + ", pf=" + pf + ", watt=" + watt
-				+ ", wattHr=" + wattHr + ", serial=" + serial + ", mac=" + mac + "]";
-	}
+2. Trigger Data Request:
 
-    // Getters and Setters
-    
-}
+Use the GET /api/nexus/data/{deviceIP}/{deviceType} endpoint to simulate a request for device data.
+
+If the device is unreachable, the LOV notification will be sent.
+
+
+
+3. Check Logs:
+
+Verify in the logs that the message "LOV notification sent for Nexus 1450: {deviceIp}" appears when the device is unreachable.
+
+
+
+4. Verify the LOV Notification in Pulsar/VMB:
+
+If you're using Pulsar, subscribe to the LOV topic (persistent://enmv/psc-alarm/nexus-meter-lov) to check the notification.
+
+If using VMB, check the corresponding topic or logs.
+
+
+
+
+
+---
+
+Conclusion
+
+LOV notification is triggered when a Nexus 1450 device is unreachable.
+
+The NexusService handles the logic for sending LOV notifications, and the PSCController serves the API requests.
+
+Use the Pulsar consumer or VMB subscriber to verify the LOV messages.
+
+
+Let me know if you need further clarifications!
+
