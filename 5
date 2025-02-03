@@ -1,16 +1,152 @@
-I understand that you're still facing issues with the LOV notification not being sent successfully, and no message is reaching the Pulsar producer. Let’s go step by step to ensure everything is properly configured, and I'll add more detailed logging to help identify where things might be going wrong.
+To help you fully integrate Pulsar into your system, I'll provide the necessary Pulsar classes that will allow you to produce, consume, and configure Pulsar in your application.
 
-1️⃣ Verify PulsarPublisherService
+You already have the PulsarPublisherService class, so I will now provide:
 
-Let’s enhance the PulsarPublisherService further and add additional logging to trace each step of the message publishing process.
+1. Pulsar Configuration Class: To configure the Pulsar client.
 
-Updated PulsarPublisherService with Additional Debugging
+
+2. Pulsar Consumer Class: To consume messages from the Pulsar topic.
+
+
+3. Pulsar Producer Class: You've already provided this, but I'll make sure it's properly set up.
+
+
+
+Let’s start with each necessary component:
+
+
+---
+
+1️⃣ Pulsar Configuration Class
+
+This class will configure the Pulsar client using values from your application.yml or application.properties.
+
+PulsarConfig.java:
+
+package com.verizon.ucs.config;
+
+import org.apache.pulsar.client.api.PulsarClient;
+import org.apache.pulsar.client.impl.auth.AuthenticationTls;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class PulsarConfig {
+
+    @Value("${vmb.serviceUrl}")
+    private String serviceUrl;
+
+    @Value("${vmb.tlsTrustCertsFile}")
+    private String tlsTrustCertsFile;
+
+    @Value("${vmb.tlsCertFile}")
+    private String tlsCertFile;
+
+    @Value("${vmb.tlsKeyFile}")
+    private String tlsKeyFile;
+
+    @Bean
+    public PulsarClient pulsarClient() throws Exception {
+        return PulsarClient.builder()
+                .serviceUrl(serviceUrl)
+                .tlsTrustCertsFilePath(tlsTrustCertsFile)
+                .authentication(new AuthenticationTls(tlsCertFile, tlsKeyFile))
+                .build();
+    }
+}
+
+Explanation:
+
+PulsarClient: Initializes the Pulsar client using TLS authentication and the service URL.
+
+@Value: Reads configuration values (e.g., service URL, TLS cert files) from the application configuration.
+
+@Bean: Makes the Pulsar client available as a Spring bean for dependency injection.
+
+
+
+---
+
+2️⃣ Pulsar Consumer Class
+
+Now, let's create a Pulsar consumer that will listen to a topic and process the messages.
+
+PulsarConsumerService.java:
+
+package com.verizon.ucs.service.pulsar;
+
+import org.apache.pulsar.client.api.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+@Service
+public class PulsarConsumerService {
+
+    private static final Logger logger = LoggerFactory.getLogger(PulsarConsumerService.class);
+
+    @Autowired
+    private PulsarClient pulsarClient;
+
+    public void consumeMessages(String topicName) {
+        try {
+            Consumer<byte[]> consumer = pulsarClient.newConsumer()
+                    .topic(topicName)
+                    .subscriptionName("lov-subscription")  // Name of the subscription
+                    .subscribe();
+
+            logger.info("Listening for messages on topic: {}", topicName);
+
+            while (true) {
+                // Receive a message (blocking call)
+                Message<byte[]> msg = consumer.receive();
+                String message = new String(msg.getData());
+
+                logger.info("Received message: {}", message);
+
+                // Acknowledge the message after processing
+                consumer.acknowledge(msg);
+            }
+        } catch (PulsarClientException | InterruptedException e) {
+            logger.error("Failed to consume messages", e);
+        }
+    }
+}
+
+Explanation:
+
+PulsarConsumerService: This service listens to a Pulsar topic and processes the messages.
+
+pulsarClient.newConsumer(): Creates a Pulsar consumer that subscribes to the specified topic (lov-subscription).
+
+consumer.receive(): Blocks until a message is received.
+
+consumer.acknowledge(msg): Acknowledges that the message was processed successfully.
+
+
+Usage:
+
+Call consumeMessages("persistent://enmv/psc-alarm/nexus-meter-lov") to start listening to the topic where LOV notifications are published.
+
+
+
+---
+
+3️⃣ Pulsar Publisher Service (Already Provided)
+
+You already have the PulsarPublisherService to send messages to Pulsar. Here’s a reminder of the essential parts of your PulsarPublisherService:
+
+Reminder of PulsarPublisherService.java:
 
 package com.verizon.ucs.service.pulsar;
 
 import com.verizon.ucs.config.VMBProperties;
 import org.apache.pulsar.client.api.*;
 import org.apache.pulsar.client.impl.auth.AuthenticationTls;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Service;
@@ -25,7 +161,8 @@ public class PulsarPublisherService {
     private VMBProperties properties;
 
     public void publishMessage(String message) throws PulsarClientException {
-        // Log the Pulsar service URL and topic for debugging
+        logger.info("Attempting to send message to Pulsar...");
+
         if (properties.getServiceUrl() == null || properties.getServiceUrl().isEmpty()) {
             logger.error("Pulsar service URL is not configured properly!");
             throw new IllegalArgumentException("Pulsar service URL is missing in configuration.");
@@ -36,30 +173,22 @@ public class PulsarPublisherService {
             throw new IllegalArgumentException("Pulsar topic name is missing in configuration.");
         }
 
-        // Initialize Pulsar client
-        logger.info("Initializing Pulsar client with service URL: {}", properties.getServiceUrl());
-
         PulsarClient client = PulsarClient.builder()
                 .serviceUrl(properties.getServiceUrl())  // Ensure the correct service URL
                 .tlsTrustCertsFilePath(properties.getTlsTrustCertsFile())  // TLS certs
                 .authentication(new AuthenticationTls(properties.getTlsCertFile(), properties.getTlsKeyFile())) // TLS auth
                 .build();
 
-        // Log that we are about to create a producer
-        logger.info("Creating producer for topic: {}", properties.getTopicName());
+        logger.debug("Pulsar client initialized successfully. Creating producer for topic: {}", properties.getTopicName());
 
-        // Create a producer
         Producer<byte[]> producer = client.newProducer()
-                .topic(properties.getTopicName())  // Use the correct topic name
+                .topic(properties.getTopicName())
                 .create();
 
-        // Log the message being sent
-        logger.info("Sending LOV notification message: {}", message);
+        logger.debug("Sending LOV notification to Pulsar: {}", message);
 
-        // Send the message to the topic
         producer.send(message.getBytes());
 
-        // Close producer and client
         producer.close();
         client.close();
 
@@ -67,231 +196,32 @@ public class PulsarPublisherService {
     }
 }
 
-What has been added:
 
-Validation for Pulsar URL and Topic: If the Pulsar URL or topic name is not configured, it will log an error and throw an exception to catch misconfiguration early.
+---
 
-Detailed logs: Added logs before creating the Pulsar client, creating the producer, and sending the message to ensure you can trace where the issue might be.
+4️⃣ Integration & Running the Consumer
 
-Message being sent: Log the actual message being sent to Pulsar.
+Now that we have all the necessary components, you can integrate the consumer into your application:
 
+1. Start the Consumer: To start the consumer, you would inject the PulsarConsumerService and call the consumeMessages() method with the topic name to listen for messages.
 
-2️⃣ Update NexusService.java to Trigger LOV Notifications Properly
+Example:
 
-Let’s ensure that the LOV notification is being triggered correctly when a Nexus 1450 device is unreachable. Here’s an updated version of the NexusService:
+@Autowired
+private PulsarConsumerService pulsarConsumerService;
 
-Updated NexusService.java:
-
-package com.verizon.ucs.service;
-
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.Map;
-import java.util.function.Function;
-
-import com.verizon.ucs.service.pulsar.PulsarPublisherService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.retry.support.RetryTemplate;
-import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
-
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.verizon.ucs.config.Constants;
-import com.verizon.ucs.config.NexusConfig;
-import com.verizon.ucs.model.DeviceInfo;
-import com.verizon.ucs.parser.Nexus1250Parser;
-import com.verizon.ucs.parser.Nexus1450Parser;
-import com.verizon.ucs.parser.Nexus1500Parser;
-
-@Service
-public class NexusService {
-    private static final Logger logger = LoggerFactory.getLogger(NexusService.class);
-
-    @Autowired
-    private NexusConfig config;
-
-    @Autowired
-    private RestTemplate restTemplate;
-
-    @Autowired
-    private RetryTemplate retryTemplate;
-
-    @Autowired
-    private PulsarPublisherService pulsarPublisherService; // To send LOV notifications
-
-    public Object processDevice(DeviceInfo device) throws Exception {
-        String deviceType = device.getModel().replace("Nexus ", "");
-        Function<String, ?> parser = getParser(deviceType);
-        if (parser != null) {
-            return getNexusData(device, parser);
-        } else {
-            logger.info("Unsupported device type: {}", deviceType);
-            return null;
-        }
-    }
-
-    private Function<String, ?> getParser(String deviceType) {
-        switch (deviceType) {
-            case Constants.DEVICE_TYPE_1250:
-                return response -> {
-                    try {
-                        return new Nexus1250Parser().parse(response);
-                    } catch (Exception e) {
-                        throw new RuntimeException(e);
-                    }
-                };
-            case Constants.DEVICE_TYPE_1450:
-                return response -> new Nexus1450Parser().parse(response);
-            case Constants.DEVICE_TYPE_1500:
-                return response -> {
-                    try {
-                        return new Nexus1500Parser().parse(response);
-                    } catch (Exception e) {
-                        throw new RuntimeException(e);
-                    }
-                };
-            default:
-                return null;
-        }
-    }
-
-    public <T> T getNexusData(DeviceInfo device, Function<String, T> parser) throws Exception {
-        String response;
-        String deviceType = device.getModel().replace("Nexus ", "");
-
-        if (config.isUseSampleData()) {
-            response = new String(Files.readAllBytes(Paths.get(config.getSampleDataPaths().get(deviceType))));
-        } else {
-            response = fetchDataFromDevice(deviceType, device.getDeviceIP());
-        }
-
-        T data = parser.apply(response);
-        logger.info("NexusData::  {}", data);
-        return data;
-    }
-
-    private String fetchDataFromDevice(String deviceType, String deviceIP) throws Exception {
-        return retryTemplate.execute(context -> {
-            String url = config.getApiEndpoints().get(deviceType).replace("{siteIP}", deviceIP);
-
-            try {
-                switch (deviceType) {
-                    case Constants.DEVICE_TYPE_1250:
-                        return restTemplate.getForObject(url, String.class);
-                    case Constants.DEVICE_TYPE_1450:
-                        return restTemplate.postForObject(url, getHttpEntity(), String.class);
-                    case Constants.DEVICE_TYPE_1500:
-                        return restTemplate.getForObject(url, String.class);
-                    default:
-                        throw new IllegalArgumentException("Unsupported device type: " + deviceType);
-                }
-            } catch (Exception e) {
-                logger.error("Error accessing device {}: {}", deviceIP, e.getMessage());
-
-                if (Constants.DEVICE_TYPE_1450.equals(deviceType)) {
-                    // Ensure LOV notification is triggered if the Nexus 1450 is unreachable
-                    logger.info("Nexus 1450 device is unreachable, sending LOV notification for device: {}", deviceIP);
-                    sendLovNotification(deviceIP);  // Trigger LOV notification
-                }
-
-                throw e;  // Re-throw the exception to be handled by retryTemplate
-            }
-        });
-    }
-
-    // Method to send LOV (Loss of Visibility) notification to Pulsar/VMB
-    private void sendLovNotification(String deviceIp) {
-        Map<String, Object> lovNotification = Map.of(
-                "timestamp", ZonedDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
-                "deviceIp", deviceIp,
-                "status", "LOV",
-                "message", "Nexus 1450 device is unreachable"
-        );
-
-        try {
-            // Log that we're sending the LOV notification
-            logger.info("Sending LOV notification for Nexus 1450: {}", deviceIp);
-
-            String payload = new ObjectMapper().writeValueAsString(lovNotification);
-            pulsarPublisherService.publishMessage(payload);  // Trigger the message publishing
-            logger.info("LOV notification sent for Nexus 1450: {}", deviceIp);
-        } catch (Exception e) {
-            logger.error("Failed to send LOV notification", e);
-        }
-    }
-
-    private HttpEntity<String> getHttpEntity() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        return new HttpEntity<>(createRequestPayload(Constants.REQUEST_BODY_1450), headers);
-    }
-
-    private String createRequestPayload(String[] chans) {
-        ObjectMapper mapper = new ObjectMapper();
-        Map<String, Object> payloadMap = Map.of("chans", chans);
-        try {
-            return mapper.writeValueAsString(payloadMap);
-        } catch (JsonProcessingException e) {
-            logger.error("Error creating JSON request payload", e);
-            return null;
-        }
-    }
+@PostConstruct
+public void startConsuming() {
+    // Start listening to the topic
+    pulsarConsumerService.consumeMessages("persistent://enmv/psc-alarm/nexus-meter-lov");
 }
 
-What’s changed:
 
-Added more logging for the LOV notification process to help trace if it's being triggered correctly.
+2. Test the Integration:
 
-Added a log before calling sendLovNotification to ensure it is being invoked.
+Producer: Use the PulsarPublisherService to publish messages (e.g., the LOV notification).
 
-Improved exception handling and added logging for device access failure.
-
-
-
----
-
-3️⃣ Test the Process
-
-Steps to Test:
-
-1. Simulate Device Unreachability:
-
-Disconnect the Nexus 1450 or Nexus 1500 device, or block its network access.
-
-
-
-2. Trigger the Data Request:
-
-Use Postman or cURL to trigger the data request for the Nexus 1450:
-
-curl -X GET "http://your-api-server/api/nexus/data/192.168.1.100/1450"
-
-Replace 192.168.1.100 with the actual IP address of the unreachable Nexus 1450 device.
-
-
-
-3. Check Logs:
-
-Verify the logs to ensure the following:
-
-The sendLovNotification method is being called and logged.
-
-The PulsarPublisherService is logging the message as being sent.
-
-
-
-
-4. Check Pulsar:
-
-Use the Pulsar consumer or Pulsar Manager to ensure the LOV message is received on the correct topic.
+Consumer: The PulsarConsumerService should receive those messages, process them, and log the content.
 
 
 
@@ -299,9 +229,16 @@ Use the Pulsar consumer or Pulsar Manager to ensure the LOV message is received 
 
 ---
 
-Conclusion
+5️⃣ Conclusion
 
-By enhancing logging and ensuring the Pulsar client is properly configured, you can debug and verify the process of sending the LOV notification for unreachable Nexus 1450 or Nexus 1500 devices. Follow the testing steps, and you should be able to see the notifications being sent to Pulsar or VMB.
+With these steps, you now have:
 
-Let me know if you need any more help with this!
+PulsarClient configured for your application.
+
+PulsarProducer to send messages (such as the LOV notification).
+
+PulsarConsumer to receive messages and process them.
+
+
+If you need further assistance with configuring or running the Pulsar components or troubleshooting issues, feel free to ask!
 
