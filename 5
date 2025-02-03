@@ -1,244 +1,121 @@
-To help you fully integrate Pulsar into your system, I'll provide the necessary Pulsar classes that will allow you to produce, consume, and configure Pulsar in your application.
+You should inject and call the PulsarConsumerService in a Spring-managed component such as a Controller, Service, or Configuration class.
 
-You already have the PulsarPublisherService class, so I will now provide:
+Here are the steps to inject and start consuming messages from the Pulsar topic:
 
-1. Pulsar Configuration Class: To configure the Pulsar client.
+1️⃣ Creating a New Spring Component (e.g., Service) to Start Consumer
 
+Since the consumer needs to listen for messages when the application starts, it is best to put this logic in a Service class or Configuration class that runs during the Spring context initialization.
 
-2. Pulsar Consumer Class: To consume messages from the Pulsar topic.
+Example: PulsarConsumerStarterService
 
+package com.verizon.ucs.service.pulsar;
 
-3. Pulsar Producer Class: You've already provided this, but I'll make sure it's properly set up.
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import javax.annotation.PostConstruct;
 
+@Service
+public class PulsarConsumerStarterService {
 
+    @Autowired
+    private PulsarConsumerService pulsarConsumerService;
 
-Let’s start with each necessary component:
-
-
----
-
-1️⃣ Pulsar Configuration Class
-
-This class will configure the Pulsar client using values from your application.yml or application.properties.
-
-PulsarConfig.java:
-
-package com.verizon.ucs.config;
-
-import org.apache.pulsar.client.api.PulsarClient;
-import org.apache.pulsar.client.impl.auth.AuthenticationTls;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-
-@Configuration
-public class PulsarConfig {
-
-    @Value("${vmb.serviceUrl}")
-    private String serviceUrl;
-
-    @Value("${vmb.tlsTrustCertsFile}")
-    private String tlsTrustCertsFile;
-
-    @Value("${vmb.tlsCertFile}")
-    private String tlsCertFile;
-
-    @Value("${vmb.tlsKeyFile}")
-    private String tlsKeyFile;
-
-    @Bean
-    public PulsarClient pulsarClient() throws Exception {
-        return PulsarClient.builder()
-                .serviceUrl(serviceUrl)
-                .tlsTrustCertsFilePath(tlsTrustCertsFile)
-                .authentication(new AuthenticationTls(tlsCertFile, tlsKeyFile))
-                .build();
+    @PostConstruct
+    public void startConsuming() {
+        // Start listening to the topic as soon as the application starts
+        pulsarConsumerService.consumeMessages("persistent://enmv/psc-alarm/nexus-meter-lov");
     }
 }
 
 Explanation:
 
-PulsarClient: Initializes the Pulsar client using TLS authentication and the service URL.
+@Service: Marks this as a Spring service component, so it will be automatically managed by Spring's dependency injection.
 
-@Value: Reads configuration values (e.g., service URL, TLS cert files) from the application configuration.
+@PostConstruct: Ensures that the startConsuming() method runs once the Spring context is fully initialized and the bean is ready to be used.
 
-@Bean: Makes the Pulsar client available as a Spring bean for dependency injection.
+consumeMessages(): Starts the consumer that listens to the Pulsar topic (persistent://enmv/psc-alarm/nexus-meter-lov).
 
 
+2️⃣ Add the Pulsar Consumer Configuration to Spring Boot
 
----
+Now that you have the consumer service, make sure to scan the package where PulsarConsumerStarterService and PulsarConsumerService are located.
 
-2️⃣ Pulsar Consumer Class
+Example: @SpringBootApplication
 
-Now, let's create a Pulsar consumer that will listen to a topic and process the messages.
+If you're using Spring Boot, the main class annotated with @SpringBootApplication should automatically scan for all beans in the same or sub-packages. If the classes are in a different package, you can explicitly specify the base package for scanning:
 
-PulsarConsumerService.java:
+package com.verizon.ucs;
 
-package com.verizon.ucs.service.pulsar;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.ComponentScan;
 
-import org.apache.pulsar.client.api.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
+@SpringBootApplication
+@ComponentScan(basePackages = "com.verizon.ucs")
+public class Application {
 
-@Service
-public class PulsarConsumerService {
-
-    private static final Logger logger = LoggerFactory.getLogger(PulsarConsumerService.class);
-
-    @Autowired
-    private PulsarClient pulsarClient;
-
-    public void consumeMessages(String topicName) {
-        try {
-            Consumer<byte[]> consumer = pulsarClient.newConsumer()
-                    .topic(topicName)
-                    .subscriptionName("lov-subscription")  // Name of the subscription
-                    .subscribe();
-
-            logger.info("Listening for messages on topic: {}", topicName);
-
-            while (true) {
-                // Receive a message (blocking call)
-                Message<byte[]> msg = consumer.receive();
-                String message = new String(msg.getData());
-
-                logger.info("Received message: {}", message);
-
-                // Acknowledge the message after processing
-                consumer.acknowledge(msg);
-            }
-        } catch (PulsarClientException | InterruptedException e) {
-            logger.error("Failed to consume messages", e);
-        }
+    public static void main(String[] args) {
+        SpringApplication.run(Application.class, args);
     }
 }
 
-Explanation:
-
-PulsarConsumerService: This service listens to a Pulsar topic and processes the messages.
-
-pulsarClient.newConsumer(): Creates a Pulsar consumer that subscribes to the specified topic (lov-subscription).
-
-consumer.receive(): Blocks until a message is received.
-
-consumer.acknowledge(msg): Acknowledges that the message was processed successfully.
-
-
-Usage:
-
-Call consumeMessages("persistent://enmv/psc-alarm/nexus-meter-lov") to start listening to the topic where LOV notifications are published.
-
+This ensures that Spring will correctly scan and inject the PulsarConsumerService into PulsarConsumerStarterService.
 
 
 ---
 
-3️⃣ Pulsar Publisher Service (Already Provided)
+3️⃣ Run the Application
 
-You already have the PulsarPublisherService to send messages to Pulsar. Here’s a reminder of the essential parts of your PulsarPublisherService:
+Once you’ve added the PulsarConsumerStarterService to your Spring application:
 
-Reminder of PulsarPublisherService.java:
+1. Start the application as you normally would (e.g., mvn spring-boot:run or running the main method in your Spring Boot application).
 
-package com.verizon.ucs.service.pulsar;
 
-import com.verizon.ucs.config.VMBProperties;
-import org.apache.pulsar.client.api.*;
-import org.apache.pulsar.client.impl.auth.AuthenticationTls;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+2. The consumer should start listening to the Pulsar topic (persistent://enmv/psc-alarm/nexus-meter-lov) automatically.
+
+
+3. Verify that your application logs show that the consumer is successfully receiving messages and processing them.
+
+
+
+4️⃣ Optional: Create an Endpoint to Trigger Consumer (for Testing)
+
+If you want to trigger the consumer manually for testing, you can expose an endpoint in a Controller that starts the consumer when you call it.
+
+For example, in a Controller:
+
+package com.verizon.ucs.controller;
+
+import com.verizon.ucs.service.pulsar.PulsarConsumerService;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.stereotype.Service;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
 
-@Service
-@EnableConfigurationProperties({ VMBProperties.class })
-public class PulsarPublisherService {
-
-    private static final Logger logger = LoggerFactory.getLogger(PulsarPublisherService.class);
+@RestController
+public class PulsarConsumerController {
 
     @Autowired
-    private VMBProperties properties;
+    private PulsarConsumerService pulsarConsumerService;
 
-    public void publishMessage(String message) throws PulsarClientException {
-        logger.info("Attempting to send message to Pulsar...");
-
-        if (properties.getServiceUrl() == null || properties.getServiceUrl().isEmpty()) {
-            logger.error("Pulsar service URL is not configured properly!");
-            throw new IllegalArgumentException("Pulsar service URL is missing in configuration.");
-        }
-
-        if (properties.getTopicName() == null || properties.getTopicName().isEmpty()) {
-            logger.error("Pulsar topic name is not configured properly!");
-            throw new IllegalArgumentException("Pulsar topic name is missing in configuration.");
-        }
-
-        PulsarClient client = PulsarClient.builder()
-                .serviceUrl(properties.getServiceUrl())  // Ensure the correct service URL
-                .tlsTrustCertsFilePath(properties.getTlsTrustCertsFile())  // TLS certs
-                .authentication(new AuthenticationTls(properties.getTlsCertFile(), properties.getTlsKeyFile())) // TLS auth
-                .build();
-
-        logger.debug("Pulsar client initialized successfully. Creating producer for topic: {}", properties.getTopicName());
-
-        Producer<byte[]> producer = client.newProducer()
-                .topic(properties.getTopicName())
-                .create();
-
-        logger.debug("Sending LOV notification to Pulsar: {}", message);
-
-        producer.send(message.getBytes());
-
-        producer.close();
-        client.close();
-
-        logger.info("Message successfully sent to Pulsar topic: {}", properties.getTopicName());
+    @GetMapping("/start-consumer")
+    public String startConsumer() {
+        pulsarConsumerService.consumeMessages("persistent://enmv/psc-alarm/nexus-meter-lov");
+        return "Pulsar consumer started!";
     }
 }
 
+This exposes an endpoint /start-consumer that you can hit to start the consumer manually via an HTTP request.
 
----
+Conclusion
 
-4️⃣ Integration & Running the Consumer
+PulsarConsumerStarterService is injected and called in the Spring lifecycle, starting the consumer as soon as the application context is initialized.
 
-Now that we have all the necessary components, you can integrate the consumer into your application:
+PulsarConsumerService listens to the Pulsar topic (persistent://enmv/psc-alarm/nexus-meter-lov) and processes messages.
 
-1. Start the Consumer: To start the consumer, you would inject the PulsarConsumerService and call the consumeMessages() method with the topic name to listen for messages.
-
-Example:
-
-@Autowired
-private PulsarConsumerService pulsarConsumerService;
-
-@PostConstruct
-public void startConsuming() {
-    // Start listening to the topic
-    pulsarConsumerService.consumeMessages("persistent://enmv/psc-alarm/nexus-meter-lov");
-}
+If needed, you can also manually start the consumer via an HTTP endpoint like /start-consumer.
 
 
-2. Test the Integration:
+Now, when the application starts, the Pulsar consumer will automatically start listening to the specified Pulsar topic and process incoming messages.
 
-Producer: Use the PulsarPublisherService to publish messages (e.g., the LOV notification).
-
-Consumer: The PulsarConsumerService should receive those messages, process them, and log the content.
-
-
-
-
-
----
-
-5️⃣ Conclusion
-
-With these steps, you now have:
-
-PulsarClient configured for your application.
-
-PulsarProducer to send messages (such as the LOV notification).
-
-PulsarConsumer to receive messages and process them.
-
-
-If you need further assistance with configuring or running the Pulsar components or troubleshooting issues, feel free to ask!
+Let me know if you need further assistance or modifications!
 
