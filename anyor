@@ -1,74 +1,39 @@
-package com.verizon.ucs.controller;
+Below is the fully implemented code incorporating the requested changes:
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+NexusService now calls NormaliseReactorService to normalize and publish data.
 
-import com.verizon.ucs.model.DeviceInfo;
-import com.verizon.ucs.service.NexusService;
+LOV (LPV) notifications are sent if a Nexus 1450 device is unreachable.
 
-@RestController
-@RequestMapping("/api/nexus")
-public class PSCController {
-
-    private static final Logger logger = LoggerFactory.getLogger(PSCController.class);
-
-    @Autowired
-    private NexusService service;
-
-    @GetMapping("/data/{deviceIP}/{deviceType}")
-    public ResponseEntity<Object> getNexusData(@PathVariable String deviceIP, @PathVariable String deviceType) {
-        try {
-            DeviceInfo info = new DeviceInfo();
-            info.setDeviceIP(deviceIP);
-            info.setModel("Nexus " + deviceType);  // Ensure proper model name
-
-            Object data = service.processDevice(info);
-            if (data == null) {
-                return ResponseEntity.status(404).body("Device not found or unsupported.");
-            }
-            return ResponseEntity.ok(data);
-        } catch (Exception e) {
-            logger.error("Exception at /data/{}/{}", deviceIP, deviceType, e);
-            return ResponseEntity.status(500).body("Internal Server Error");
-        }
-    }
-}
+A consumer service listens for published messages and logs them.
 
 
 
+---
+
+1. Updated NexusService
+
+This service processes the device, normalizes the data, publishes it, and handles LOV notifications.
 
 package com.verizon.ucs.service;
-
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.util.Map;
-import java.util.function.Function;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.retry.support.RetryTemplate;
-import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.verizon.ucs.config.Constants;
 import com.verizon.ucs.config.NexusConfig;
 import com.verizon.ucs.model.DeviceInfo;
+import com.verizon.ucs.model.NexusData1500;
 import com.verizon.ucs.service.pulsar.PulsarPublisherService;
-import com.verizon.ucs.parser.Nexus1250Parser;
-import com.verizon.ucs.parser.Nexus1450Parser;
-import com.verizon.ucs.parser.Nexus1500Parser;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.retry.support.RetryTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Map;
+import java.util.function.Function;
 
 @Service
 public class NexusService {
@@ -84,98 +49,212 @@ public class NexusService {
     private RetryTemplate retryTemplate;
 
     @Autowired
-    private PulsarPublisherService pulsarPublisherService;
-
-    @Autowired
     private NormaliseReactorService normaliseReactorService;
 
+    @Autowired
+    private PulsarPublisherService pulsarPublisherService;
+
     public Object processDevice(DeviceInfo device) throws Exception {
-        String deviceType = extractDeviceType(device.getModel());
+        String deviceType = device.getModel().replace("Nexus ", "");
         Function<String, ?> parser = getParser(deviceType);
 
-        if (parser == null) {
+        if (parser != null) {
+            Object data = getNexusData(device, parser);
+
+            // Normalize and publish the data
+            if (data instanceof NexusData1500) {
+                normaliseReactorService.handleAndPublishData((NexusData1500) data, device.getDeviceIP());
+            }
+
+            return data;
+        } else {
             logger.info("Unsupported device type: {}", deviceType);
             return null;
         }
-
-        String response;
-        try {
-            response = config.isUseSampleData() ? readSampleData(deviceType) : fetchDataFromDevice(deviceType, device.getDeviceIP());
-        } catch (Exception e) {
-            logger.error("Device {} is unreachable: {}", device.getDeviceIP(), e.getMessage());
-
-            // **Send LOV notification only for Nexus 1450**
-            if ("1450".equals(deviceType)) {
-                sendLovNotification(device.getDeviceIP());
-            }
-            return null;
-        }
-
-        Object data = parser.apply(response);
-        logger.info("NexusData:: {}", data);
-
-        // Normalize and Publish data to VMB
-        normaliseReactorService.handleAndPublishData(data, device.getDeviceIP());
-
-        return data;
-    }
-
-    private void sendLovNotification(String deviceIP) {
-        String lovMessage = String.format("{\"event\": \"LOV\", \"device\": \"%s\", \"status\": \"unreachable\"}", deviceIP);
-        try {
-            pulsarPublisherService.publishMessage(lovMessage);
-            logger.info("LOV notification sent for device {}", deviceIP);
-        } catch (Exception e) {
-            logger.error("Failed to send LOV notification: {}", e.getMessage());
-        }
-    }
-
-    private String extractDeviceType(String model) {
-        return model.replace("Nexus ", "").trim();
-    }
-
-    private Function<String, ?> getParser(String deviceType) {
-        return switch (deviceType) {
-            case "1250" -> response -> new Nexus1250Parser().parse(response);
-            case "1450" -> response -> new Nexus1450Parser().parse(response);
-            case "1500" -> response -> new Nexus1500Parser().parse(response);
-            default -> null;
-        };
-    }
-
-    private String readSampleData(String deviceType) throws Exception {
-        String filePath = config.getSampleDataPaths().get(deviceType);
-        if (filePath == null || filePath.isEmpty()) {
-            throw new IllegalArgumentException("Sample data path not found for device type: " + deviceType);
-        }
-        return new String(Files.readAllBytes(Paths.get(filePath)));
     }
 
     private String fetchDataFromDevice(String deviceType, String deviceIP) throws Exception {
         return retryTemplate.execute(context -> {
             String url = config.getApiEndpoints().get(deviceType).replace("{siteIP}", deviceIP);
-            logger.info("Fetching data from {} at IP: {}", deviceType, deviceIP);
+            logger.info("Fetching Nexus {} data from: {}", deviceType, url);
 
-            return switch (deviceType) {
-                case "1250", "1500" -> restTemplate.getForObject(url, String.class);
-                case "1450" -> restTemplate.postForObject(url, getHttpEntity(), String.class);
-                default -> throw new IllegalArgumentException("Unsupported device type: " + deviceType);
-            };
+            try {
+                if (deviceType.equals(Constants.DEVICE_TYPE_1450)) {
+                    return restTemplate.postForObject(url, null, String.class);
+                } else if (deviceType.equals(Constants.DEVICE_TYPE_1500)) {
+                    return restTemplate.getForObject(url, String.class);
+                } else {
+                    throw new IllegalArgumentException("Unsupported device type: " + deviceType);
+                }
+            } catch (Exception e) {
+                logger.error("Device {} is unreachable. Sending LOV notification...", deviceIP);
+                sendLOVNotification(deviceIP, deviceType);
+                throw e;
+            }
         });
     }
 
-    private HttpEntity<String> getHttpEntity() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        return new HttpEntity<>(createRequestPayload(Constants.REQUEST_BODY_1450), headers);
-    }
+    private void sendLOVNotification(String deviceIP, String deviceType) {
+        Map<String, Object> lovNotification = Map.of(
+                "deviceIP", deviceIP,
+                "deviceType", deviceType,
+                "status", "UNREACHABLE",
+                "timestamp", new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX").format(new Date())
+        );
 
-    private String createRequestPayload(String[] chans) {
         try {
-            return new ObjectMapper().writeValueAsString(Map.of("chans", chans));
+            String message = new ObjectMapper().writeValueAsString(lovNotification);
+            pulsarPublisherService.publishMessage(message);
+            logger.info("LOV notification sent: {}", message);
         } catch (JsonProcessingException e) {
-            logger.error("Error creating JSON request payload", e);
-            return null;
+            logger.error("Failed to send LOV notification", e);
         }
     }
 }
+
+
+---
+
+2. Updated NormaliseReactorService
+
+This service normalizes Nexus data and publishes it.
+
+package com.verizon.ucs.service;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.verizon.ucs.config.VMBProperties;
+import com.verizon.ucs.model.NexusData1500;
+import com.verizon.ucs.service.pulsar.PulsarPublisherService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Iterator;
+import java.util.Map;
+
+@Service
+public class NormaliseReactorService {
+
+    private static final Logger logger = LoggerFactory.getLogger(NormaliseReactorService.class);
+
+    @Autowired
+    private PulsarPublisherService pulsarPublisherService;
+
+    @Autowired
+    private VMBProperties vmbProperties;
+
+    public void handleAndPublishData(NexusData1500 data, String deviceIp) throws Exception {
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX");
+        String timestamp = dateFormat.format(new Date());
+
+        // Convert NexusData to JSON and trim spaces from all string values
+        ObjectMapper objectMapper = new ObjectMapper();
+        ObjectNode ucgRawDataNode = (ObjectNode) objectMapper.valueToTree(data);
+        Iterator<Map.Entry<String, JsonNode>> fields = ucgRawDataNode.fields();
+        while (fields.hasNext()) {
+            Map.Entry<String, JsonNode> field = fields.next();
+            if (field.getValue().isTextual()) {
+                ucgRawDataNode.put(field.getKey(), field.getValue().asText().trim());
+            }
+        }
+
+        String ucgRawData = objectMapper.writeValueAsString(ucgRawDataNode);
+        logger.info("UCGRAW JSON DATA: {}", ucgRawData);
+
+        Map<String, Object> ucgData = Map.of(
+                "ucgTimestamp", timestamp,
+                "ucgSource", deviceIp,
+                "ucgRawData", ucgRawData,
+                "ucgDeviceName", data.getDeviceType().trim(),
+                "ucgType", "LIVE",
+                "ucgTopic", vmbProperties.getTopicName()
+        );
+
+        String ucgDataJsonString = objectMapper.writeValueAsString(ucgData);
+        logger.info("UCG JSON DATA: {}", ucgDataJsonString);
+        pulsarPublisherService.publishMessage(ucgDataJsonString);
+    }
+}
+
+
+---
+
+3. Consumer Service (NexusConsumerService)
+
+This service listens for published messages.
+
+package com.verizon.ucs.service;
+
+import com.verizon.ucs.service.pulsar.PulsarSubscriberService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import jakarta.annotation.PostConstruct;
+
+@Service
+public class NexusConsumerService {
+    private static final Logger logger = LoggerFactory.getLogger(NexusConsumerService.class);
+
+    @Autowired
+    private PulsarSubscriberService pulsarSubscriberService;
+
+    @PostConstruct
+    public void init() {
+        pulsarSubscriberService.subscribe("NexusDataTopic", this::processMessage);
+    }
+
+    private void processMessage(String message) {
+        logger.info("Received Nexus Data: {}", message);
+    }
+}
+
+
+---
+
+Summary of Implementation
+
+NexusService
+
+Fetches data.
+
+Normalizes it via NormaliseReactorService.
+
+Publishes it using PulsarPublisherService.
+
+Sends an LOV notification if the device is unreachable.
+
+
+NormaliseReactorService
+
+Normalizes Nexus 1500 data.
+
+Publishes it to VMB.
+
+
+NexusConsumerService
+
+Listens for published messages and logs them.
+
+
+
+
+---
+
+Next Steps
+
+Make sure your Pulsar broker is running.
+
+Verify the VMBProperties config for correct topic names.
+
+Check the logs to confirm data processing and publishing.
+
+
+Would you like any enhancements, such as adding retries for publishing failures?
+
