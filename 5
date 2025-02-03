@@ -1,9 +1,97 @@
+I understand that you're still facing issues with the LOV notification not being sent successfully, and no message is reaching the Pulsar producer. Let’s go step by step to ensure everything is properly configured, and I'll add more detailed logging to help identify where things might be going wrong.
+
+1️⃣ Verify PulsarPublisherService
+
+Let’s enhance the PulsarPublisherService further and add additional logging to trace each step of the message publishing process.
+
+Updated PulsarPublisherService with Additional Debugging
+
+package com.verizon.ucs.service.pulsar;
+
+import com.verizon.ucs.config.VMBProperties;
+import org.apache.pulsar.client.api.*;
+import org.apache.pulsar.client.impl.auth.AuthenticationTls;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.stereotype.Service;
+
+@Service
+@EnableConfigurationProperties({ VMBProperties.class })
+public class PulsarPublisherService {
+
+    private static final Logger logger = LoggerFactory.getLogger(PulsarPublisherService.class);
+
+    @Autowired
+    private VMBProperties properties;
+
+    public void publishMessage(String message) throws PulsarClientException {
+        // Log the Pulsar service URL and topic for debugging
+        if (properties.getServiceUrl() == null || properties.getServiceUrl().isEmpty()) {
+            logger.error("Pulsar service URL is not configured properly!");
+            throw new IllegalArgumentException("Pulsar service URL is missing in configuration.");
+        }
+
+        if (properties.getTopicName() == null || properties.getTopicName().isEmpty()) {
+            logger.error("Pulsar topic name is not configured properly!");
+            throw new IllegalArgumentException("Pulsar topic name is missing in configuration.");
+        }
+
+        // Initialize Pulsar client
+        logger.info("Initializing Pulsar client with service URL: {}", properties.getServiceUrl());
+
+        PulsarClient client = PulsarClient.builder()
+                .serviceUrl(properties.getServiceUrl())  // Ensure the correct service URL
+                .tlsTrustCertsFilePath(properties.getTlsTrustCertsFile())  // TLS certs
+                .authentication(new AuthenticationTls(properties.getTlsCertFile(), properties.getTlsKeyFile())) // TLS auth
+                .build();
+
+        // Log that we are about to create a producer
+        logger.info("Creating producer for topic: {}", properties.getTopicName());
+
+        // Create a producer
+        Producer<byte[]> producer = client.newProducer()
+                .topic(properties.getTopicName())  // Use the correct topic name
+                .create();
+
+        // Log the message being sent
+        logger.info("Sending LOV notification message: {}", message);
+
+        // Send the message to the topic
+        producer.send(message.getBytes());
+
+        // Close producer and client
+        producer.close();
+        client.close();
+
+        logger.info("Message successfully sent to Pulsar topic: {}", properties.getTopicName());
+    }
+}
+
+What has been added:
+
+Validation for Pulsar URL and Topic: If the Pulsar URL or topic name is not configured, it will log an error and throw an exception to catch misconfiguration early.
+
+Detailed logs: Added logs before creating the Pulsar client, creating the producer, and sending the message to ensure you can trace where the issue might be.
+
+Message being sent: Log the actual message being sent to Pulsar.
+
+
+2️⃣ Update NexusService.java to Trigger LOV Notifications Properly
+
+Let’s ensure that the LOV notification is being triggered correctly when a Nexus 1450 device is unreachable. Here’s an updated version of the NexusService:
+
+Updated NexusService.java:
+
 package com.verizon.ucs.service;
 
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Map;
+import java.util.function.Function;
 
+import com.verizon.ucs.service.pulsar.PulsarPublisherService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,16 +102,14 @@ import org.springframework.retry.support.RetryTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.verizon.ucs.config.Constants;
 import com.verizon.ucs.config.NexusConfig;
 import com.verizon.ucs.model.DeviceInfo;
-import com.verizon.ucs.model.NexusData;
 import com.verizon.ucs.parser.Nexus1250Parser;
 import com.verizon.ucs.parser.Nexus1450Parser;
 import com.verizon.ucs.parser.Nexus1500Parser;
-import com.verizon.ucs.parser.NexusParser;
-import com.verizon.ucs.service.pulsar.PulsarPublisherService;
 
 @Service
 public class NexusService {
@@ -39,53 +125,107 @@ public class NexusService {
     private RetryTemplate retryTemplate;
 
     @Autowired
-    private PulsarPublisherService pulsarPublisherService;
+    private PulsarPublisherService pulsarPublisherService; // To send LOV notifications
 
-    @Autowired
-    private NormaliseReactorService normaliseReactorService;
+    public Object processDevice(DeviceInfo device) throws Exception {
+        String deviceType = device.getModel().replace("Nexus ", "");
+        Function<String, ?> parser = getParser(deviceType);
+        if (parser != null) {
+            return getNexusData(device, parser);
+        } else {
+            logger.info("Unsupported device type: {}", deviceType);
+            return null;
+        }
+    }
 
-    public NexusData getNexusData(DeviceInfo device) {
+    private Function<String, ?> getParser(String deviceType) {
+        switch (deviceType) {
+            case Constants.DEVICE_TYPE_1250:
+                return response -> {
+                    try {
+                        return new Nexus1250Parser().parse(response);
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                };
+            case Constants.DEVICE_TYPE_1450:
+                return response -> new Nexus1450Parser().parse(response);
+            case Constants.DEVICE_TYPE_1500:
+                return response -> {
+                    try {
+                        return new Nexus1500Parser().parse(response);
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                };
+            default:
+                return null;
+        }
+    }
+
+    public <T> T getNexusData(DeviceInfo device, Function<String, T> parser) throws Exception {
+        String response;
+        String deviceType = device.getModel().replace("Nexus ", "");
+
+        if (config.isUseSampleData()) {
+            response = new String(Files.readAllBytes(Paths.get(config.getSampleDataPaths().get(deviceType))));
+        } else {
+            response = fetchDataFromDevice(deviceType, device.getDeviceIP());
+        }
+
+        T data = parser.apply(response);
+        logger.info("NexusData::  {}", data);
+        return data;
+    }
+
+    private String fetchDataFromDevice(String deviceType, String deviceIP) throws Exception {
+        return retryTemplate.execute(context -> {
+            String url = config.getApiEndpoints().get(deviceType).replace("{siteIP}", deviceIP);
+
+            try {
+                switch (deviceType) {
+                    case Constants.DEVICE_TYPE_1250:
+                        return restTemplate.getForObject(url, String.class);
+                    case Constants.DEVICE_TYPE_1450:
+                        return restTemplate.postForObject(url, getHttpEntity(), String.class);
+                    case Constants.DEVICE_TYPE_1500:
+                        return restTemplate.getForObject(url, String.class);
+                    default:
+                        throw new IllegalArgumentException("Unsupported device type: " + deviceType);
+                }
+            } catch (Exception e) {
+                logger.error("Error accessing device {}: {}", deviceIP, e.getMessage());
+
+                if (Constants.DEVICE_TYPE_1450.equals(deviceType)) {
+                    // Ensure LOV notification is triggered if the Nexus 1450 is unreachable
+                    logger.info("Nexus 1450 device is unreachable, sending LOV notification for device: {}", deviceIP);
+                    sendLovNotification(deviceIP);  // Trigger LOV notification
+                }
+
+                throw e;  // Re-throw the exception to be handled by retryTemplate
+            }
+        });
+    }
+
+    // Method to send LOV (Loss of Visibility) notification to Pulsar/VMB
+    private void sendLovNotification(String deviceIp) {
+        Map<String, Object> lovNotification = Map.of(
+                "timestamp", ZonedDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                "deviceIp", deviceIp,
+                "status", "LOV",
+                "message", "Nexus 1450 device is unreachable"
+        );
+
         try {
-            String response;
+            // Log that we're sending the LOV notification
+            logger.info("Sending LOV notification for Nexus 1450: {}", deviceIp);
 
-            // Read from file if sample data is enabled
-            if (config.isUseSampleData()) {
-                response = readSampleData(device);
-            } else {
-                response = fetchDataFromDevice(device);
-            }
-
-            // Parse the response based on device type
-            NexusParser parser = getParser(device.getModel());
-            NexusData data = parser.parse(response);
-
-            // Validate and publish data
-            validateData(data);
-            publishData(data, device.getDeviceIP());
-
+            String payload = new ObjectMapper().writeValueAsString(lovNotification);
+            pulsarPublisherService.publishMessage(payload);  // Trigger the message publishing
+            logger.info("LOV notification sent for Nexus 1450: {}", deviceIp);
         } catch (Exception e) {
-            logger.error("Failed to process device {}: {}", device.getDeviceIP(), e.getMessage());
-            if ("Nexus 1450".equals(device.getModel())) {
-                sendLovNotification(device.getDeviceIP());
-            }
+            logger.error("Failed to send LOV notification", e);
         }
-        return null;
-    }
-
-    private String readSampleData(DeviceInfo device) throws Exception {
-        String deviceType = device.getModel().replace("Nexus ", "").trim();
-        String filePath = config.getSampleDataPaths().get(deviceType);
-        if (filePath == null || filePath.isEmpty()) {
-            throw new IllegalArgumentException("Sample data path not found for device type: " + device.getModel());
-        }
-        return new String(Files.readAllBytes(Paths.get(filePath)));
-    }
-
-    private String fetchDataFromDevice(DeviceInfo device) throws Exception {
-        String deviceType = device.getModel().replace("Nexus ", "").trim();
-        String url = config.getApiEndpoints().get(deviceType).replace("{siteIP}", device.getDeviceIP());
-
-        return retryTemplate.execute(context -> restTemplate.getForObject(url, String.class));
     }
 
     private HttpEntity<String> getHttpEntity() {
@@ -95,53 +235,73 @@ public class NexusService {
     }
 
     private String createRequestPayload(String[] chans) {
+        ObjectMapper mapper = new ObjectMapper();
+        Map<String, Object> payloadMap = Map.of("chans", chans);
         try {
-            return new ObjectMapper().writeValueAsString(Map.of("chans", chans));
-        } catch (Exception e) {
+            return mapper.writeValueAsString(payloadMap);
+        } catch (JsonProcessingException e) {
             logger.error("Error creating JSON request payload", e);
             return null;
         }
     }
-
-    // Improved parser to handle Nexus device types
-    private NexusParser getParser(String deviceType) {
-        if (deviceType == null) {
-            throw new IllegalArgumentException("Device type is null");
-        }
-
-        deviceType = deviceType.trim().toLowerCase();  // Normalize device type for case-insensitivity
-
-        switch (deviceType) {
-            case "1250":
-                return new Nexus1250Parser();  // Parse Nexus 1250 (XML format)
-            case "1450":
-                return new Nexus1450Parser();  // Parse Nexus 1450 (JSON format)
-            case "1500":
-                return new Nexus1500Parser();  // Parse Nexus 1500 (XML format)
-            default:
-                throw new IllegalArgumentException("Unsupported device type: " + deviceType);  // Improved error handling
-        }
-    }
-
-    private void validateData(NexusData data) throws Exception {
-        if (data == null || data.getDeviceName() == null || data.getDeviceName().trim().isEmpty()) {
-            throw new Exception("Invalid Nexus data: missing device name");
-        }
-    }
-
-    private void publishData(NexusData data, String deviceIp) throws Exception {
-        String jsonData = new ObjectMapper().writeValueAsString(data);
-        pulsarPublisherService.publishMessage(jsonData);
-        logger.info("Published data for device: {}", deviceIp);
-    }
-
-    private void sendLovNotification(String deviceIP) {
-        String lovMessage = String.format("{\"event\": \"LOV\", \"device\": \"%s\", \"status\": \"unreachable\"}", deviceIP);
-        try {
-            pulsarPublisherService.publishMessage(lovMessage);
-            logger.info("LOV notification sent for device {}", deviceIP);
-        } catch (Exception e) {
-            logger.error("Failed to send LOV notification: {}", e.getMessage());
-        }
-    }
 }
+
+What’s changed:
+
+Added more logging for the LOV notification process to help trace if it's being triggered correctly.
+
+Added a log before calling sendLovNotification to ensure it is being invoked.
+
+Improved exception handling and added logging for device access failure.
+
+
+
+---
+
+3️⃣ Test the Process
+
+Steps to Test:
+
+1. Simulate Device Unreachability:
+
+Disconnect the Nexus 1450 or Nexus 1500 device, or block its network access.
+
+
+
+2. Trigger the Data Request:
+
+Use Postman or cURL to trigger the data request for the Nexus 1450:
+
+curl -X GET "http://your-api-server/api/nexus/data/192.168.1.100/1450"
+
+Replace 192.168.1.100 with the actual IP address of the unreachable Nexus 1450 device.
+
+
+
+3. Check Logs:
+
+Verify the logs to ensure the following:
+
+The sendLovNotification method is being called and logged.
+
+The PulsarPublisherService is logging the message as being sent.
+
+
+
+
+4. Check Pulsar:
+
+Use the Pulsar consumer or Pulsar Manager to ensure the LOV message is received on the correct topic.
+
+
+
+
+
+---
+
+Conclusion
+
+By enhancing logging and ensuring the Pulsar client is properly configured, you can debug and verify the process of sending the LOV notification for unreachable Nexus 1450 or Nexus 1500 devices. Follow the testing steps, and you should be able to see the notifications being sent to Pulsar or VMB.
+
+Let me know if you need any more help with this!
+
