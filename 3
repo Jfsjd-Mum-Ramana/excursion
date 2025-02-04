@@ -1,139 +1,41 @@
-It looks like the LOV topic (vmbConfig.getLovTopic()) is not being initialized in VmbEclipsePublisherService. This is why the LOV messages might not be published successfully.
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import com.verizon.ucs.model.DeviceInfo;
+import com.verizon.ucs.service.NexusService;
+import com.verizon.ucs.service.VmbEclipsePublisherService;
 
-Fix: Ensure the LOV Topic Producer is Initialized
+@Component
+public class NexusScheduler {
+    private static final Logger logger = LoggerFactory.getLogger(NexusScheduler.class);
 
-Modify the init() method in VmbEclipsePublisherService to explicitly initialize the LOV topic producer:
+    @Value("${scheduler.threadPoolSize}")
+    private int threadPoolSize;
 
-Updated VmbEclipsePublisherService Class
+    private final NexusService nexusService;
+    private final VmbEclipsePublisherService vmbEclipsePublisherService;
 
-@Service
-public class VmbEclipsePublisherService {
-    private static final Logger logger = LoggerFactory.getLogger(VmbEclipsePublisherService.class);
-
-    private Map<String, EclipsePulsarProducerNr> producers = new HashMap<>();
-
-    @Autowired
-    private VMBConfig vmbConfig;
-
-    @PostConstruct
-    public void init() throws Exception {
-        logger.info("Initializing Pulsar producers");
-
-        // Initialize producers for VMB topic and LOV topic
-        initializeProducer(vmbConfig.getVmbTopic());
-        initializeProducer(vmbConfig.getLovTopic()); // Ensure LOV topic is initialized
+    public NexusScheduler(NexusService nexusService, VmbEclipsePublisherService vmbEclipsePublisherService) {
+        this.nexusService = nexusService;
+        this.vmbEclipsePublisherService = vmbEclipsePublisherService;
     }
 
-    private void initializeProducer(String topic) throws Exception {
-        if (topic != null && !topic.isEmpty()) {
-            EclipsePulsarProducerNr producer = new EclipsePulsarProducerNr(true,
-                    vmbConfig.getServiceUrl(),
-                    vmbConfig.getTlsTrustCertsFile(),
-                    vmbConfig.getTlsKeyFile(),
-                    vmbConfig.getTlsCertFile(),
-                    topic
-            );
-            producers.put(topic, producer);
-            logger.info("Initialized producer for topic: {}", topic);
-        } else {
-            logger.error("Skipping producer initialization: Topic is null or empty");
-        }
-    }
+    @Scheduled(fixedRate = 5000)  // Running every 5 seconds for testing purposes
+    public void scheduleTask() {
+        logger.info("Starting Scheduler (Hardcoded Test)");
 
-    @PreDestroy
-    public void shutDown() {
+        // Hardcode a test device info for Nexus 1450
+        DeviceInfo deviceInfo = new DeviceInfo();
+        deviceInfo.setDeviceIP("192.168.1.100"); // Simulate unreachable device IP
+        deviceInfo.setModel("Nexus 1450"); // Nexus 1450 model
+
+        // Simulate the device processing with a failure (unreachable device)
         try {
-            logger.info("Shutting down Pulsar producers");
-            for (EclipsePulsarProducerNr producer : producers.values()) {
-                if (producer != null) {
-                    producer.shutDown();
-                }
-            }
-        } catch (Throwable e) {
-            logger.error("Exception while shutting down Pulsar producers", e);
-        }
-    }
-
-    public void publish(String topic, String message) throws Exception {
-        EclipsePulsarProducerNr producer = producers.get(topic);
-        if (producer != null) {
-            producer.publish(message);
-            logger.info("Message sent to topic {}: {}", topic, message);
-        } else {
-            logger.error("Producer for topic {} not found", topic);
-        }
-    }
-
-    public void publishAsync(String topic, String message, String partitionKey) {
-        EclipsePulsarProducerNr producer = producers.get(topic);
-        if (producer != null) {
-            producer.publishAsyncWithNr(message, partitionKey);
-            logger.info("Async message sent to topic {}: {}", topic, message);
-        } else {
-            logger.error("Producer for topic {} not found", topic);
+            nexusService.processDevice(deviceInfo);
+        } catch (Exception e) {
+            logger.error("Exception while processing device: {}", deviceInfo, e);
         }
     }
 }
-
-
----
-
-Updated fetchDataFromDevice() Method
-
-Now that the LOV topic producer is initialized, ensure the LOV notification logic is working properly in fetchDataFromDevice().
-
-private String fetchDataFromDevice(DeviceInfo devInfo) throws Exception {
-    return retryTemplate.execute(context -> {
-        String url = config.getApiEndpoints()
-                           .get(devInfo.getModelNo())
-                           .replace("{siteIP}", devInfo.getDeviceIP());
-
-        logger.info("Fetching data from device: {} using URL: {}", devInfo.getDeviceIP(), url);
-
-        switch (devInfo.getModelNo()) {
-            case Constants.DEVICE_TYPE_1250:
-                return restTemplate.getForObject(url, String.class);
-            case Constants.DEVICE_TYPE_1450:
-                return restTemplate.postForObject(url, getHttpEntity(), String.class);
-            case Constants.DEVICE_TYPE_1500:
-                return restTemplate.getForObject(url, String.class);
-            default:
-                throw new IllegalArgumentException("Unsupported device type: " + devInfo.getModelNo());
-        }
-    }, context -> {
-        // Recovery logic when all retry attempts fail
-        Throwable lastThrowable = context.getLastThrowable();
-        String errorMessage = lastThrowable != null ? lastThrowable.getMessage() : "Unknown error";
-
-        logger.error("All retry attempts failed for device: {} (Model: {}). Sending LOV notification. Error: {}",
-                      devInfo.getDeviceIP(), devInfo.getModelNo(), errorMessage);
-
-        // Generate LOV (Loss of Visibility) response
-        String lovMsg = validation.generateLOVResponse(devInfo, errorMessage);
-
-        // Log the LOV message before publishing
-        logger.info("Publishing LOV message to VMB topic: {}. Message: {}", vmbConfig.getLovTopic(), lovMsg);
-
-        // Publish the LOV notification to the VMB topic asynchronously
-        vmbEclipsePublisherService.publishAsync(vmbConfig.getLovTopic(), lovMsg, devInfo.getDeviceIP());
-
-        logger.info("LOV notification successfully published for device: {}", devInfo.getDeviceIP());
-
-        return "Recovery response: " + errorMessage;
-    });
-}
-
-
----
-
-What This Fixes
-
-✅ Ensures the LOV topic producer is properly initialized.
-✅ Logs all events related to LOV message publishing.
-✅ Confirms that Nexus 1450 failure results in an LOV notification being published.
-
-Validation:
-
-Start UCS service and check logs to confirm the LOV topic is initialized:
-
-
