@@ -1,40 +1,81 @@
-private String fetchDataFromDevice(DeviceInfo devInfo) throws Exception {
-    return retryTemplate.execute(context -> {
-        String url = config.getApiEndpoints()
-                           .get(devInfo.getModelNo())
-                           .replace("{siteIP}", devInfo.getDeviceIP());
+package com.verizon.ucs.service;
 
-        logger.info("Fetching data from device: {} using URL: {}", devInfo.getDeviceIP(), url);
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import com.verizon.eclipse.pulsar.producer.EclipsePulsarProducerNr;
+import com.verizon.ucs.config.VMBConfig;
 
-        switch (devInfo.getModelNo()) {
-            case Constants.DEVICE_TYPE_1250:
-                return restTemplate.getForObject(url, String.class);
-            case Constants.DEVICE_TYPE_1450:
-                return restTemplate.postForObject(url, getHttpEntity(), String.class);
-            case Constants.DEVICE_TYPE_1500:
-                return restTemplate.getForObject(url, String.class);
-            default:
-                throw new IllegalArgumentException("Unsupported device type: " + devInfo.getModelNo());
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
+
+import java.util.HashMap;
+import java.util.Map;
+
+@Service
+public class VmbEclipsePublisherService {
+    private static final Logger logger = LoggerFactory.getLogger(VmbEclipsePublisherService.class);
+
+    private Map<String, EclipsePulsarProducerNr> producers = new HashMap<>();
+
+    @Autowired
+    private VMBConfig vmbConfig;
+
+    @PostConstruct
+    public void init() throws Exception {
+        logger.info("Initializing Pulsar producers");
+
+        // Initialize producers for different topics
+        initializeProducer(vmbConfig.getVmbTopic());
+        //initializeProducer(vmbConfig.getLovTopic());
+    }
+
+    private void initializeProducer(String topic) throws Exception {
+        EclipsePulsarProducerNr producer = new EclipsePulsarProducerNr(true,
+                vmbConfig.getServiceUrl(),
+                vmbConfig.getTlsTrustCertsFile(),
+                vmbConfig.getTlsKeyFile(),
+                vmbConfig.getTlsCertFile(),
+                topic
+        );
+        producers.put(topic, producer);
+        logger.info("Initialized producer for topic: {}", topic);
+    }
+
+    @PreDestroy
+    public void shutDown() {
+        try {
+            logger.info("Shutting down Pulsar producers");
+            for (EclipsePulsarProducerNr producer : producers.values()) {
+                if (producer != null) {
+                    producer.shutDown();
+                }
+            }
+        } catch (Throwable e) {
+            logger.error("Exception while shutting down Pulsar producers", e);
         }
-    }, context -> {
-        // Recovery logic when all retry attempts fail
-        Throwable lastThrowable = context.getLastThrowable();
-        String errorMessage = lastThrowable != null ? lastThrowable.getMessage() : "Unknown error";
+    }
 
-        logger.error("All retry attempts failed for device: {} (Model: {}). Sending LOV notification. Error: {}",
-                      devInfo.getDeviceIP(), devInfo.getModelNo(), errorMessage);
+    public void publish(String topic, String message) throws Exception {
+        EclipsePulsarProducerNr producer = producers.get(topic);
+        if (producer != null) {
+            producer.publish(message);
+            logger.info("Message sent to topic {}: {}", topic, message);
+        } else {
+            logger.error("Producer for topic {} not found", topic);
+        }
+    }
 
-        // Generate LOV (Loss of Visibility) response
-        String lovMsg = validation.generateLOVResponse(devInfo, errorMessage);
-
-        // Log the LOV message before publishing
-        logger.info("Publishing LOV message to VMB topic: {}. Message: {}", vMBConfig.getLovTopic(), lovMsg);
-
-        // Publish the LOV notification to the VMB topic asynchronously
-        vmbEclipsePublisherService.publishAsync(vMBConfig.getLovTopic(), lovMsg, devInfo.getDeviceIP());
-
-        logger.info("LOV notification successfully published for device: {}", devInfo.getDeviceIP());
-
-        return "Recovery response: " + errorMessage;
-    });
+    public void publishAsync(String topic, String message, String partitionKey) {
+        EclipsePulsarProducerNr producer = producers.get(topic);
+        if (producer != null) {
+            producer.publishAsyncWithNr(message, partitionKey);
+            logger.info("Async message sent to topic {}: {}", topic, message);
+        } else {
+            logger.error("Producer for topic {} not found", topic);
+        }
+    }
 }
+
+lovTopic: persistent://enmv/pub-snmp-perf-east/ECLIPSE-pub-snmp-perf-east-ms 
