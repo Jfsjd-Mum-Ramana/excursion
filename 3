@@ -1,264 +1,40 @@
-package com.verizon.ucs.service;
+private String fetchDataFromDevice(DeviceInfo devInfo) throws Exception {
+    return retryTemplate.execute(context -> {
+        String url = config.getApiEndpoints()
+                           .get(devInfo.getModelNo())
+                           .replace("{siteIP}", devInfo.getDeviceIP());
 
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.time.Instant;
-import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.Map;
-import java.util.function.Function;
+        logger.info("Fetching data from device: {} using URL: {}", devInfo.getDeviceIP(), url);
 
-import org.json.JSONObject;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.retry.support.RetryTemplate;
-import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
-
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.verizon.ucs.config.Constants;
-import com.verizon.ucs.config.NexusConfig;
-import com.verizon.ucs.config.VMBConfig;
-import com.verizon.ucs.model.DeviceInfo;
-import com.verizon.ucs.model.NexusData1250;
-import com.verizon.ucs.model.NexusData1450;
-import com.verizon.ucs.model.NexusData1500;
-import com.verizon.ucs.model.RecoveryResponse;
-import com.verizon.ucs.parser.Nexus1250Parser;
-import com.verizon.ucs.parser.Nexus1450Parser;
-import com.verizon.ucs.parser.Nexus1500Parser;
-import com.verizon.ucs.util.Validation;
-
-@Service
-public class NexusService {
-	private static final Logger logger = LoggerFactory.getLogger(NexusService.class);
-
-	@Autowired
-	private NexusConfig config;
-
-	@Autowired
-	private VMBConfig vMBConfig;
-	
-	@Autowired
-	private Validation validation;
-
-	@Autowired
-	private RestTemplate restTemplate;
-
-	@Autowired
-	private RetryTemplate retryTemplate;
-	
-//	@Autowired
-//	private VmbProducerService vmbProducerService;
-	@Autowired
-	private VmbEclipsePublisherService vmbEclipsePublisherService;
-	
-	public Object processDevice(DeviceInfo devInfo) throws Exception {
-		devInfo.setModelNo(devInfo.getModel().replace("Nexus ", ""));
-
-		Function<String, ?> parser = getParser(devInfo.getModelNo());
-		if (parser != null) {
-			return getNexusData(devInfo, parser);
-		} else {
-			logger.info("Unsupported device type: {}", devInfo.getModelNo());
-			return null;
-		}
-	}
-
-	private Function<String, ?> getParser(String deviceType) {
-		switch (deviceType) {
-		case Constants.DEVICE_TYPE_1250:
-			return response -> {
-				try {
-					return new Nexus1250Parser().parse(response);
-				} catch (Exception e) {
-					throw new RuntimeException(e);
-				}
-			};
-		case Constants.DEVICE_TYPE_1450:
-			return response -> new Nexus1450Parser().parse(response);
-		case Constants.DEVICE_TYPE_1500:
-			return response -> {
-				try {
-					return new Nexus1500Parser().parse(response);
-				} catch (Exception e) {
-					throw new RuntimeException(e);
-				}
-			};
-		default:
-			return null;
-		}
-	}
-
-	public <T> T getNexusData(DeviceInfo devInfo, Function<String, T> parser) throws Exception {
-		String response;
-
-		if (config.isUseSampleData()) {
-			response = new String(Files.readAllBytes(Paths.get(config.getSampleDataPaths().get(devInfo.getModelNo()))));
-		} else {
-			response = fetchDataFromDevice(devInfo);
-		}
-
-		T data = parser.apply(response);
-		logger.info("NexusData::  {}", data);
-
-		validation.validateData(devInfo, data);
-		
-		ObjectMapper objectMapper = new ObjectMapper();
-		String jsonData = objectMapper.writeValueAsString(data);
-        JSONObject ucgData = constructUcgData(devInfo, jsonData);
-        
-        //vmbProducerService.sendMessage(vMBConfig.getVmbTopic(), ucgData.toString());
-        vmbEclipsePublisherService.publishAsync(vMBConfig.getVmbTopic(),ucgData.toString(),devInfo.getDeviceIP());
-		return data;
-	}
-	
-	private JSONObject constructUcgData(DeviceInfo devInfo,String data) {
-		JSONObject obj = new JSONObject();
-		obj.put("ucgTimestamp", Instant.now().toEpochMilli());
-		obj.put("ucgDeviceName", devInfo.getDeviceName());
-		obj.put("ucgSource", devInfo.getDeviceIP());
-		obj.put("ucgType", "LIVE");
-		obj.put("ucgRawData", data);
-		obj.put("ucgTopic", vMBConfig.getVmbTopic());
-		logger.info("UCG obj::  {}", obj);
-		return obj;
-	}
-
-	private String fetchDataFromDevice(DeviceInfo devInfo) throws Exception {
-		return retryTemplate.execute(context -> {
-			String url = config.getApiEndpoints().get(devInfo.getModelNo()).replace("{siteIP}", devInfo.getDeviceIP());
-
-			switch (devInfo.getModelNo()) {
-			case Constants.DEVICE_TYPE_1250:
-				return restTemplate.getForObject(url, String.class);
-			case Constants.DEVICE_TYPE_1450:
-				return restTemplate.postForObject(url, getHttpEntity(), String.class);
-			case Constants.DEVICE_TYPE_1500:
-				return restTemplate.getForObject(url, String.class);
-			default:
-				throw new IllegalArgumentException("Unsupported device type: " + devInfo.getModelNo());
-			}
-		}, context -> {
-			// Recovery logic
-			Throwable lastThrowable = context.getLastThrowable();
-			String errorMessage = lastThrowable != null ? lastThrowable.getMessage() : "Unknown error";
-			logger.info("All retry attempts failed. Executing recovery logic. Error: {}", errorMessage);
-			String lovMsg = validation.generateLOVResponse(devInfo, errorMessage);
-			//vmbProducerService.sendMessage(vMBConfig.getLovTopic(), lovMsg);
-			vmbEclipsePublisherService.publishAsync(vMBConfig.getLovTopic(),lovMsg,devInfo.getDeviceIP());
-			
-			return "Recovery response: " + errorMessage;
-		});
-	}
-
-		
-	private HttpEntity<String> getHttpEntity() {
-		HttpHeaders headers = new HttpHeaders();
-		headers.setContentType(MediaType.APPLICATION_JSON);
-		return new HttpEntity<>(createRequestPayload(Constants.REQUEST_BODY_1450), headers);
-	}
-
-	private String createRequestPayload(String[] chans) {
-		ObjectMapper mapper = new ObjectMapper();
-		Map<String, Object> payloadMap = Map.of("chans", chans);
-		try {
-			return mapper.writeValueAsString(payloadMap);
-		} catch (JsonProcessingException e) {
-			logger.error("Error creating JSON request payload", e);
-			return null;
-		}
-	}
-}
-
-package com.verizon.ucs.scheduler;
-
-import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.stereotype.Component;
-
-import com.verizon.ucs.model.DeviceInfo;
-import com.verizon.ucs.service.DBService;
-import com.verizon.ucs.service.NexusService;
-import com.verizon.ucs.service.VmbProducerService;
-import com.verizon.ucs.service.VmbConsumerService;
-import com.verizon.ucs.service.VmbEclipsePublisherService;
-
-import jakarta.annotation.PostConstruct;
-
-@Component
-public class NexusScheduler {
-    private static final Logger logger = LoggerFactory.getLogger(NexusScheduler.class);
-
-    @Value("${scheduler.threadPoolSize}")
-    private int threadPoolSize;
-
-    @Autowired
-    private DBService dBService;
-
-    @Autowired
-    private VmbConsumerService vmbConsumerService;
-    
-    //@Autowired
-   // private VmbEclipsePublisherService vmbPublisherService;
-
-    @Autowired
-    private VmbProducerService pulsarProducerService;
-
-    @Autowired
-    private NexusService nexusService;
-
-    private ExecutorService executorService;
-
-    @PostConstruct
-    public void init() {
-        logger.info("Starting @PostConstruct" );
-        try {
-        	this.executorService = Executors.newFixedThreadPool(threadPoolSize);
-            //vmbConsumerService.init();
-            //pulsarProducerService.init();
-        	//vmbPublisherService.init();
-        } catch (Exception e) {
-            logger.error("Error in @PostConstruct", e);
+        switch (devInfo.getModelNo()) {
+            case Constants.DEVICE_TYPE_1250:
+                return restTemplate.getForObject(url, String.class);
+            case Constants.DEVICE_TYPE_1450:
+                return restTemplate.postForObject(url, getHttpEntity(), String.class);
+            case Constants.DEVICE_TYPE_1500:
+                return restTemplate.getForObject(url, String.class);
+            default:
+                throw new IllegalArgumentException("Unsupported device type: " + devInfo.getModelNo());
         }
-    }
+    }, context -> {
+        // Recovery logic when all retry attempts fail
+        Throwable lastThrowable = context.getLastThrowable();
+        String errorMessage = lastThrowable != null ? lastThrowable.getMessage() : "Unknown error";
 
-    @Scheduled(fixedRateString = "${scheduler.fixedRate}")
-    //@Scheduled(fixedRate = 900000)
-    public void scheduleTask() {
-        List<DeviceInfo> devices;
-        logger.info("Starting Scheduler");
-        try {
-            // Fetch device details from the database
-            devices = dBService.fetchDeviceDetails();
-            logger.info("Devices from DB: {}", devices);
+        logger.error("All retry attempts failed for device: {} (Model: {}). Sending LOV notification. Error: {}",
+                      devInfo.getDeviceIP(), devInfo.getModelNo(), errorMessage);
 
-            // Process each device separately
-            for (DeviceInfo device : devices) {
-                executorService.submit(() -> {
-                    try {
-                        nexusService.processDevice(device);
-                    } catch (Exception e) {
-                        logger.error("Exception while processing device: {}", device, e);
-                    }
-                });
-            }
-        } catch (Exception e) {
-            logger.error("Exception while processing devices", e);
-        }
-    }
+        // Generate LOV (Loss of Visibility) response
+        String lovMsg = validation.generateLOVResponse(devInfo, errorMessage);
+
+        // Log the LOV message before publishing
+        logger.info("Publishing LOV message to VMB topic: {}. Message: {}", vMBConfig.getLovTopic(), lovMsg);
+
+        // Publish the LOV notification to the VMB topic asynchronously
+        vmbEclipsePublisherService.publishAsync(vMBConfig.getLovTopic(), lovMsg, devInfo.getDeviceIP());
+
+        logger.info("LOV notification successfully published for device: {}", devInfo.getDeviceIP());
+
+        return "Recovery response: " + errorMessage;
+    });
 }
-
-Given a Nexus 1450 device is unreachable, when UCS requests data, send an lov notification to vmb topic
