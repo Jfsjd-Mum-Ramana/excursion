@@ -1,997 +1,641 @@
-Thank you for providing the YAML configuration. Based on the details, I will now modify the necessary code to read all the configurations from the YAML file. Here's how the classes will be updated:
+package com.verizon.ucs.scheduler;
 
-1. NexusConfig.java
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
-This class will read the values from the provided YAML file to configure the NexusService, including the API endpoints, sample data paths, credentials, and more.
-
-package com.verizon.ucs.config;
-
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.stereotype.Component;
-
-import java.util.Map;
-
-@Configuration
-@Component
-public class NexusConfig {
-
-    @Value("#{${nexus.api-endpoints}}")
-    private Map<String, String> apiEndpoints;
-
-    @Value("${nexus.credentials}")
-    private String credentials;
-
-    @Value("${nexus.use-sample-data}")
-    private boolean useSampleData;
-
-    @Value("#{${nexus.sample-data-paths}}")
-    private Map<String, String> sampleDataPaths;
-
-    public Map<String, String> getApiEndpoints() {
-        return apiEndpoints;
-    }
-
-    public String getCredentials() {
-        return credentials;
-    }
-
-    public boolean isUseSampleData() {
-        return useSampleData;
-    }
-
-    public Map<String, String> getSampleDataPaths() {
-        return sampleDataPaths;
-    }
-}
-
-2. VMBPublisherService.java
-
-We’ll update this class to read the Pulsar-related configurations, including the service URL, partition count, topic name, and TLS certificates from the YAML file.
-
-package com.verizon.ucs.service;
-
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.verizon.ucs.model.NexusData1500;
-import com.verizon.ucs.model.RecoveryResponse;
-import org.apache.pulsar.client.api.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
 
-import java.util.concurrent.TimeUnit;
+import com.verizon.ucs.model.DeviceInfo;
+import com.verizon.ucs.service.DBService;
+import com.verizon.ucs.service.NexusService;
+import com.verizon.ucs.service.VmbProducerService;
+import com.verizon.ucs.service.VmbConsumerService;
+import com.verizon.ucs.service.VmbEclipsePublisherService;
 
-@Service
-public class VMBPublisherService {
+import jakarta.annotation.PostConstruct;
 
-    private static final Logger logger = LoggerFactory.getLogger(VMBPublisherService.class);
+@Component
+public class NexusScheduler {
+    private static final Logger logger = LoggerFactory.getLogger(NexusScheduler.class);
 
-    @Value("${vmb.serviceUrl}")
-    private String serviceUrl;
+    @Value("${scheduler.threadPoolSize}")
+    private int threadPoolSize;
 
-    @Value("${vmb.partitionCount}")
-    private int partitionCount;
+    @Autowired
+    private DBService dBService;
 
-    @Value("${vmb.topicName}")
-    private String topicName;
+    @Autowired
+    private VmbConsumerService vmbConsumerService;
+    
+    //@Autowired
+   // private VmbEclipsePublisherService vmbPublisherService;
 
-    @Value("${vmb.tlsCertFile}")
-    private String tlsCertFile;
+    @Autowired
+    private VmbProducerService pulsarProducerService;
 
-    @Value("${vmb.tlsKeyFile}")
-    private String tlsKeyFile;
+    @Autowired
+    private NexusService nexusService;
 
-    @Value("${vmb.tlsTrustCertsFile}")
-    private String tlsTrustCertsFile;
+    private ExecutorService executorService;
 
-    @Value("${vmb.retryLimit:3}")
-    private int retryLimit;
-
-    private PulsarClient pulsarClient;
-
-    public void init() throws PulsarClientException {
-        pulsarClient = PulsarClient.builder()
-                .serviceUrl(serviceUrl)
-                .tlsTrustCertsFile(tlsTrustCertsFile)
-                .tlsCertificateFile(tlsCertFile)
-                .tlsPrivateKeyFile(tlsKeyFile)
-                .build();
-    }
-
-    public void publishNormalizedData(NexusData1500 data) {
+    @PostConstruct
+    public void init() {
+        logger.info("Starting @PostConstruct" );
         try {
-            // Normalize the power data (kW, kWh, etc.)
-            String normalizedData = normalizePowerData(data);
-
-            // Create Pulsar producer
-            Producer<byte[]> producer = pulsarClient.newProducer()
-                    .topic(topicName)
-                    .create();
-
-            // Send the normalized data to Pulsar topic
-            producer.send(normalizedData.getBytes());
-
-            logger.info("Successfully published normalized power data to VMB.");
-
-        } catch (PulsarClientException e) {
-            logger.error("Error while publishing to VMB", e);
-            retryPublish(data);
-        }
-    }
-
-    private void retryPublish(NexusData1500 data) {
-        int retries = 0;
-        while (retries < retryLimit) {
-            try {
-                // Try to publish again
-                publishNormalizedData(data);
-                return; // If successful, exit retry loop
-            } catch (Exception e) {
-                retries++;
-                logger.warn("Retrying to publish normalized data to VMB... Attempt: {}", retries);
-                try {
-                    TimeUnit.SECONDS.sleep(5); // Wait before retrying
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                }
-            }
-        }
-        logger.error("Failed to publish normalized data to VMB after {} retries", retryLimit);
-    }
-
-    private String normalizePowerData(NexusData1500 data) {
-        // Implement the normalization logic for the power data.
-        double watt = Double.parseDouble(data.getWatt());
-        double kilowatt = watt / 1000; // Convert to kilowatts
-
-        // Build the normalized data object
-        RecoveryResponse response = new RecoveryResponse();
-        response.setUcgRawData("Normalized data: " + kilowatt + " kW");
-        response.setUcgDeviceName(data.getDeviceType());
-        response.setUcgTimestamp(String.valueOf(System.currentTimeMillis()));
-        response.setUcgType("Normalized");
-
-        ObjectMapper objectMapper = new ObjectMapper();
-        try {
-            return objectMapper.writeValueAsString(response);
+        	this.executorService = Executors.newFixedThreadPool(threadPoolSize);
+            //vmbConsumerService.init();
+            //pulsarProducerService.init();
+        	//vmbPublisherService.init();
         } catch (Exception e) {
-            logger.error("Error normalizing power data", e);
-            return "{}"; // Default to empty object if error occurs
+            logger.error("Error in @PostConstruct", e);
+        }
+    }
+
+    @Scheduled(fixedRateString = "${scheduler.fixedRate}")
+    //@Scheduled(fixedRate = 900000)
+    public void scheduleTask() {
+        List<DeviceInfo> devices;
+        logger.info("Starting Scheduler");
+        try {
+            // Fetch device details from the database
+            devices = dBService.fetchDeviceDetails();
+            logger.info("Devices from DB: {}", devices);
+
+            // Process each device separately
+            for (DeviceInfo device : devices) {
+                executorService.submit(() -> {
+                    try {
+                        nexusService.processDevice(device);
+                    } catch (Exception e) {
+                        logger.error("Exception while processing device: {}", device, e);
+                    }
+                });
+            }
+        } catch (Exception e) {
+            logger.error("Exception while processing devices", e);
         }
     }
 }
-
-3. PulsarConfig.java
-
-We’ll make sure the Pulsar client reads from the configuration and initializes properly.
-
-package com.verizon.ucs.config;
-
-import org.apache.pulsar.client.api.PulsarClient;
-import org.apache.pulsar.client.api.PulsarClientException;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-
-@Configuration
-public class PulsarConfig {
-
-    @Bean
-    public PulsarClient pulsarClient(@Value("${vmb.serviceUrl}") String serviceUrl,
-                                     @Value("${vmb.tlsTrustCertsFile}") String tlsTrustCertsFile,
-                                     @Value("${vmb.tlsCertFile}") String tlsCertFile,
-                                     @Value("${vmb.tlsKeyFile}") String tlsKeyFile) throws PulsarClientException {
-
-        return PulsarClient.builder()
-                .serviceUrl(serviceUrl)
-                .tlsTrustCertsFile(tlsTrustCertsFile)
-                .tlsCertificateFile(tlsCertFile)
-                .tlsPrivateKeyFile(tlsKeyFile)
-                .build();
-    }
-}
-
-4. NexusService.java (Updated to Read Configuration from YAML)
-
-I’ll ensure the service uses the NexusConfig for API endpoints and credentials while keeping all previous logic intact. The data is parsed and normalized data is sent to the VMB.
 
 package com.verizon.ucs.service;
 
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.time.Instant;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Map;
 import java.util.function.Function;
 
+import org.json.JSONObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.retry.support.RetryTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.verizon.ucs.config.Constants;
+import com.verizon.ucs.config.NexusConfig;
+import com.verizon.ucs.config.VMBConfig;
+import com.verizon.ucs.model.DeviceInfo;
+import com.verizon.ucs.model.NexusData1250;
+import com.verizon.ucs.model.NexusData1450;
+import com.verizon.ucs.model.NexusData1500;
+import com.verizon.ucs.model.RecoveryResponse;
+import com.verizon.ucs.parser.Nexus1250Parser;
+import com.verizon.ucs.parser.Nexus1450Parser;
+import com.verizon.ucs.parser.Nexus1500Parser;
+import com.verizon.ucs.util.Validation;
+
+@Service
+public class NexusService {
+	private static final Logger logger = LoggerFactory.getLogger(NexusService.class);
+
+	@Autowired
+	private NexusConfig config;
+
+	@Autowired
+	private VMBConfig vMBConfig;
+	
+	@Autowired
+	private Validation validation;
+
+	@Autowired
+	private RestTemplate restTemplate;
+
+	@Autowired
+	private RetryTemplate retryTemplate;
+	
+//	@Autowired
+//	private VmbProducerService vmbProducerService;
+	@Autowired
+	private VmbEclipsePublisherService vmbEclipsePublisherService;
+	
+	public Object processDevice(DeviceInfo devInfo) throws Exception {
+		devInfo.setModelNo(devInfo.getModel().replace("Nexus ", ""));
+
+		Function<String, ?> parser = getParser(devInfo.getModelNo());
+		if (parser != null) {
+			return getNexusData(devInfo, parser);
+		} else {
+			logger.info("Unsupported device type: {}", devInfo.getModelNo());
+			return null;
+		}
+	}
+
+	private Function<String, ?> getParser(String deviceType) {
+		switch (deviceType) {
+		case Constants.DEVICE_TYPE_1250:
+			return response -> {
+				try {
+					return new Nexus1250Parser().parse(response);
+				} catch (Exception e) {
+					throw new RuntimeException(e);
+				}
+			};
+		case Constants.DEVICE_TYPE_1450:
+			return response -> new Nexus1450Parser().parse(response);
+		case Constants.DEVICE_TYPE_1500:
+			return response -> {
+				try {
+					return new Nexus1500Parser().parse(response);
+				} catch (Exception e) {
+					throw new RuntimeException(e);
+				}
+			};
+		default:
+			return null;
+		}
+	}
+
+	public <T> T getNexusData(DeviceInfo devInfo, Function<String, T> parser) throws Exception {
+		String response;
+
+		if (config.isUseSampleData()) {
+			response = new String(Files.readAllBytes(Paths.get(config.getSampleDataPaths().get(devInfo.getModelNo()))));
+		} else {
+			response = fetchDataFromDevice(devInfo);
+		}
+
+		T data = parser.apply(response);
+		logger.info("NexusData::  {}", data);
+
+		validation.validateData(devInfo, data);
+		
+		ObjectMapper objectMapper = new ObjectMapper();
+		String jsonData = objectMapper.writeValueAsString(data);
+        JSONObject ucgData = constructUcgData(devInfo, jsonData);
+        
+        //vmbProducerService.sendMessage(vMBConfig.getVmbTopic(), ucgData.toString());
+        vmbEclipsePublisherService.publishAsync(vMBConfig.getVmbTopic(),ucgData.toString(),devInfo.getDeviceIP());
+		return data;
+	}
+	
+	private JSONObject constructUcgData(DeviceInfo devInfo,String data) {
+		JSONObject obj = new JSONObject();
+		obj.put("ucgTimestamp", Instant.now().toEpochMilli());
+		obj.put("ucgDeviceName", devInfo.getDeviceName());
+		obj.put("ucgSource", devInfo.getDeviceIP());
+		obj.put("ucgType", "LIVE");
+		obj.put("ucgRawData", data);
+		obj.put("ucgTopic", vMBConfig.getVmbTopic());
+		logger.info("UCG obj::  {}", obj);
+		return obj;
+	}
+
+	private String fetchDataFromDevice(DeviceInfo devInfo) throws Exception {
+		return retryTemplate.execute(context -> {
+			String url = config.getApiEndpoints().get(devInfo.getModelNo()).replace("{siteIP}", devInfo.getDeviceIP());
+
+			switch (devInfo.getModelNo()) {
+			case Constants.DEVICE_TYPE_1250:
+				return restTemplate.getForObject(url, String.class);
+			case Constants.DEVICE_TYPE_1450:
+				return restTemplate.postForObject(url, getHttpEntity(), String.class);
+			case Constants.DEVICE_TYPE_1500:
+				return restTemplate.getForObject(url, String.class);
+			default:
+				throw new IllegalArgumentException("Unsupported device type: " + devInfo.getModelNo());
+			}
+		}, context -> {
+			// Recovery logic
+			Throwable lastThrowable = context.getLastThrowable();
+			String errorMessage = lastThrowable != null ? lastThrowable.getMessage() : "Unknown error";
+			logger.info("All retry attempts failed. Executing recovery logic. Error: {}", errorMessage);
+			String lovMsg = validation.generateLOVResponse(devInfo, errorMessage);
+			//vmbProducerService.sendMessage(vMBConfig.getLovTopic(), lovMsg);
+			vmbEclipsePublisherService.publishAsync(vMBConfig.getLovTopic(),lovMsg,devInfo.getDeviceIP());
+			
+			return "Recovery response: " + errorMessage;
+		});
+	}
+
+		
+	private HttpEntity<String> getHttpEntity() {
+		HttpHeaders headers = new HttpHeaders();
+		headers.setContentType(MediaType.APPLICATION_JSON);
+		return new HttpEntity<>(createRequestPayload(Constants.REQUEST_BODY_1450), headers);
+	}
+
+	private String createRequestPayload(String[] chans) {
+		ObjectMapper mapper = new ObjectMapper();
+		Map<String, Object> payloadMap = Map.of("chans", chans);
+		try {
+			return mapper.writeValueAsString(payloadMap);
+		} catch (JsonProcessingException e) {
+			logger.error("Error creating JSON request payload", e);
+			return null;
+		}
+	}
+}
+
+package com.verizon.ucs.service;
+
+//import org.apache.pulsar.client.api.Producer;
+import org.apache.pulsar.client.api.ProducerBuilder;
+//import org.apache.pulsar.client.api.PulsarClient;
+import org.apache.pulsar.client.api.Schema;
+import org.apache.pulsar.shade.client.api.v2.Producer;
+import org.apache.pulsar.shade.client.api.v2.PulsarClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import com.verizon.ucs.model.DeviceInfo;
-import com.verizon.ucs.model.NexusData1500;
-import com.verizon.ucs.parser.Nexus1500Parser;
+import com.verizon.ucs.config.VMBConfig;
+
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
+
+import java.util.HashMap;
+import java.util.Map;
 
 @Service
-public class NexusService {
-
-    private static final Logger logger = LoggerFactory.getLogger(NexusService.class);
-
-    @Autowired
-    private NexusConfig config;
+public class VmbProducerService {
+    private static final Logger logger = LoggerFactory.getLogger(VmbProducerService.class);
 
     @Autowired
-    private VMBPublisherService vmbPublisherService;
+    private VMBConfig vmbConfig;
+
+    @Autowired
+    private PulsarClient pulsarClient;
+
+    private Map<String, Producer<String>> producers = new HashMap<>();
+
+    //@PostConstruct
+    public void init() throws Exception {
+        logger.info("Initializing Pulsar producers");
+
+        // Initialize producers for different topics
+        //initializeProducer(vmbConfig.getLovTopic());
+        initializeProducer(vmbConfig.getVmbTopic());
+    }
+
+    private void initializeProducer(String topic) throws Exception {
+        ProducerBuilder<String> producerBuilder = pulsarClient.newProducer(Schema.STRING)
+                .topic(topic)
+                .enableBatching(true)
+                .batchingMaxMessages(1000)
+                .batchingMaxPublishDelay(10, java.util.concurrent.TimeUnit.MILLISECONDS);
+
+        Producer<String> producer = producerBuilder.create();
+        producers.put(topic, producer);
+        logger.info("Initialized producer for topic: {}", topic);
+    }
+
+    @PreDestroy
+    public void shutDown() {
+        try {
+            logger.info("Shutting down Pulsar producers and client");
+            for (Producer<String> producer : producers.values()) {
+                if (producer != null) {
+                    producer.close();
+                }
+            }
+            if (pulsarClient != null) {
+                pulsarClient.close();
+            }
+        } catch (Exception e) {
+            logger.error("Exception while shutting down Pulsar producers and client", e);
+        }
+    }
+
+    public void sendMessage(String topic, String message) throws Exception {
+        Producer<String> producer = producers.get(topic);
+        if (producer != null) {
+            producer.send(message);
+            logger.info("Message sent to topic {}: {}", topic, message);
+        } else {
+            logger.error("Producer for topic {} not found", topic);
+        }
+    }
+}
+
+package com.verizon.ucs.service;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import com.verizon.eclipse.pulsar.producer.EclipsePulsarProducerNr;
+import com.verizon.ucs.config.VMBConfig;
+
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
+
+import java.util.HashMap;
+import java.util.Map;
+
+@Service
+public class VmbEclipsePublisherService {
+    private static final Logger logger = LoggerFactory.getLogger(VmbEclipsePublisherService.class);
+
+    private Map<String, EclipsePulsarProducerNr> producers = new HashMap<>();
+
+    @Autowired
+    private VMBConfig vmbConfig;
+
+    @PostConstruct
+    public void init() throws Exception {
+        logger.info("Initializing Pulsar producers");
+
+        // Initialize producers for different topics
+        initializeProducer(vmbConfig.getVmbTopic());
+        //initializeProducer(vmbConfig.getLovTopic());
+    }
+
+    private void initializeProducer(String topic) throws Exception {
+        EclipsePulsarProducerNr producer = new EclipsePulsarProducerNr(true,
+                vmbConfig.getServiceUrl(),
+                vmbConfig.getTlsTrustCertsFile(),
+                vmbConfig.getTlsKeyFile(),
+                vmbConfig.getTlsCertFile(),
+                topic
+        );
+        producers.put(topic, producer);
+        logger.info("Initialized producer for topic: {}", topic);
+    }
+
+    @PreDestroy
+    public void shutDown() {
+        try {
+            logger.info("Shutting down Pulsar producers");
+            for (EclipsePulsarProducerNr producer : producers.values()) {
+                if (producer != null) {
+                    producer.shutDown();
+                }
+            }
+        } catch (Throwable e) {
+            logger.error("Exception while shutting down Pulsar producers", e);
+        }
+    }
+
+    public void publish(String topic, String message) throws Exception {
+        EclipsePulsarProducerNr producer = producers.get(topic);
+        if (producer != null) {
+            producer.publish(message);
+            logger.info("Message sent to topic {}: {}", topic, message);
+        } else {
+            logger.error("Producer for topic {} not found", topic);
+        }
+    }
+
+    public void publishAsync(String topic, String message, String partitionKey) {
+        EclipsePulsarProducerNr producer = producers.get(topic);
+        if (producer != null) {
+            producer.publishAsyncWithNr(message, partitionKey);
+            logger.info("Async message sent to topic {}: {}", topic, message);
+        } else {
+            logger.error("Producer for topic {} not found", topic);
+        }
+    }
+}
+
+
+package com.verizon.ucs.service;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.verizon.ucs.config.VMBProperties;
+import com.verizon.ucs.model.NexusData1500;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.retry.support.RetryTemplate;
+import org.springframework.stereotype.Service;
+
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Iterator;
+import java.util.Map;
+
+@Service
+public class NormaliseReactorService {
+
+    private static final Logger logger = LoggerFactory.getLogger(NormaliseReactorService.class);
+
+    @Autowired
+    private VmbEclipsePublisherService pulsarPublisherService;
+
+    @Autowired
+    private VMBProperties vmbProperties;
 
     @Autowired
     private RetryTemplate retryTemplate;
 
-    @Autowired
-    private RestTemplate restTemplate;
-
-    public Object processDevice(DeviceInfo device) throws Exception {
-        String deviceType = device.getModel().replace("Nexus ", "");
-        Function<String, ?> parser = getParser(deviceType);
-        if (parser != null) {
-            try {
-                return getNexusData(device, parser);
-            } catch (Exception e) {
-                logger.error("Error fetching data for device: {}", device.getDeviceName(), e);
-                sendLovNotification(device);
-                return null; // Return null or handle gracefully
-            }
-        } else {
-            logger.info("Unsupported device type: {}", deviceType);
-            return null;
-        }
-    }
-
-    private void sendLovNotification(DeviceInfo device) {
-        String lovMessage = generateRecoveryResponse(device.getDeviceIP(), device.getDeviceName());
-        publishToVMB(lovMessage);
-    }
-
-    private String generateRecoveryResponse(String deviceIP, String deviceName) {
-        RecoveryResponse recoveryResponse = new RecoveryResponse();
-        recoveryResponse.setUcgTimestamp(ZonedDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME));
-        recoveryResponse.setUcgSource(deviceIP);
-        recoveryResponse.setUcgRawData("DEVICE_OFFLINE");
-        recoveryResponse.setUcgDeviceName(deviceName);
-        recoveryResponse.setUcgType("LOV");
-        recoveryResponse.setUcgTopic("persistent://enmv/psc/nexus-meter"); // From YAML
-
-        ObjectMapper mapper = new ObjectMapper();
-        try {
-            return mapper.writeValueAsString(recoveryResponse);
-        } catch (JsonProcessingException e) {
-            logger.error("Error creating JSON recovery response", e);
-            return "{}";
-        }
-    }
-
-    private void publishToVMB(String lovMessage) {
-        try {
-            retryTemplate.execute(context -> {
-                HttpEntity<String> requestEntity = new HttpEntity<>(lovMessage, createVmbHeaders());
-                restTemplate.postForObject(config.getVmbEndpoint(), requestEntity, String.class); // Endpoint from YAML
-                logger.info("Successfully published LOV notification to VMB.");
-                return null;
-            });
-        } catch (Exception e) {
-            logger.error("Error publishing LOV notification to VMB", e);
-        }
-    }
-
-    private HttpHeaders createVmbHeaders() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        return headers;
-    }
-
-    public <T> T getNexusData(DeviceInfo device, Function<String, T> parser) throws Exception {
-        String response;
-        String deviceType = device.getModel().replace("Nexus ", "");
-
-        if (config.isUseSampleData()) {
-            response = new String(Files.readAllBytes(Paths.get(config.getSampleDataPaths().get(deviceType))));
-        } else {
-            response = fetchDataFromDevice(deviceType, device.getDeviceIP());
-        }
-
-        T data = parser.apply(response);
-        logger.info("NexusData::  {}", data);
-        return data;
-    }
-
-    private String fetchDataFromDevice(String deviceType, String deviceIP) throws Exception {
-        return retryTemplate.execute(context -> {
-            String url = config.getApiEndpoints().get(deviceType).replace("{siteIP}", deviceIP);
-
-            switch (deviceType) {
-                case "1250":
-                    return restTemplate.getForObject(url, String.class);
-                case "1450":
-                    return restTemplate.postForObject(url, getHttpEntity(), String.class);
-                case "1500":
-                    return restTemplate.getForObject(url, String.class);
-                default:
-                    throw new IllegalArgumentException("Unsupported device type: " + deviceType);
-            }
-        });
-    }
-
-    private HttpEntity<String> getHttpEntity() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        return new HttpEntity<>(createRequestPayload("default"), headers);
-    }
-
-    private String createRequestPayload(String chans) {
-        ObjectMapper mapper = new ObjectMapper();
-        Map<String, Object> payloadMap = Map.of("chans", chans);
-        try {
-            return mapper.writeValueAsString(payloadMap);
-        } catch (JsonProcessingException e) {
-            logger.error("Error creating JSON request payload", e);
-            return null;
-        }
-    }
-
-    private Function<String, ?> getParser(String deviceType) {
-        switch (deviceType) {
-            case "1500":
-                return response -> {
-                    try {
-                        NexusData1500 data = new Nexus1500Parser().parse(response);
-                        vmbPublisherService.publishNormalizedData(data); // Publish normalized data
-                        return data;
-                    } catch (Exception e) {
-                        throw new RuntimeException(e);
-                    }
-                };
-            default:
-                return null;
-        }
-    }
-}
-
-5. application.yml
-
-This is the YAML file you've provided, which now contains all necessary configurations:
-
-nexus:
-  api-endpoints:
-    1250: http://{siteIP}/poll_data.xml
-    1450: http://{siteIP}/api/dm/data
-    1500: http://{siteIP}/I/pdata.xml
-  credentials: your-credentials
-  use-sample-data: false
-  sample-data-paths:
-    1250: src/main/resources/samples/10.219.32.76_nexus_1250.xml
-    1450: src/main/resources/samples/nexus_1450.json
-    1500: src/main/resources/samples/10.193.40.75_nexus1500.xml
-
-scheduler:
-   cron: 0 */15 * * * *
-   zone: UTC
-
-db:
-  dbCallUrl: ${DB_URL:https://ucs-api-np-bbg1-idn.vzwnet.com/papi/api/call}
-  stpName: eclipse.get_avl_stream_devices_fvo_1psc_test1
-
-vmb:
-  serviceUrl: ${VMB_SERVICE_URL:pulsar+ssl://vmb-aws-us-east-1-nonprod.verizon.com:6651}
-  partitionCount: ${VMB_PARTITION_COUNT:16}
-  topicName: ${TOPIC_NAME:persistent://enmv/psc/nexus-meter}
-  tlsCertFile: ${VMB_TLS_CERT_FILE:src/main/resources/vmb-ple-certs/enmv.cert.pem}
-  tlsKeyFile: ${VMB_TLS_KEY_FILE:src/main/resources/vmb-ple-certs/enmv.key-pk8.pem}
-  tlsTrustCertsFile: ${VMB_TRUST_CERTS_FILE:src/main/resources/vmb-ple-certs/ca.cert.pem}
-
-
----
-
-Changes Summary:
-
-1. No Methods Removed: All existing methods are preserved in NexusService.
-
-
-2. YAML Configuration: All configurations are now read from the YAML file, including API endpoints, sample data paths, and Pulsar configurations.
-
-
-3. Pulsar Integration: Pulsar integration is added, ensuring that data is sent to VMB via Pulsar after normalization.
-
-
-4. Retry Logic: Retry mechanism is applied when publishing data to VMB, ensuring resilience.
-
-
-
-Let me know if you need further modifications!
-
-
-
-
-
-
-Sure! I will now provide the other necessary files and components that work with the updated logic and YAML configuration.
-
-1. DeviceInfo.java (Model for Device Information)
-
-This model holds the information about the device. It’s used in the NexusService to process each device.
-
-package com.verizon.ucs.model;
-
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonProperty;
-
-@JsonIgnoreProperties(ignoreUnknown = true)
-public class DeviceInfo {
-
-    @JsonProperty("device_name")
-    private String deviceName;
-
-    @JsonProperty("device_ip")
-    private String deviceIP;
-
-    @JsonProperty("pollercluster")
-    private String pollerCluster;
-
-    @JsonProperty("model")
-    private String model;
-
-    @JsonProperty("frequency")
-    private String frequency;
-
-    public String getDeviceName() {
-        return deviceName;
-    }
-
-    public void setDeviceName(String deviceName) {
-        this.deviceName = deviceName;
-    }
-
-    public String getDeviceIP() {
-        return deviceIP;
-    }
-
-    public void setDeviceIP(String deviceIP) {
-        this.deviceIP = deviceIP;
-    }
-
-    public String getPollerCluster() {
-        return pollerCluster;
-    }
-
-    public void setPollerCluster(String pollerCluster) {
-        this.pollerCluster = pollerCluster;
-    }
-
-    public String getModel() {
-        return model;
-    }
-
-    public void setModel(String model) {
-        this.model = model;
-    }
-
-    public String getFrequency() {
-        return frequency;
-    }
-
-    public void setFrequency(String frequency) {
-        this.frequency = frequency;
-    }
-
-    @Override
-    public String toString() {
-        return "DeviceData [deviceName=" + deviceName + ", deviceIP=" + deviceIP + ", pollerCluster=" + pollerCluster
-                + ", model=" + model + ", frequency=" + frequency + "]";
-    }
-}
-
-2. RecoveryResponse.java (Model for Recovery Response)
-
-This model is used for the recovery response in case of an unreachable device (LOV notification).
-
-package com.verizon.ucs.model;
-
-public class RecoveryResponse {
-
-    private String ucgTimestamp;
-    private String ucgSource;
-    private String ucgRawData;
-    private String ucgDeviceName;
-    private String ucgType;
-    private String ucgTopic;
-
-    // Getters and setters
-    public String getUcgTimestamp() {
-        return ucgTimestamp;
-    }
-
-    public void setUcgTimestamp(String ucgTimestamp) {
-        this.ucgTimestamp = ucgTimestamp;
-    }
-
-    public String getUcgSource() {
-        return ucgSource;
-    }
-
-    public void setUcgSource(String ucgSource) {
-        this.ucgSource = ucgSource;
-    }
-
-    public String getUcgRawData() {
-        return ucgRawData;
-    }
-
-    public void setUcgRawData(String ucgRawData) {
-        this.ucgRawData = ucgRawData;
-    }
-
-    public String getUcgDeviceName() {
-        return ucgDeviceName;
-    }
-
-    public void setUcgDeviceName(String ucgDeviceName) {
-        this.ucgDeviceName = ucgDeviceName;
-    }
-
-    public String getUcgType() {
-        return ucgType;
-    }
-
-    public void setUcgType(String ucgType) {
-        this.ucgType = ucgType;
-    }
-
-    public String getUcgTopic() {
-        return ucgTopic;
-    }
-
-    public void setUcgTopic(String ucgTopic) {
-        this.ucgTopic = ucgTopic;
-    }
-
-    @Override
-    public String toString() {
-        return "RecoveryResponse [ucgTimestamp=" + ucgTimestamp + ", ucgSource=" + ucgSource + ", ucgRawData="
-                + ucgRawData + ", ucgDeviceName=" + ucgDeviceName + ", ucgType=" + ucgType + ", ucgTopic=" + ucgTopic + "]";
-    }
-}
-
-3. Nexus1500.java (Model for Nexus 1500 Data)
-
-This is the model for Nexus 1500 data. It contains various power metrics, such as voltages, currents, and frequencies.
-
-package com.verizon.ucs.model;
-
-public class NexusData1500 {
-
-    private String deviceType;
-    private String van;
-    private String vbn;
-    private String vcn;
-    private String vab;
-    private String vbc;
-    private String vca;
-    private String ia;
-    private String ib;
-    private String ic;
-    private String freq;
-    private String pf;
-    private String watt;
-
-    public String getDeviceType() {
-        return deviceType;
-    }
-
-    public void setDeviceType(String deviceType) {
-        this.deviceType = deviceType;
-    }
-
-    public String getVan() {
-        return van;
-    }
-
-    public void setVan(String van) {
-        this.van = van;
-    }
-
-    public String getVbn() {
-        return vbn;
-    }
-
-    public void setVbn(String vbn) {
-        this.vbn = vbn;
-    }
-
-    public String getVcn() {
-        return vcn;
-    }
-
-    public void setVcn(String vcn) {
-        this.vcn = vcn;
-    }
-
-    public String getVab() {
-        return vab;
-    }
-
-    public void setVab(String vab) {
-        this.vab = vab;
-    }
-
-    public String getVbc() {
-        return vbc;
-    }
-
-    public void setVbc(String vbc) {
-        this.vbc = vbc;
-    }
-
-    public String getVca() {
-        return vca;
-    }
-
-    public void setVca(String vca) {
-        this.vca = vca;
-    }
-
-    public String getIa() {
-        return ia;
-    }
-
-    public void setIa(String ia) {
-        this.ia = ia;
-    }
-
-    public String getIb() {
-        return ib;
-    }
-
-    public void setIb(String ib) {
-        this.ib = ib;
-    }
-
-    public String getIc() {
-        return ic;
-    }
-
-    public void setIc(String ic) {
-        this.ic = ic;
-    }
-
-    public String getFreq() {
-        return freq;
-    }
-
-    public void setFreq(String freq) {
-        this.freq = freq;
-    }
-
-    public String getPf() {
-        return pf;
-    }
-
-    public void setPf(String pf) {
-        this.pf = pf;
-    }
-
-    public String getWatt() {
-        return watt;
-    }
-
-    public void setWatt(String watt) {
-        this.watt = watt;
-    }
-
-    @Override
-    public String toString() {
-        return "NexusData1500 [deviceType=" + deviceType + ", van=" + van + ", vbn=" + vbn + ", vcn=" + vcn + ", vab=" + vab + ", vbc=" + vbc + ", vca=" + vca + ", ia=" + ia + ", ib=" + ib + ", ic=" + ic + ", freq=" + freq + ", pf=" + pf + ", watt=" + watt + "]";
-    }
-}
-
-4. Nexus1500Parser.java (Parser for Nexus 1500 Data)
-
-This class is responsible for parsing the Nexus 1500 response and returning a NexusData1500 object.
-
-package com.verizon.ucs.parser;
-
-import com.verizon.ucs.model.NexusData1500;
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
-import org.w3c.dom.NodeList;
-
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-
-public class Nexus1500Parser implements NexusParser1500 {
-
-    @Override
-    public NexusData1500 parse(String response) throws Exception {
-        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-        DocumentBuilder builder = factory.newDocumentBuilder();
-        Document document = builder.parse(new java.io.ByteArrayInputStream(response.getBytes()));
-
-        NexusData1500 data = new NexusData1500();
-        data.setDeviceType(extractValue(document, "DEV_TYPE"));
-        data.setVan(extractItemValue(document, "Inst Van"));
-        data.setVbn(extractItemValue(document, "Inst Vbn"));
-        data.setVcn(extractItemValue(document, "Inst Vcn"));
-        data.setVab(extractItemValue(document, "Inst Vab"));
-        data.setVbc(extractItemValue(document, "Inst Vbc"));
-        data.setVca(extractItemValue(document, "Inst Vca"));
-        data.setIa(extractItemValue(document, "Inst Ia"));
-        data.setIb(extractItemValue(document, "Inst Ib"));
-        data.setIc(extractItemValue(document, "Inst Ic"));
-        data.setFreq(extractItemValue(document, "Inst Freq."));
-        data.setPf(extractItemValue(document, "Inst PF"));
-        data.setWatt(extractItemValue(document, "Inst Watt"));
-
-        return data;
-    }
-
-    private String extractValue(Document document, String tagName) {
-        NodeList nodeList = document.getElementsByTagName(tagName);
-        if (nodeList.getLength() > 0) {
-            return nodeList.item(0).getTextContent();
-        }
-        return "";
-    }
-
-    private String extractItemValue(Document document, String label) {
-        NodeList nodeList = document.getElementsByTagName("item");
-        for (int i = 0; i < nodeList.getLength(); i++) {
-            Element element = (Element) nodeList.item(i);
-            if (label.equals(element.getAttribute("D_LABEL"))) {
-                return element.getAttribute("D_VALUE");
-            }
-        }
-        return "";
-    }
-}
-
-
----
-
-Summary of Changes:
-
-1. No Methods Removed: All existing methods are preserved in NexusService.
-
-
-2. YAML Configuration: All configurations are now read from the YAML file (including API endpoints, sample data paths, and Pulsar configurations).
-
-
-3. Pulsar Integration: Pulsar client is initialized based on configurations from YAML, and the data is sent to the configured VMB topic.
-
-
-4. Power Data Normalization: Power data from Nexus 1500 is normalized and sent to Pulsar for VMB publishing.
-
-
-5. Retry Logic: Retry logic is implemented for Pulsar failures.
-
-
-
-Let me know if any further modifications are needed!
-
-
-
-
-
-Apologies for the confusion. To clarify, you're asking for the Pulsar-related files only. Here are the essential files for integrating with Pulsar, including the configuration, client setup, and producer logic.
-
-1. PulsarConfig.java (Pulsar Client Configuration)
-
-This configuration class sets up the Pulsar client using the details from the YAML file.
-
-package com.verizon.ucs.config;
-
-import org.apache.pulsar.client.api.PulsarClient;
-import org.apache.pulsar.client.api.PulsarClientException;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-
-@Configuration
-public class PulsarConfig {
-
-    @Value("${vmb.serviceUrl}")
-    private String serviceUrl;
-
-    @Value("${vmb.tlsTrustCertsFile}")
-    private String tlsTrustCertsFile;
-
-    @Value("${vmb.tlsCertFile}")
-    private String tlsCertFile;
-
-    @Value("${vmb.tlsKeyFile}")
-    private String tlsKeyFile;
-
-    @Bean
-    public PulsarClient pulsarClient() throws PulsarClientException {
-        return PulsarClient.builder()
-                .serviceUrl(serviceUrl)
-                .tlsTrustCertsFile(tlsTrustCertsFile)
-                .tlsCertificateFile(tlsCertFile)
-                .tlsPrivateKeyFile(tlsKeyFile)
-                .build();
-    }
-}
-
-2. VMBPublisherService.java (Service to Publish Normalized Data)
-
-This class is responsible for publishing the normalized power data to a Pulsar topic. It uses the Pulsar client configured in PulsarConfig.java.
-
-package com.verizon.ucs.service;
-
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.verizon.ucs.model.NexusData1500;
-import com.verizon.ucs.model.RecoveryResponse;
-import org.apache.pulsar.client.api.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
-
-import java.util.concurrent.TimeUnit;
-
-@Service
-public class VMBPublisherService {
-
-    private static final Logger logger = LoggerFactory.getLogger(VMBPublisherService.class);
-
-    @Value("${vmb.topicName}")
-    private String topicName;
-
-    private final PulsarClient pulsarClient;
-
-    @Value("${vmb.retryLimit}")
-    private int retryLimit;
-
-    public VMBPublisherService(PulsarClient pulsarClient) {
-        this.pulsarClient = pulsarClient;
-    }
-
-    public void publishNormalizedData(NexusData1500 data) {
-        try {
-            // Normalize the power data (kW, kWh, etc.)
-            String normalizedData = normalizePowerData(data);
-
-            // Create Pulsar producer
-            Producer<byte[]> producer = pulsarClient.newProducer()
-                    .topic(topicName)
-                    .create();
-
-            // Send the normalized data to Pulsar topic
-            producer.send(normalizedData.getBytes());
-
-            logger.info("Successfully published normalized power data to VMB.");
-
-        } catch (PulsarClientException e) {
-            logger.error("Error while publishing to VMB", e);
-            retryPublish(data);
-        }
-    }
-
-    private void retryPublish(NexusData1500 data) {
-        int retries = 0;
-        while (retries < retryLimit) {
-            try {
-                // Try to publish again
-                publishNormalizedData(data);
-                return; // If successful, exit retry loop
-            } catch (Exception e) {
-                retries++;
-                logger.warn("Retrying to publish normalized data to VMB... Attempt: {}", retries);
-                try {
-                    TimeUnit.SECONDS.sleep(5); // Wait before retrying
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                }
-            }
-        }
-        logger.error("Failed to publish normalized data to VMB after {} retries", retryLimit);
-    }
-
-    private String normalizePowerData(NexusData1500 data) {
-        // Implement the normalization logic for the power data.
-        double watt = Double.parseDouble(data.getWatt());
-        double kilowatt = watt / 1000; // Convert to kilowatts
-
-        // Build the normalized data object
-        RecoveryResponse response = new RecoveryResponse();
-        response.setUcgRawData("Normalized data: " + kilowatt + " kW");
-        response.setUcgDeviceName(data.getDeviceType());
-        response.setUcgTimestamp(String.valueOf(System.currentTimeMillis()));
-        response.setUcgType("Normalized");
+    public void handleAndPublishData(NexusData1500 data, String deviceIp) throws Exception {
+        long startTime = System.currentTimeMillis();
+
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX");
+        String timestamp = dateFormat.format(new Date());
 
         ObjectMapper objectMapper = new ObjectMapper();
-        try {
-            return objectMapper.writeValueAsString(response);
-        } catch (Exception e) {
-            logger.error("Error normalizing power data", e);
-            return "{}"; // Default to empty object if error occurs
+        ObjectNode ucgRawDataNode = (ObjectNode) objectMapper.valueToTree(data);
+        Iterator<Map.Entry<String, JsonNode>> fields = ucgRawDataNode.fields();
+        while (fields.hasNext()) {
+            Map.Entry<String, JsonNode> field = fields.next();
+            if (field.getValue().isTextual()) {
+                ucgRawDataNode.put(field.getKey(), field.getValue().asText().trim());
+            }
         }
+
+        String ucgRawData = objectMapper.writeValueAsString(ucgRawDataNode);
+        Map<String, Object> ucgData = Map.of(
+                "ucgTimestamp", timestamp,
+                "ucgSource", deviceIp,
+                "ucgRawData", ucgRawData,
+                "ucgDeviceName", data.getDeviceType().trim(),
+                "ucgType", "LIVE",
+                "ucgTopic", vmbProperties.getTopicName()
+        );
+
+        String ucgDataJsonString = objectMapper.writeValueAsString(ucgData);
+
+        long elapsedTime = System.currentTimeMillis() - startTime;
+        if (elapsedTime > 15000) {
+            logger.warn("Publishing time exceeded 15 seconds for device: {}", deviceIp);
+            return;
+        }
+
+        retryTemplate.execute(context -> {
+            try {
+                pulsarPublisherService.publish("persistent://enmv/pub-snmp-perf-east/ECLIPSE-pub-snmp-perf-east-ms", "Publish successfully");
+                logger.info("Data successfully published to VMB");
+            } catch (Exception e) {
+                logger.error("Publishing failed, retrying... Attempt {}", context.getRetryCount(), e);
+                throw e;
+            }
+            return null;
+        });
     }
 }
-
-3. PulsarProducer.java (Producer for Pulsar)
-
-This file creates a Pulsar producer that sends the data to the specified Pulsar topic. You can add this file if you need a dedicated producer class for better separation of concerns.
 
 package com.verizon.ucs.service;
 
-import org.apache.pulsar.client.api.*;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.verizon.ucs.config.VMBProperties;
+import com.verizon.ucs.model.NexusData1500;
+import com.verizon.ucs.service.pulsar.PulsarPublisherService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.retry.support.RetryTemplate;
+import org.springframework.stereotype.Service;
 
-import java.util.concurrent.TimeUnit;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Iterator;
+import java.util.Map;
 
-public class PulsarProducer {
+@Service
+public class NormaliseReactorService {
 
-    private final PulsarClient pulsarClient;
-    private final String topic;
+    private static final Logger logger = LoggerFactory.getLogger(NormaliseReactorService.class);
 
-    public PulsarProducer(PulsarClient pulsarClient, String topic) {
-        this.pulsarClient = pulsarClient;
-        this.topic = topic;
-    }
+    @Autowired
+    private PulsarPublisherService pulsarPublisherService;
 
-    public void produce(String message) throws PulsarClientException {
-        Producer<byte[]> producer = pulsarClient.newProducer()
-                .topic(topic)
-                .create();
+    @Autowired
+    private VMBProperties vmbProperties;
 
-        // Send the message to the Pulsar topic
-        producer.send(message.getBytes());
-    }
+    @Autowired
+    private RetryTemplate retryTemplate;
 
-    public void produceWithRetry(String message, int retryLimit) throws PulsarClientException, InterruptedException {
-        int retries = 0;
-        while (retries < retryLimit) {
-            try {
-                produce(message);
-                return; // If successful, exit retry loop
-            } catch (PulsarClientException e) {
-                retries++;
-                TimeUnit.SECONDS.sleep(5); // Wait before retrying
+    public void handleAndPublishData(NexusData1500 data, String deviceIp) throws Exception {
+        long startTime = System.currentTimeMillis();
+
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX");
+        String timestamp = dateFormat.format(new Date());
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        ObjectNode ucgRawDataNode = (ObjectNode) objectMapper.valueToTree(data);
+        Iterator<Map.Entry<String, JsonNode>> fields = ucgRawDataNode.fields();
+        while (fields.hasNext()) {
+            Map.Entry<String, JsonNode> field = fields.next();
+            if (field.getValue().isTextual()) {
+                ucgRawDataNode.put(field.getKey(), field.getValue().asText().trim());
             }
         }
-        throw new PulsarClientException("Failed to publish message after " + retryLimit + " retries.");
+
+        String ucgRawData = objectMapper.writeValueAsString(ucgRawDataNode);
+        Map<String, Object> ucgData = Map.of(
+                "ucgTimestamp", timestamp,
+                "ucgSource", deviceIp,
+                "ucgRawData", ucgRawData,
+                "ucgDeviceName", data.getDeviceType().trim(),
+                "ucgType", "LIVE",
+                "ucgTopic", vmbProperties.getTopicName()
+        );
+
+        String ucgDataJsonString = objectMapper.writeValueAsString(ucgData);
+
+        long elapsedTime = System.currentTimeMillis() - startTime;
+        if (elapsedTime > 15000) {
+            logger.warn("Publishing time exceeded 15 seconds for device: {}", deviceIp);
+            return;
+        }
+
+        retryTemplate.execute(context -> {
+            try {
+                pulsarPublisherService.publishMessage(ucgDataJsonString);
+                logger.info("Data successfully published to VMB");
+            } catch (Exception e) {
+                logger.error("Publishing failed, retrying... Attempt {}", context.getRetryCount(), e);
+                throw e;
+            }
+            return null;
+        });
     }
 }
 
-4. application.yml (Pulsar Configuration)
+For the above class please do implementation for this requirements and plss do not remove anything inside the classes methods the pulsar classes already there here the requirements and also please validate ucgdata
 
-Here's the YAML configuration that contains all the necessary Pulsar-related details, including the service URL, topic, and TLS certificates:
+As a UCS developer, I want to normalize the power data retrieved from the Nexus 15xx model and publish it to the VMB so that 1PSC can consume the data in a consistent format.
+RK-1: VMB instability may affect data publishing.
+AS-1: VMB topic is configured and available.
+*Technical Specifications*:
 
-vmb:
-  serviceUrl: ${VMB_SERVICE_URL:pulsar+ssl://vmb-aws-us-east-1-nonprod.verizon.com:6651}
-  partitionCount: ${VMB_PARTITION_COUNT:16}
-  topicName: ${TOPIC_NAME:persistent://enmv/psc/nexus-meter}
-  tlsCertFile: ${VMB_TLS_CERT_FILE:src/main/resources/vmb-ple-certs/enmv.cert.pem}
-  tlsKeyFile: ${VMB_TLS_KEY_FILE:src/main/resources/vmb-ple-certs/enmv.key-pk8.pem}
-  tlsTrustCertsFile: ${VMB_TRUST_CERTS_FILE:src/main/resources/vmb-ple-certs/ca.cert.pem}
-  retryLimit: 3
+{"apiEndPoints":"\"UCS internal API endpoint for VMB publishing.\"","requestPayloadStructure":"\"Normalized power data (kW, kWh, etc.), timestamp.\"","responsePayloadStructure":"\"Success/failure status. HTTP status codes (200, 500).\"","authentication":"\"Secure communication between UCS and VMB.\"","errorHandling":"\"Error codes for publishing failures. Retry mechanism.\"","versioningInformation":"\"v1.0\"","performanceRequirementCriteria":"\"Publishing within 15 seconds\"","backwardCompatibility":"\"Yes\"","businessRules":"\"Data normalization rules.\"","loggingAndMonitoring":"\"Logs for successful/failed publishing attempts.\"","securityConsiderations":"\"Secure communication channel.\"","complianceRegulations":"\"N/A\"","documentationImpact":"\"Update documentation on VMB topic and data format.\""}
 
-Explanation of Changes:
+Given a Nexus 1450 device is unreachable, when UCS requests data, send an lov notification to vmb topic
 
-PulsarConfig.java: This configuration class initializes the Pulsar client with TLS certificates and service URL from the YAML file.
+while running the above showing this error plss resolve and do the implementation and correct the code
 
-VMBPublisherService.java: Publishes normalized data to Pulsar using the configuration values from the YAML file. It retries publishing if there’s an issue.
+[2025-02-04 16:03:51,517 UTC] [WARN ] pulsar-client-io-1-9 org.apache.pulsar.client.impl.ConnectionPool - Failed to open connection to vmb-aws-us-east-1-nonprod.verizon.com/<unresolved>:6651 : java.net.UnknownHostException: Failed to resolve 'vmb-aws-us-east-1-nonprod.verizon.com' [A(1)] after 2 queries 
+[2025-02-04 16:06:23,012 UTC] [INFO ] main com.verizon.ucs.UCSApplication - Starting UCSApplication using Java 17.0.6 with PID 23452 (C:\prod\ms-psc-polling\target\classes started by MARGARA in C:\prod\ms-psc-polling)
+[2025-02-04 16:06:23,013 UTC] [INFO ] main com.verizon.ucs.UCSApplication - No active profile set, falling back to 1 default profile: "default"
+[2025-02-04 16:06:24,280 UTC] [INFO ] main org.springframework.boot.web.embedded.tomcat.TomcatWebServer - Tomcat initialized with port 8080 (http)
+[2025-02-04 16:06:24,287 UTC] [INFO ] main org.apache.coyote.http11.Http11NioProtocol - Initializing ProtocolHandler ["http-nio-8080"]
+[2025-02-04 16:06:24,290 UTC] [INFO ] main org.apache.catalina.core.StandardService - Starting service [Tomcat]
+[2025-02-04 16:06:24,290 UTC] [INFO ] main org.apache.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/10.1.28]
+[2025-02-04 16:06:24,376 UTC] [INFO ] main org.apache.catalina.core.ContainerBase.[Tomcat].[localhost].[/] - Initializing Spring embedded WebApplicationContext
+[2025-02-04 16:06:24,378 UTC] [INFO ] main org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext - Root WebApplicationContext: initialization completed in 1305 ms
+[2025-02-04 16:06:24,695 UTC] [INFO ] main com.verizon.ucs.config.PulsarConfig - appConfig.getServiceUrl()pulsar+ssl://vmb-aws-us-east-1-nonprod.verizon.com:6651
+[2025-02-04 16:06:25,182 UTC] [WARN ] main org.springframework.boot.web.servlet.context.AnnotationConfigServletWebServerApplicationContext - Exception encountered during context initialization - cancelling refresh attempt: org.springframework.beans.factory.UnsatisfiedDependencyException: Error creating bean with name 'nexusScheduler': Unsatisfied dependency expressed through field 'vmbConsumerService': Error creating bean with name 'vmbConsumerService': Unsatisfied dependency expressed through field 'pulsarClient': Error creating bean with name 'pulsarClient' defined in class path resource [com/verizon/ucs/config/PulsarConfig.class]: Failed to instantiate [org.apache.pulsar.client.api.PulsarClient]: Factory method 'pulsarClient' threw exception with message: class org.apache.pulsar.client.impl.PulsarClientImpl cannot be cast to class org.apache.pulsar.client.api.PulsarClient (org.apache.pulsar.client.impl.PulsarClientImpl and org.apache.pulsar.client.api.PulsarClient are in unnamed module of loader 'app')
+[2025-02-04 16:06:25,185 UTC] [INFO ] main org.apache.catalina.core.StandardService - Stopping service [Tomcat]
+[2025-02-04 16:06:25,201 UTC] [INFO ] main org.springframework.boot.autoconfigure.logging.ConditionEvaluationReportLogger - 
 
-PulsarProducer.java: This additional producer class can be used for producing messages to a Pulsar topic, handling retries if necessary.
-
-application.yml: Contains Pulsar service configurations such as the service URL, topic name, TLS certificates, and retry limits.
-
-
-How to Use:
-
-1. Ensure you have the required Pulsar service running (as defined in your serviceUrl).
-
-
-2. Add the necessary Pulsar client dependencies to your pom.xml or build.gradle.
-
-
-3. Load the application.yml configuration to initialize the Pulsar connection, and the VMBPublisherService will handle sending data to Pulsar.
-
-
-
-Let me know if you need further modifications or clarifications!
+Error starting ApplicationContext. To display the condition evaluation report re-run your application with 'debug' enabled.
+[2025-02-04 16:06:25,224 UTC] [ERROR] main org.springframework.boot.SpringApplication - Application run failed
+org.springframework.beans.factory.UnsatisfiedDependencyException: Error creating bean with name 'nexusScheduler': Unsatisfied dependency expressed through field 'vmbConsumerService': Error creating bean with name 'vmbConsumerService': Unsatisfied dependency expressed through field 'pulsarClient': Error creating bean with name 'pulsarClient' defined in class path resource [com/verizon/ucs/config/PulsarConfig.class]: Failed to instantiate [org.apache.pulsar.client.api.PulsarClient]: Factory method 'pulsarClient' threw exception with message: class org.apache.pulsar.client.impl.PulsarClientImpl cannot be cast to class org.apache.pulsar.client.api.PulsarClient (org.apache.pulsar.client.impl.PulsarClientImpl and org.apache.pulsar.client.api.PulsarClient are in unnamed module of loader 'app')
+	at org.springframework.beans.factory.annotation.AutowiredAnnotationBeanPostProcessor$AutowiredFieldElement.resolveFieldValue(AutowiredAnnotationBeanPostProcessor.java:788)
+	at org.springframework.beans.factory.annotation.AutowiredAnnotationBeanPostProcessor$AutowiredFieldElement.inject(AutowiredAnnotationBeanPostProcessor.java:768)
+	at org.springframework.beans.factory.annotation.InjectionMetadata.inject(InjectionMetadata.java:145)
+	at org.springframework.beans.factory.annotation.AutowiredAnnotationBeanPostProcessor.postProcessProperties(AutowiredAnnotationBeanPostProcessor.java:509)
+	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.populateBean(AbstractAutowireCapableBeanFactory.java:1439)
+	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.doCreateBean(AbstractAutowireCapableBeanFactory.java:599)
+	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.createBean(AbstractAutowireCapableBeanFactory.java:522)
+	at org.springframework.beans.factory.support.AbstractBeanFactory.lambda$doGetBean$0(AbstractBeanFactory.java:337)
+	at org.springframework.beans.factory.support.DefaultSingletonBeanRegistry.getSingleton(DefaultSingletonBeanRegistry.java:234)
+	at org.springframework.beans.factory.support.AbstractBeanFactory.doGetBean(AbstractBeanFactory.java:335)
+	at org.springframework.beans.factory.support.AbstractBeanFactory.getBean(AbstractBeanFactory.java:200)
+	at org.springframework.beans.factory.support.DefaultListableBeanFactory.preInstantiateSingletons(DefaultListableBeanFactory.java:975)
+	at org.springframework.context.support.AbstractApplicationContext.finishBeanFactoryInitialization(AbstractApplicationContext.java:971)
+	at org.springframework.context.support.AbstractApplicationContext.refresh(AbstractApplicationContext.java:625)
+	at org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext.refresh(ServletWebServerApplicationContext.java:146)
+	at org.springframework.boot.SpringApplication.refresh(SpringApplication.java:754)
+	at org.springframework.boot.SpringApplication.refreshContext(SpringApplication.java:456)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:335)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1363)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1352)
+	at com.verizon.ucs.UCSApplication.main(UCSApplication.java:13)
+Caused by: org.springframework.beans.factory.UnsatisfiedDependencyException: Error creating bean with name 'vmbConsumerService': Unsatisfied dependency expressed through field 'pulsarClient': Error creating bean with name 'pulsarClient' defined in class path resource [com/verizon/ucs/config/PulsarConfig.class]: Failed to instantiate [org.apache.pulsar.client.api.PulsarClient]: Factory method 'pulsarClient' threw exception with message: class org.apache.pulsar.client.impl.PulsarClientImpl cannot be cast to class org.apache.pulsar.client.api.PulsarClient (org.apache.pulsar.client.impl.PulsarClientImpl and org.apache.pulsar.client.api.PulsarClient are in unnamed module of loader 'app')
+	at org.springframework.beans.factory.annotation.AutowiredAnnotationBeanPostProcessor$AutowiredFieldElement.resolveFieldValue(AutowiredAnnotationBeanPostProcessor.java:788)
+	at org.springframework.beans.factory.annotation.AutowiredAnnotationBeanPostProcessor$AutowiredFieldElement.inject(AutowiredAnnotationBeanPostProcessor.java:768)
+	at org.springframework.beans.factory.annotation.InjectionMetadata.inject(InjectionMetadata.java:145)
 
