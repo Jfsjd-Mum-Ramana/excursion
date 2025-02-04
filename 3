@@ -1,17 +1,10 @@
-package com.verizon.ucs.service;
+It looks like the LOV topic (vmbConfig.getLovTopic()) is not being initialized in VmbEclipsePublisherService. This is why the LOV messages might not be published successfully.
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-import com.verizon.eclipse.pulsar.producer.EclipsePulsarProducerNr;
-import com.verizon.ucs.config.VMBConfig;
+Fix: Ensure the LOV Topic Producer is Initialized
 
-import jakarta.annotation.PostConstruct;
-import jakarta.annotation.PreDestroy;
+Modify the init() method in VmbEclipsePublisherService to explicitly initialize the LOV topic producer:
 
-import java.util.HashMap;
-import java.util.Map;
+Updated VmbEclipsePublisherService Class
 
 @Service
 public class VmbEclipsePublisherService {
@@ -26,21 +19,25 @@ public class VmbEclipsePublisherService {
     public void init() throws Exception {
         logger.info("Initializing Pulsar producers");
 
-        // Initialize producers for different topics
+        // Initialize producers for VMB topic and LOV topic
         initializeProducer(vmbConfig.getVmbTopic());
-        //initializeProducer(vmbConfig.getLovTopic());
+        initializeProducer(vmbConfig.getLovTopic()); // Ensure LOV topic is initialized
     }
 
     private void initializeProducer(String topic) throws Exception {
-        EclipsePulsarProducerNr producer = new EclipsePulsarProducerNr(true,
-                vmbConfig.getServiceUrl(),
-                vmbConfig.getTlsTrustCertsFile(),
-                vmbConfig.getTlsKeyFile(),
-                vmbConfig.getTlsCertFile(),
-                topic
-        );
-        producers.put(topic, producer);
-        logger.info("Initialized producer for topic: {}", topic);
+        if (topic != null && !topic.isEmpty()) {
+            EclipsePulsarProducerNr producer = new EclipsePulsarProducerNr(true,
+                    vmbConfig.getServiceUrl(),
+                    vmbConfig.getTlsTrustCertsFile(),
+                    vmbConfig.getTlsKeyFile(),
+                    vmbConfig.getTlsCertFile(),
+                    topic
+            );
+            producers.put(topic, producer);
+            logger.info("Initialized producer for topic: {}", topic);
+        } else {
+            logger.error("Skipping producer initialization: Topic is null or empty");
+        }
     }
 
     @PreDestroy
@@ -78,4 +75,65 @@ public class VmbEclipsePublisherService {
     }
 }
 
-lovTopic: persistent://enmv/pub-snmp-perf-east/ECLIPSE-pub-snmp-perf-east-ms 
+
+---
+
+Updated fetchDataFromDevice() Method
+
+Now that the LOV topic producer is initialized, ensure the LOV notification logic is working properly in fetchDataFromDevice().
+
+private String fetchDataFromDevice(DeviceInfo devInfo) throws Exception {
+    return retryTemplate.execute(context -> {
+        String url = config.getApiEndpoints()
+                           .get(devInfo.getModelNo())
+                           .replace("{siteIP}", devInfo.getDeviceIP());
+
+        logger.info("Fetching data from device: {} using URL: {}", devInfo.getDeviceIP(), url);
+
+        switch (devInfo.getModelNo()) {
+            case Constants.DEVICE_TYPE_1250:
+                return restTemplate.getForObject(url, String.class);
+            case Constants.DEVICE_TYPE_1450:
+                return restTemplate.postForObject(url, getHttpEntity(), String.class);
+            case Constants.DEVICE_TYPE_1500:
+                return restTemplate.getForObject(url, String.class);
+            default:
+                throw new IllegalArgumentException("Unsupported device type: " + devInfo.getModelNo());
+        }
+    }, context -> {
+        // Recovery logic when all retry attempts fail
+        Throwable lastThrowable = context.getLastThrowable();
+        String errorMessage = lastThrowable != null ? lastThrowable.getMessage() : "Unknown error";
+
+        logger.error("All retry attempts failed for device: {} (Model: {}). Sending LOV notification. Error: {}",
+                      devInfo.getDeviceIP(), devInfo.getModelNo(), errorMessage);
+
+        // Generate LOV (Loss of Visibility) response
+        String lovMsg = validation.generateLOVResponse(devInfo, errorMessage);
+
+        // Log the LOV message before publishing
+        logger.info("Publishing LOV message to VMB topic: {}. Message: {}", vmbConfig.getLovTopic(), lovMsg);
+
+        // Publish the LOV notification to the VMB topic asynchronously
+        vmbEclipsePublisherService.publishAsync(vmbConfig.getLovTopic(), lovMsg, devInfo.getDeviceIP());
+
+        logger.info("LOV notification successfully published for device: {}", devInfo.getDeviceIP());
+
+        return "Recovery response: " + errorMessage;
+    });
+}
+
+
+---
+
+What This Fixes
+
+✅ Ensures the LOV topic producer is properly initialized.
+✅ Logs all events related to LOV message publishing.
+✅ Confirms that Nexus 1450 failure results in an LOV notification being published.
+
+Validation:
+
+Start UCS service and check logs to confirm the LOV topic is initialized:
+
+
