@@ -1,176 +1,69 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-	<modelVersion>4.0.0</modelVersion>
+package com.verizon.ucs.scheduler;
 
-	<groupId>com.verizon.ucs</groupId>
-	<artifactId>ms-psc-polling</artifactId>
-	<version>develop</version>
-	<packaging>jar</packaging>
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
-	<name>ms-psc-polling</name>
-	<url>http://maven.apache.org</url>
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
 
-	<parent>
-		<groupId>org.springframework.boot</groupId>
-		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>3.3.3</version> <!-- Ensure Spring Boot version supports Java 21 -->
-		<relativePath /> <!-- lookup parent from repository -->
-	</parent>
+import com.verizon.ucs.model.DeviceInfo;
+import com.verizon.ucs.service.DBService;
+import com.verizon.ucs.service.NexusService;
 
-	<properties>
-		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
-		<java.version>21</java.version>
-		<maven.compiler.source>21</maven.compiler.source>
-		<maven.compiler.target>21</maven.compiler.target>
-		<maven.compiler.release>21</maven.compiler.release>
-	</properties>
+import jakarta.annotation.PostConstruct;
 
-	<dependencies>
-		<!-- Spring Boot Starter Web -->
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-web</artifactId>
-		</dependency>
+@Component
+public class NexusScheduler {
+    private static final Logger logger = LoggerFactory.getLogger(NexusScheduler.class);
 
-		<!-- Apache HttpClient -->
-		<dependency>
-			<groupId>org.apache.httpcomponents.client5</groupId>
-			<artifactId>httpclient5</artifactId>
-		</dependency>
+    @Value("${scheduler.threadPoolSize}")
+    private int threadPoolSize;
 
-		<!-- Spring Retry -->
-		<dependency>
-			<groupId>org.springframework.retry</groupId>
-			<artifactId>spring-retry</artifactId>
-		</dependency>
+    @Autowired
+    private DBService dBService;
+    
+    @Autowired
+    private NexusService nexusService;
 
-		<!-- Spring AOP -->
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-aop</artifactId>
-		</dependency>
+    private ExecutorService executorService;
 
-		<!-- JSON Processing -->
-		<dependency>
-			<groupId>org.json</groupId>
-			<artifactId>json</artifactId>
-			<version>20250107</version>
-		</dependency>
+    @PostConstruct
+    public void init() {
+        logger.info("Starting @PostConstruct");
+        try {
+            // Using Virtual Thread Executor introduced in Java 21
+            this.executorService = Executors.newVirtualThreadPerTaskExecutor();
+        } catch (Exception e) {
+            logger.error("Error in @PostConstruct", e);
+        }
+    }
 
-		<dependency>
-			<groupId>com.google.code.gson</groupId>
-			<artifactId>gson</artifactId>
-		</dependency>
+    @Scheduled(fixedRateString = "${scheduler.fixedRate}")
+    public void scheduleTask() {
+        List<DeviceInfo> devices;
+        logger.info("Starting Scheduler");
+        try {
+            // Fetch device details from the database
+            devices = dBService.fetchDeviceDetails();
+            logger.info("Devices from DB: {}", devices);
 
-		<!-- Pulsar Integration (Excluding Unnecessary Dependencies) -->
-		<dependency>
-			<groupId>eclipse</groupId>
-			<artifactId>ms_common_pulsar</artifactId>
-			<version>develop</version>
-			<exclusions>
-				<exclusion>
-					<groupId>pulsar-client-original</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>pulsar-common*</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>pulsar-client-admin*</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>io.netty</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>pulsar-client-api</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>pulsar-function-api</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>pulsar-io-core</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>pulsar-io-netty</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>org.slf4j</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>log4j</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-			</exclusions>
-		</dependency>
-	</dependencies>
-
-	<repositories>
-		<repository>
-			<id>central</id>
-			<name>libs-release</name>
-			<url>https://oneartifactoryprod.verizon.com/artifactory/libs-release</url>
-		</repository>
-		<repository>
-			<id>snapshots</id>
-			<name>libs-snapshot</name>
-			<url>https://oneartifactoryprod.verizon.com/artifactory/libs-snapshot</url>
-		</repository>
-		<repository>
-			<id>spring-releases</id>
-			<url>https://repo.spring.io/libs-release</url>
-		</repository>
-	</repositories>
-
-	<build>
-		<plugins>
-			<!-- Spring Boot Plugin -->
-			<plugin>
-				<groupId>org.springframework.boot</groupId>
-				<artifactId>spring-boot-maven-plugin</artifactId>
-			</plugin>
-
-			<!-- Maven Compiler Plugin (Updated for Java 21) -->
-			<plugin>
-				<groupId>org.apache.maven.plugins</groupId>
-				<artifactId>maven-compiler-plugin</artifactId>
-				<version>3.11.0</version>
-				<configuration>
-					<release>21</release>
-				</configuration>
-			</plugin>
-
-			<!-- Dependency Plugin to Copy Dependencies -->
-			<plugin>
-				<groupId>org.apache.maven.plugins</groupId>
-				<artifactId>maven-dependency-plugin</artifactId>
-				<executions>
-					<execution>
-						<id>copy-dependencies</id>
-						<phase>prepare-package</phase>
-						<goals>
-							<goal>copy-dependencies</goal>
-						</goals>
-						<configuration>
-							<outputDirectory>${project.build.directory}/lib</outputDirectory>
-							<excludeArtifactIds>pulsar-client-original,pulsar-client-api,
-								pulsar-io-core,pulsar-io-netty,pulsar-functions-api,pulsar-common,circe-checksum</excludeArtifactIds>
-							<overWriteReleases>false</overWriteReleases>
-							<overWriteSnapshots>false</overWriteSnapshots>
-							<overWriteIfNewer>true</overWriteIfNewer>
-						</configuration>
-					</execution>
-				</executions>
-			</plugin>
-		</plugins>
-	</build>
-</project>
+            // Process each device separately using Virtual Threads
+            for (DeviceInfo device : devices) {
+                executorService.submit(() -> {
+                    try {
+                        nexusService.getNexusData(device);
+                    } catch (Exception e) {
+                        logger.error("Exception while processing device: {}", device, e);
+                    }
+                });
+            }
+        } catch (Exception e) {
+            logger.error("Exception while processing devices", e);
+        }
+    }
+}
