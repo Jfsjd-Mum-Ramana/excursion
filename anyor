@@ -10,17 +10,21 @@
 
 	<name>ms-psc-polling</name>
 	<url>http://maven.apache.org</url>
+
 	<parent>
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>3.3.3</version>
+		<version>3.3.3</version> <!-- Ensure Spring Boot version supports Java 21 -->
 		<relativePath /> <!-- lookup parent from repository -->
 	</parent>
 
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
-		<java.version>17</java.version>
+		<java.version>21</java.version>
+		<maven.compiler.source>21</maven.compiler.source>
+		<maven.compiler.target>21</maven.compiler.target>
+		<maven.compiler.release>21</maven.compiler.release>
 	</properties>
 
 	<dependencies>
@@ -29,40 +33,39 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-web</artifactId>
 		</dependency>
+
 		<!-- Apache HttpClient -->
 		<dependency>
 			<groupId>org.apache.httpcomponents.client5</groupId>
 			<artifactId>httpclient5</artifactId>
 		</dependency>
+
+		<!-- Spring Retry -->
 		<dependency>
 			<groupId>org.springframework.retry</groupId>
 			<artifactId>spring-retry</artifactId>
 		</dependency>
+
+		<!-- Spring AOP -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-aop</artifactId>
 		</dependency>
+
+		<!-- JSON Processing -->
 		<dependency>
 			<groupId>org.json</groupId>
 			<artifactId>json</artifactId>
 			<version>20250107</version>
 		</dependency>
+
 		<dependency>
 			<groupId>com.google.code.gson</groupId>
 			<artifactId>gson</artifactId>
 		</dependency>
-		<!--<dependency>
-			<groupId>org.apache.pulsar</groupId>
-			<artifactId>pulsar-client</artifactId>
-			<exclusions>
-				<exclusion>
-					<groupId>com.google.guava</groupId>
-					<artifactId>guava</artifactId>
-				</exclusion>
-			</exclusions>
-		</dependency>-->
-		
-	<dependency>
+
+		<!-- Pulsar Integration (Excluding Unnecessary Dependencies) -->
+		<dependency>
 			<groupId>eclipse</groupId>
 			<artifactId>ms_common_pulsar</artifactId>
 			<version>develop</version>
@@ -111,18 +114,6 @@
 		</dependency>
 	</dependencies>
 
-	<pluginRepositories>
-		<pluginRepository>
-			<snapshots>
-				<enabled>false</enabled>
-			</snapshots>
-			<id>central</id>
-			<name>plugins-release</name>
-			<url>
-				https://oneartifactoryprod.verizon.com/artifactory/plugins-release</url>
-		</pluginRepository>
-	</pluginRepositories>
-
 	<repositories>
 		<repository>
 			<id>central</id>
@@ -130,11 +121,9 @@
 			<url>https://oneartifactoryprod.verizon.com/artifactory/libs-release</url>
 		</repository>
 		<repository>
-			<snapshots />
 			<id>snapshots</id>
 			<name>libs-snapshot</name>
-			<url>
-				https://oneartifactoryprod.verizon.com/artifactory/libs-snapshot</url>
+			<url>https://oneartifactoryprod.verizon.com/artifactory/libs-snapshot</url>
 		</repository>
 		<repository>
 			<id>spring-releases</id>
@@ -144,10 +133,23 @@
 
 	<build>
 		<plugins>
+			<!-- Spring Boot Plugin -->
 			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
 			</plugin>
+
+			<!-- Maven Compiler Plugin (Updated for Java 21) -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-compiler-plugin</artifactId>
+				<version>3.11.0</version>
+				<configuration>
+					<release>21</release>
+				</configuration>
+			</plugin>
+
+			<!-- Dependency Plugin to Copy Dependencies -->
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-dependency-plugin</artifactId>
@@ -172,80 +174,3 @@
 		</plugins>
 	</build>
 </project>
-
-
-package com.verizon.ucs.scheduler;
-
-import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.stereotype.Component;
-
-import com.verizon.ucs.model.DeviceInfo;
-import com.verizon.ucs.service.DBService;
-import com.verizon.ucs.service.NexusService;
-
-import jakarta.annotation.PostConstruct;
-
-@Component
-public class NexusScheduler {
-    private static final Logger logger = LoggerFactory.getLogger(NexusScheduler.class);
-
-    @Value("${scheduler.threadPoolSize}")
-    private int threadPoolSize;
-
-    @Autowired
-    private DBService dBService;
-    
-    @Autowired
-    private NexusService nexusService;
-
-    private ExecutorService executorService;
-
-    @PostConstruct
-    public void init() {
-        logger.info("Starting @PostConstruct" );
-        try {
-            // Use Executors.newVirtualThreadPerTaskExecutor() for virtual threads
-            this.executorService = Executors.newVirtualThreadPerTaskExecutor(threadPoolSize);
-        } catch (Exception e) {
-            logger.error("Error in @PostConstruct", e);
-        }
-    }
-
-    @Scheduled(fixedRateString = "${scheduler.fixedRate}")
-    public void scheduleTask() {
-        List<DeviceInfo> devices;
-        logger.info("Starting Scheduler");
-        try {
-            // Fetch device details from the database
-            devices = dBService.fetchDeviceDetails();
-            logger.info("Devices from DB: {}", devices);
-
-            // Process each device separately using virtual threads
-            for (DeviceInfo device : devices) {
-                executorService.submit(() -> {
-                    try {
-                        nexusService.getNexusData(device);
-                    } catch (Exception e) {
-                        logger.error("Exception while processing device: {}", device, e);
-                    }
-                });
-            }
-        } catch (Exception e) {
-            logger.error("Exception while processing devices", e);
-        }
-    }
-}
-
-Update the above pom.xml to java 21 and I just want to know the steps plss explain and give clearly and also plss follow
-
- 3. Update the code using normal thread to Thread.ofVirtual(). and
-4. Use Executors.newVirtualThreadPerTaskExecutor() instead of normal Executors.
-use below class. it will work only after java upgrade.
