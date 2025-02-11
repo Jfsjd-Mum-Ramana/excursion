@@ -1,5 +1,186 @@
-C:\lucene_base_path\ms-psc-polling\src\main\java\com\verizon\ucs\scheduler\NexusScheduler.java:37:45
-java: newVirtualThreadPerTaskExecutor() is a preview API and is disabled by default.
-  (use --enable-preview to enable preview APIs)
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+		 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+		 xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
 
-While running the application getting this error plss resolve 
+	<groupId>com.verizon.ucs</groupId>
+	<artifactId>ms-psc-polling</artifactId>
+	<version>develop</version>
+	<packaging>jar</packaging>
+
+	<name>ms-psc-polling</name>
+	<url>http://maven.apache.org</url>
+
+	<parent>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-parent</artifactId>
+		<version>3.2.3</version>
+		<relativePath />
+	</parent>
+
+	<properties>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+		<java.version>21</java.version>
+		<maven.compiler.source>21</maven.compiler.source>
+		<maven.compiler.target>21</maven.compiler.target>
+		<maven.compiler.release>21</maven.compiler.release>
+	</properties>
+
+	<dependencies>
+		<!-- Spring Boot Starter Web -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-web</artifactId>
+		</dependency>
+
+		<!-- Apache HttpClient -->
+		<dependency>
+			<groupId>org.apache.httpcomponents.client5</groupId>
+			<artifactId>httpclient5</artifactId>
+		</dependency>
+
+		<!-- Spring Retry -->
+		<dependency>
+			<groupId>org.springframework.retry</groupId>
+			<artifactId>spring-retry</artifactId>
+		</dependency>
+
+		<!-- Spring AOP -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-aop</artifactId>
+		</dependency>
+
+		<!-- JSON Processing -->
+		<dependency>
+			<groupId>org.json</groupId>
+			<artifactId>json</artifactId>
+			<version>20250107</version>
+		</dependency>
+
+		<dependency>
+			<groupId>com.google.code.gson</groupId>
+			<artifactId>gson</artifactId>
+		</dependency>
+
+		<!-- Pulsar Integration (Excluding Unnecessary Dependencies) -->
+		<dependency>
+			<groupId>eclipse</groupId>
+			<artifactId>ms_common_pulsar</artifactId>
+			<version>develop</version>
+			<exclusions>
+				<exclusion>
+					<groupId>pulsar-client-original</groupId>
+					<artifactId>*</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>pulsar-common*</groupId>
+					<artifactId>*</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>pulsar-client-admin*</groupId>
+					<artifactId>*</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>io.netty</groupId>
+					<artifactId>*</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>pulsar-client-api</groupId>
+					<artifactId>*</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>pulsar-function-api</groupId>
+					<artifactId>*</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>pulsar-io-core</groupId>
+					<artifactId>*</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>pulsar-io-netty</groupId>
+					<artifactId>*</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>org.slf4j</groupId>
+					<artifactId>*</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>log4j</groupId>
+					<artifactId>*</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+	</dependencies>
+
+	<repositories>
+		<repository>
+			<id>central</id>
+			<name>libs-release</name>
+			<url>https://oneartifactoryprod.verizon.com/artifactory/libs-release</url>
+		</repository>
+		<repository>
+			<id>snapshots</id>
+			<name>libs-snapshot</name>
+			<url>https://oneartifactoryprod.verizon.com/artifactory/libs-snapshot</url>
+		</repository>
+		<repository>
+			<id>spring-releases</id>
+			<url>https://repo.spring.io/libs-release</url>
+		</repository>
+	</repositories>
+
+	<build>
+		<plugins>
+			<!-- Spring Boot Plugin -->
+			<plugin>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-maven-plugin</artifactId>
+			</plugin>
+
+			<!-- Maven Compiler Plugin (Updated for Java 21) -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-compiler-plugin</artifactId>
+				<version>3.13.0</version>
+				<configuration>
+					<release>21</release>
+					<source>21</source>
+					<target>21</target>
+					<compilerArgs>
+						<arg>--enable-preview</arg>
+					</compilerArgs>
+
+<!--					<compilerArgs>&#45;&#45;enable-preview</compilerArgs>-->
+				</configuration>
+			</plugin>
+
+			<!-- Dependency Plugin to Copy Dependencies -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-dependency-plugin</artifactId>
+				<executions>
+					<execution>
+						<id>copy-dependencies</id>
+						<phase>prepare-package</phase>
+						<goals>
+							<goal>copy-dependencies</goal>
+						</goals>
+						<configuration>
+							<outputDirectory>${project.build.directory}/lib</outputDirectory>
+							<excludeArtifactIds>pulsar-client-original,pulsar-client-api,
+								pulsar-io-core,pulsar-io-netty,pulsar-functions-api,pulsar-common,circe-checksum</excludeArtifactIds>
+							<overWriteReleases>false</overWriteReleases>
+							<overWriteSnapshots>false</overWriteSnapshots>
+							<overWriteIfNewer>true</overWriteIfNewer>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
+</project>
+
+java: invalid source release 20 with --enable-preview
+  (preview language features are only supported for release 21)  pls resolve
