@@ -1,69 +1,57 @@
-package com.verizon.ucs.scheduler;
+🔹 Changes for NexusScheduler (Java 21 Virtual Threads)
 
-import java.util.List;
+1️⃣ Update ExecutorService Initialization in @PostConstruct
+
+Replace:
+
+this.executorService = Executors.newFixedThreadPool(threadPoolSize);
+
+With:
+
+this.executorService = Executors.newVirtualThreadPerTaskExecutor();
+
+
+---
+
+2️⃣ Update Device Processing to Use Thread.ofVirtual()
+
+Replace:
+
+executorService.submit(() -> {
+    try {
+        nexusService.getNexusData(device);
+    } catch (Exception e) {
+        logger.error("Exception while processing device: {}", device, e);
+    }
+});
+
+With:
+
+Thread.ofVirtual().start(() -> {
+    try {
+        nexusService.getNexusData(device);
+    } catch (Exception e) {
+        logger.error("Exception while processing device: {}", device, e);
+    }
+});
+
+
+---
+
+🔹 Required Imports (No Changes Needed)
+
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.stereotype.Component;
 
-import com.verizon.ucs.model.DeviceInfo;
-import com.verizon.ucs.service.DBService;
-import com.verizon.ucs.service.NexusService;
+---
 
-import jakarta.annotation.PostConstruct;
+✅ Summary of Changes
 
-@Component
-public class NexusScheduler {
-    private static final Logger logger = LoggerFactory.getLogger(NexusScheduler.class);
+Replaced Executors.newFixedThreadPool(threadPoolSize) → Executors.newVirtualThreadPerTaskExecutor()
 
-    @Value("${scheduler.threadPoolSize}")
-    private int threadPoolSize;
+Replaced executorService.submit(...) → Thread.ofVirtual().start(...)
 
-    @Autowired
-    private DBService dBService;
-    
-    @Autowired
-    private NexusService nexusService;
 
-    private ExecutorService executorService;
+Now your NexusScheduler fully supports Java 21 Virtual Threads. 🚀
 
-    @PostConstruct
-    public void init() {
-        logger.info("Starting @PostConstruct");
-        try {
-            // Using Virtual Thread Executor introduced in Java 21
-            this.executorService = Executors.newVirtualThreadPerTaskExecutor();
-        } catch (Exception e) {
-            logger.error("Error in @PostConstruct", e);
-        }
-    }
-
-    @Scheduled(fixedRateString = "${scheduler.fixedRate}")
-    public void scheduleTask() {
-        List<DeviceInfo> devices;
-        logger.info("Starting Scheduler");
-        try {
-            // Fetch device details from the database
-            devices = dBService.fetchDeviceDetails();
-            logger.info("Devices from DB: {}", devices);
-
-            // Process each device separately using Virtual Threads
-            for (DeviceInfo device : devices) {
-                executorService.submit(() -> {
-                    try {
-                        nexusService.getNexusData(device);
-                    } catch (Exception e) {
-                        logger.error("Exception while processing device: {}", device, e);
-                    }
-                });
-            }
-        } catch (Exception e) {
-            logger.error("Exception while processing devices", e);
-        }
-    }
-}
