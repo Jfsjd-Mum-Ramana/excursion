@@ -14,7 +14,7 @@
 	<parent>
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>3.2.3</version>
+		<version>3.3.3</version>
 		<relativePath />
 	</parent>
 
@@ -137,13 +137,17 @@
 			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
+				<version>2.5.4</version>
+				<configuration>
+					<jvmArguments>--enable-preview</jvmArguments>
+				</configuration>
 			</plugin>
 
 			<!-- Maven Compiler Plugin (Updated for Java 21) -->
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
-				<version>3.13.0</version>
+				<version>3.8.1</version>
 				<configuration>
 					<release>21</release>
 					<source>21</source>
@@ -182,5 +186,9 @@
 	</build>
 </project>
 
-java: invalid source release 20 with --enable-preview
-  (preview language features are only supported for release 21)  pls resolve
+
+ERROR] Failed to execute goal org.apache.maven.plugins:maven-jar-plugin:3.4.2:jar (default-jar) on project ms-psc-polling: The plugin org.apache.maven.plugins:maven-jar-plugin:3.4.2 requires Maven version 3.6.3 -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+plss resolve the above erro
