@@ -1,3 +1,43 @@
 SQL Error [42883]: ERROR: function eclipse.delete_hpov_s2im_transactions() does not exist
   Hint: No function matches the given name and argument types. You might need to add explicit type casts.
   Position: 8
+
+
+CREATE OR REPLACE FUNCTION eclipse.delete_hpov_s2im_transactions(dummy text)
+RETURNS json
+LANGUAGE plpgsql
+AS $function$
+DECLARE
+    err_context text;
+    transactions_deleted_count int;
+    devices_audit_deleted_count int;
+BEGIN
+    -- Delete from hpov_s2im_transactions and get the deleted count
+    DELETE FROM hpov_s2im_transactions WHERE collected_time < NOW() - INTERVAL '7 days';
+    GET DIAGNOSTICS transactions_deleted_count = ROW_COUNT;
+
+    -- Delete from hpov_s2im_devices_audit and get the deleted count
+    DELETE FROM hpov_s2im_devices_audit WHERE update_timestamp < NOW() - INTERVAL '7 days';
+    GET DIAGNOSTICS devices_audit_deleted_count = ROW_COUNT;
+
+    -- Return the counts as a JSON object
+    RETURN json_build_object(
+        'status', 'Transactions Deleted Successfully',
+        'transactions_deleted_count', transactions_deleted_count,
+        'devices_audit_deleted_count', devices_audit_deleted_count
+    );
+EXCEPTION
+    WHEN OTHERS THEN
+        -- Handle exceptions and return error details
+        GET STACKED DIAGNOSTICS err_context = PG_EXCEPTION_CONTEXT;
+        RETURN json_build_object(
+            'status', 'Transactions Failed to Delete',
+            'error', SQLERRM,
+            'context', err_context
+        );
+END;
+$function$;
+
+
+
+select eclipse.delete_hpov_s2im_transactions();
