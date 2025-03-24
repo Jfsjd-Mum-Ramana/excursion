@@ -1,15 +1,130 @@
-Create a scheduler.
-Develop a single stored procedure (STP) to delete records from the hpov_s2im_devices_audit and hpov_s2im_transactions tables.
-Configure the STP to run once a week at midnight (UTC) to delete the records.
+I see that you're calling the stored procedure via an API and passing parameters in JSON format. However, the data is not being deleted as expected. Here’s how we can troubleshoot and resolve the issue:
 
 
-These are the column values of the table
+---
 
-transaction_id |server_id|is_updated_host|collected_time     |
-(hpov_s2im_transactions)
+1️⃣ Verify the Stored Procedure Execution
+
+Check if the stored procedure is actually being executed. Run this query in PostgreSQL:
+
+SELECT proname, proargnames, prosrc
+FROM pg_proc
+WHERE proname = 'delete_hpov_s2im_transactions';
+
+This ensures that the stored procedure exists.
+
+If the procedure name differs, update the API request accordingly.
 
 
-operation|update_timestamp   |userid  |ip_address    |host_name  |
-(hpov_s2im_devices_audit)
 
+---
+
+2️⃣ Manually Execute the Stored Procedure
+
+Run the stored procedure manually in PostgreSQL:
+
+CALL eclipse.delete_hpov_s2im_transactions();
+
+If no data is deleted, there might be a problem inside the STP.
+
+If the query executes successfully, the issue is in the Java scheduler/API integration.
+
+
+
+---
+
+3️⃣ Update the Stored Procedure to Log Deletion
+
+Modify the stored procedure to return deleted row counts:
+
+CREATE OR REPLACE PROCEDURE eclipse.delete_hpov_s2im_transactions(
+    OUT transactions_deleted_count INT,
+    OUT devices_audit_deleted_count INT
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    -- Delete records and capture count
+    DELETE FROM hpov_s2im_transactions RETURNING 1 INTO transactions_deleted_count;
+    DELETE FROM hpov_s2im_devices_audit RETURNING 1 INTO devices_audit_deleted_count;
+END;
+$$;
+
+The API should expect two output parameters:
+
+transactions_deleted_count
+
+devices_audit_deleted_count
+
+
+
+
+---
+
+4️⃣ Update the Scheduler (Set to 2 Minutes for Testing)
+
+Modify TtlScheduler.java:
+
+@Scheduled(fixedRate = 120000) // Runs every 2 minutes for testing
+public void executeStoredProcedure() {
+    logger.info("Starting execution of stored procedure...");
+
+    String stpName = dbProperties.getTransactionDeleteStpName();
+    if (stpName == null || stpName.isEmpty()) {
+        logger.warn("Stored procedure name is missing in YAML");
+        return;
+    }
+
+    try (Connection connection = dataSource.getConnection();
+         CallableStatement callableStatement = connection.prepareCall("{CALL " + stpName + "(?, ?)}")) {
+
+        // Register output parameters
+        callableStatement.registerOutParameter(1, Types.INTEGER);
+        callableStatement.registerOutParameter(2, Types.INTEGER);
+
+        // Execute stored procedure
+        callableStatement.execute();
+
+        // Retrieve deleted row counts
+        int transactionsDeleted = callableStatement.getInt(1);
+        int auditDeleted = callableStatement.getInt(2);
+
+        logger.info("Stored procedure {} executed successfully. Transactions Deleted: {}, Devices Audit Deleted: {}",
+                stpName, transactionsDeleted, auditDeleted);
+
+    } catch (SQLException e) {
+        logger.error("Error executing stored procedure {}: {}", stpName, e.getMessage(), e);
+    }
+}
+
+
+---
+
+5️⃣ API Testing (Updated Request Format)
+
+Update your API request to match the STP parameters:
+
+{
+  "stpName": "eclipse.delete_hpov_s2im_transactions",
+  "parameterList": []
+}
+
+Remove "dummy" if no input parameters are required.
+
+
+
+---
+
+📌 Summary of Fixes
+
+✅ Ensure STP Exists → Check with pg_proc.
+✅ Manually Test STP → Run CALL eclipse.delete_hpov_s2im_transactions();.
+✅ Modify STP → Return transactions_deleted_count and devices_audit_deleted_count.
+✅ Fix Scheduler → Use fixedRate = 120000 (runs every 2 mins for testing).
+✅ Update API Request → Match STP signature.
+
+
+---
+
+Try these steps and let me know if it works or if you need more debugging!
 
