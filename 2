@@ -1,4 +1,70 @@
-{"log_publish":false,"app_name":"ms-hpov-s2im-inventory","log_time_stamp":"1742831521881","date_time":"2025-03-24T15:52:01.881Z","VSAD_ID":"ENMV","logger_class":"com.verizon.ucs.util.RestTemplateCustomizer","server_host":"worker-014","log_level":"INFO","log_message":"Response Status Code: 200 OK","log_level_value":20000,"logger_thread":"scheduling-1"}
-{"log_publish":false,"app_name":"ms-hpov-s2im-inventory","log_time_stamp":"1742831521882","date_time":"2025-03-24T15:52:01.882Z","VSAD_ID":"ENMV","logger_class":"com.verizon.ucs.util.RestTemplateCustomizer","server_host":"worker-014","log_level":"INFO","log_message":"Response Body: {\"ERROR_REASON\":\"ERROR: syntax error at or near \\\"null\\\"\\n  Position: 15\"}","log_level_value":20000,"logger_thread":"scheduling-1"}
-{"log_publish":true,"app_name":"ms-hpov-s2im-inventory","log_time_stamp":"1742831521891","date_time":"2025-03-24T15:52:01.891Z","VSAD_ID":"ENMV","logger_class":"com.verizon.ucs.util.RestTemplateCustomizer","server_host":"worker-014","log_level":"ERROR","log_message":"Error response: {ERROR_REASON=ERROR: syntax error at or near \"null\"\n  Position: 15}","log_level_value":40000,"logger_thread":"scheduling-1"}
-{"log_publish":false,"app_name":"ms-hpov-s2im-inventory","log_time_stamp":"1742831521891","date_time":"2025-03-24T15:52:01.891Z","VSAD_ID":"ENMV","logger_class":"com.verizon.ucs.service.DatabaseCleanupScheduler","server_host":"worker-014","log_level":"INFO","log_message":"Stored procedure 'null' executed successfully","log_level_value":20000,"logger_thread":"scheduling-1"}
+CREATE OR REPLACE FUNCTION eclipse.delete_hpov_s2im_transactions(dummy text)
+RETURNS json
+LANGUAGE plpgsql
+AS $function$
+DECLARE
+    err_context text;
+    transactions_deleted_count int;
+    devices_audit_deleted_count int;
+BEGIN
+    -- Delete from hpov_s2im_transactions and get the deleted count
+    DELETE FROM hpov_s2im_transactions WHERE collected_time < NOW() - INTERVAL '7 days';
+    GET DIAGNOSTICS transactions_deleted_count = ROW_COUNT;
+
+    -- Delete from hpov_s2im_devices_audit and get the deleted count
+    DELETE FROM hpov_s2im_devices_audit WHERE update_timestamp < NOW() - INTERVAL '7 days';
+    GET DIAGNOSTICS devices_audit_deleted_count = ROW_COUNT;
+
+    -- Return the counts as a JSON object
+    RETURN json_build_object(
+        'status', 'Transactions Deleted Successfully',
+        'transactions_deleted_count', transactions_deleted_count,
+        'devices_audit_deleted_count', devices_audit_deleted_count
+    );
+EXCEPTION
+    WHEN OTHERS THEN
+        -- Handle exceptions and return error details
+        GET STACKED DIAGNOSTICS err_context = PG_EXCEPTION_CONTEXT;
+        RETURN json_build_object(
+            'status', 'Transactions Failed to Delete',
+            'error', SQLERRM,
+            'context', err_context
+        );
+END;
+$function$;
+
+
+CREATE OR REPLACE PROCEDURE eclipse.delete_hpov_s2im_transactions()
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    -- Delete records older than 7 days from hpov_s2im_transactions
+    DELETE FROM hpov_s2im_transactions 
+    WHERE collected_time < NOW() - INTERVAL '7 days';
+
+    -- Delete records older than 7 days from hpov_s2im_devices_audit
+    DELETE FROM hpov_s2im_devices_audit 
+    WHERE update_timestamp < NOW() - INTERVAL '7 days';
+
+    RAISE NOTICE 'Old records deleted successfully';
+END;
+$$;
+
+
+SELECT delete_hpov_s2im_records();
+
+
+
+
+SELECT delete_hpov_s2im_records();  CREATE OR REPLACE FUNCTION eclipse.delete_hpov_s2im_transactions(dummy text) RETURNS json LANGUAGE plpgsql AS $function$ DECLARE err_context text; transactions_deleted_count int; devices_audit_deleted_count int; BEGIN -- Delete from hpov_s2im_transactions and get the deleted count DELETE FROM hpov_s2im_transactions WHERE collected_time < NOW() - INTERVAL '7 days'; GET DIAGNOSTICS transactions_deleted_count = ROW_COUNT;  
+-- Delete from hpov_s2im_devices_audit and get the deleted count
+DELETE FROM hpov_s2im_devices_audit WHERE update_timestamp < NOW() - INTERVAL '7 days';
+GET DIAGNOSTICS devices_audit_deleted_count = ROW_COUNT;
+
+-- Return the counts as a JSON object
+RETURN json_build_object(
+    'status', 'Transactions Deleted Successfully',
+    'transactions_deleted_count', transactions_deleted_count,
+    'devices_audit_deleted_count', devices_audit_deleted_count
+);
+EXCEPTION WHEN OTHERS THEN -- Handle exceptions and return error details GET STACKED DIAGNOSTICS err_context = PG_EXCEPTION_CONTEXT; RETURN json_build_object( 'status', 'Transactions Failed to Delete', 'error', SQLERRM, 'context', err_context ); END; $function$;  Showing an error occured while deleting the records please resolve
