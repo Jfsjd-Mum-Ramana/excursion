@@ -1,14 +1,3 @@
-INSERT INTO hpov_s2im_devices_audit (id, update_timestamp, device_name, status) VALUES
-(1, NOW() - INTERVAL '6 days', 'Device X', 'Active'),
-(2, NOW() - INTERVAL '9 days', 'Device Y', 'Inactive'),
-(3, NOW() - INTERVAL '12 days', 'Device Z', 'Active'),
-(4, NOW() - INTERVAL '3 days', 'Device A', 'Inactive');
+transaction_id                               |server_id|is_updated_host|collected_time     |   --> column values for transactions
 
-
-
-
-INSERT INTO hpov_s2im_transactions (id, collected_time, transaction_data) VALUES
-(1, NOW() - INTERVAL '5 days', 'Transaction A'),
-(2, NOW() - INTERVAL '8 days', 'Transaction B'),
-(3, NOW() - INTERVAL '10 days', 'Transaction C'),
-(4, NOW() - INTERVAL '2 days', 'Transaction D');
+operation|update_timestamp   |userid          |ip_address    |host_name                             |     ---> columns values for audit
