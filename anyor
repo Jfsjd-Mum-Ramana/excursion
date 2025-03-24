@@ -1,194 +1,201 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-		 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-		 xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-	<modelVersion>4.0.0</modelVersion>
+package com.verizon.ucs.service;
 
-	<groupId>com.verizon.ucs</groupId>
-	<artifactId>ms-psc-polling</artifactId>
-	<version>develop</version>
-	<packaging>jar</packaging>
+import org.springframework.stereotype.Component;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Scheduled;
 
-	<name>ms-psc-polling</name>
-	<url>http://maven.apache.org</url>
+import com.verizon.ucs.model.DataWrapperDTO;
+import com.verizon.ucs.properties.DbProperties;
+import com.verizon.ucs.util.RestTemplateCustomizer;
 
-	<parent>
-		<groupId>org.springframework.boot</groupId>
-		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>3.3.3</version>
-		<relativePath />
-	</parent>
+@Component
+public class TtlScheduler {
+    private static final Logger logger = LoggerFactory.getLogger(TtlScheduler.class);
 
-	<properties>
-		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
-		<java.version>21</java.version>
-		<maven.compiler.source>21</maven.compiler.source>
-		<maven.compiler.target>21</maven.compiler.target>
-		<maven.compiler.release>21</maven.compiler.release>
-	</properties>
+    @Autowired
+    private RestTemplateCustomizer restTemplateCustomizer;
 
-	<dependencies>
-		<!-- Spring Boot Starter Web -->
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-web</artifactId>
-		</dependency>
+    @Autowired
+    private DbProperties databaseConfig;
 
-		<!-- Apache HttpClient -->
-		<dependency>
-			<groupId>org.apache.httpcomponents.client5</groupId>
-			<artifactId>httpclient5</artifactId>
-		</dependency>
+    // @Scheduled(cron = "0 0 0 * * ?") // Every day at midnight
+    @Scheduled(cron = "${scheduler.ttl.cron}")
+    public void scheduleCallStp() {
+            logger.info("Starting scheduleCallStp method");
+        try {
 
-		<!-- Spring Retry -->
-		<dependency>
-			<groupId>org.springframework.retry</groupId>
-			<artifactId>spring-retry</artifactId>
-		</dependency>
+            DataWrapperDTO dto = new DataWrapperDTO();
+            dto.setParameterList(new String[] { "dummy" });
+            dto.setStpName(databaseConfig.getTransactionDeleteStpName());// delete_hpov_s2im_transactions
+            restTemplateCustomizer.callApi(dto);
+            logger.info("Completed scheduleCallStp method");
+        } catch (Exception e) {
+            logger.error("Error in scheduleCallStp method", e);
+        }
+    }
 
-		<!-- Spring AOP -->
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-aop</artifactId>
-		</dependency>
+}
 
-		<!-- JSON Processing -->
-		<dependency>
-			<groupId>org.json</groupId>
-			<artifactId>json</artifactId>
-			<version>20250107</version>
-		</dependency>
+package com.verizon.ucs.model;
 
-		<dependency>
-			<groupId>com.google.code.gson</groupId>
-			<artifactId>gson</artifactId>
-		</dependency>
-
-		<!-- Pulsar Integration (Excluding Unnecessary Dependencies) -->
-		<dependency>
-			<groupId>eclipse</groupId>
-			<artifactId>ms_common_pulsar</artifactId>
-			<version>develop</version>
-			<exclusions>
-				<exclusion>
-					<groupId>pulsar-client-original</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>pulsar-common*</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>pulsar-client-admin*</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>io.netty</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>pulsar-client-api</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>pulsar-function-api</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>pulsar-io-core</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>pulsar-io-netty</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>org.slf4j</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>log4j</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-			</exclusions>
-		</dependency>
-	</dependencies>
-
-	<repositories>
-		<repository>
-			<id>central</id>
-			<name>libs-release</name>
-			<url>https://oneartifactoryprod.verizon.com/artifactory/libs-release</url>
-		</repository>
-		<repository>
-			<id>snapshots</id>
-			<name>libs-snapshot</name>
-			<url>https://oneartifactoryprod.verizon.com/artifactory/libs-snapshot</url>
-		</repository>
-		<repository>
-			<id>spring-releases</id>
-			<url>https://repo.spring.io/libs-release</url>
-		</repository>
-	</repositories>
-
-	<build>
-		<plugins>
-			<!-- Spring Boot Plugin -->
-			<plugin>
-				<groupId>org.springframework.boot</groupId>
-				<artifactId>spring-boot-maven-plugin</artifactId>
-				<version>2.5.4</version>
-				<configuration>
-					<jvmArguments>--enable-preview</jvmArguments>
-				</configuration>
-			</plugin>
-
-			<!-- Maven Compiler Plugin (Updated for Java 21) -->
-			<plugin>
-				<groupId>org.apache.maven.plugins</groupId>
-				<artifactId>maven-compiler-plugin</artifactId>
-				<version>3.8.1</version>
-				<configuration>
-					<release>21</release>
-					<source>21</source>
-					<target>21</target>
-					<compilerArgs>
-						<arg>--enable-preview</arg>
-					</compilerArgs>
-
-<!--					<compilerArgs>&#45;&#45;enable-preview</compilerArgs>-->
-				</configuration>
-			</plugin>
-
-			<!-- Dependency Plugin to Copy Dependencies -->
-			<plugin>
-				<groupId>org.apache.maven.plugins</groupId>
-				<artifactId>maven-dependency-plugin</artifactId>
-				<executions>
-					<execution>
-						<id>copy-dependencies</id>
-						<phase>prepare-package</phase>
-						<goals>
-							<goal>copy-dependencies</goal>
-						</goals>
-						<configuration>
-							<outputDirectory>${project.build.directory}/lib</outputDirectory>
-							<excludeArtifactIds>pulsar-client-original,pulsar-client-api,
-								pulsar-io-core,pulsar-io-netty,pulsar-functions-api,pulsar-common,circe-checksum</excludeArtifactIds>
-							<overWriteReleases>false</overWriteReleases>
-							<overWriteSnapshots>false</overWriteSnapshots>
-							<overWriteIfNewer>true</overWriteIfNewer>
-						</configuration>
-					</execution>
-				</executions>
-			</plugin>
-		</plugins>
-	</build>
-</project>
+import com.fasterxml.jackson.annotation.JsonProperty;
+import java.sql.Timestamp;
 
 
-ERROR] Failed to execute goal org.apache.maven.plugins:maven-jar-plugin:3.4.2:jar (default-jar) on project ms-psc-polling: The plugin org.apache.maven.plugins:maven-jar-plugin:3.4.2 requires Maven version 3.6.3 -> [Help 1]
-[ERROR] 
-[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
-[ERROR] Re-run Maven using the -X switch to enable full debug logging.
-plss resolve the above erro
+public class TransactionDTO {
+	@JsonProperty("transaction_id")
+    private String transactionId;
+	@JsonProperty("server_id")
+    private int serverId;
+	
+    private String serverIP;
+    
+    @JsonProperty("is_updated_host")
+    private boolean isUpdatedHost;
+    
+    @JsonProperty("collected_time")
+    private String collectedTime;
+
+    public TransactionDTO(String transactionId, int serverId, boolean isUpdatedHost, String collectedTime, String serverIP) {
+        this.transactionId = transactionId;
+        this.serverId = serverId;
+        this.isUpdatedHost = isUpdatedHost;
+        this.collectedTime = collectedTime;
+        this.serverIP = serverIP;
+    }
+
+    public String getTransactionId() {
+        return transactionId;
+    }
+
+    public void setTransactionId(String transactionId) {
+        this.transactionId = transactionId;
+    }
+
+    public int getServerId() {
+        return serverId;
+    }
+
+    public void setServerId(int serverId) {
+        this.serverId = serverId;
+    }
+    
+
+	public String getCollectedTime() {
+		return collectedTime;
+	}
+
+	public void setCollectedTime(String collectedTime) {
+		this.collectedTime = collectedTime;
+	}
+
+	public String getServerIP() {
+		return serverIP;
+	}
+
+	public void setServerIP(String serverIP) {
+		this.serverIP = serverIP;
+	}
+
+	public boolean isUpdatedHost() {
+		return isUpdatedHost;
+	}
+
+	public void setUpdatedHost(boolean isUpdatedHost) {
+		this.isUpdatedHost = isUpdatedHost;
+	}
+
+	@Override
+	public String toString() {
+		return "TransactionDTO [transactionId=" + transactionId + ", serverId=" + serverId + ", serverIP="
+				+ serverIP + ", isUpdatedHost=" + isUpdatedHost + ", collectedTime=" + collectedTime + "]";
+	}
+
+	
+
+}
+
+package com.verizon.ucs.properties;
+
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.context.annotation.Configuration;
+
+import lombok.Data;
+
+@Configuration
+@Data
+@ConfigurationProperties(prefix = "dbconfig")
+public class DbProperties {
+	private String dbUpdateUrl;
+	private String dbCallUrl;
+	private String serverStpName;
+	private String transactionStpName;
+	private String deviceStpName;
+	private String transactionDeleteStpName;
+
+	public String getDbUpdateUrl() {
+		return dbUpdateUrl;
+	}
+
+	public void setDbUpdateUrl(String dbUpdateUrl) {
+		this.dbUpdateUrl = dbUpdateUrl;
+	}
+
+	public String getDbCallUrl() {
+		return dbCallUrl;
+	}
+
+	public void setDbCallUrl(String dbCallUrl) {
+		this.dbCallUrl = dbCallUrl;
+	}
+
+	public String getServerStpName() {
+		return serverStpName;
+	}
+
+	public void setServerStpName(String serverStpName) {
+		this.serverStpName = serverStpName;
+	}
+
+	public String getTransactionStpName() {
+		return transactionStpName;
+	}
+
+	public void setTransactionStpName(String transactionStpName) {
+		this.transactionStpName = transactionStpName;
+	}
+
+	public String getDeviceStpName() {
+		return deviceStpName;
+	}
+
+	public void setDeviceStpName(String deviceStpName) {
+		this.deviceStpName = deviceStpName;
+
+	}
+	public String getTransactionDeleteStpName() {
+		return transactionDeleteStpName;
+	}
+	public void setTransactionDeleteStpName(String transactionDeleteStpName) {
+		this.transactionDeleteStpName = transactionDeleteStpName;
+	}
+}
+
+ transactionDeleteStpName: delete_hpov_s2im_transactions
+
+
+A scheduler must be created to trigger the stored procedure once a week at midnight UTC.
+Stored Procedure (STP):
+
+Create a single stored procedure to delete records from the hpov_s2im_devices_audit and hpov_s2im_transactions tables.
+Ensure the stored procedure is optimized for performance and handles potential errors gracefully.
+Execution Timing:
+
+The stored procedure should be executed by the scheduler once a week at midnight UTC.
+Testing and Validation:
+
+Test the stored procedure to ensure it correctly deletes the records from both tables.
+Validate that the scheduler triggers the stored procedure at the specified time.
+Document the implementation and testing process, including any issues found and resolved.
