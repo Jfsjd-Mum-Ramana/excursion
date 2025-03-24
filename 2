@@ -1,34 +1,125 @@
-CREATE OR REPLACE FUNCTION eclipse.delete_hpov_s2im_transactions(dummy text)
-RETURNS json
+Here’s how you can achieve the required functionality:
+
+Solution Overview
+
+1. Stored Procedure (STP)
+
+Create a stored procedure (sp_delete_old_records) that deletes records older than 7 days from hpov_s2im_devices_audit and hpov_s2im_transactions.
+
+
+
+2. Scheduler (Spring Boot)
+
+Configure a Spring Boot scheduled task that runs at midnight UTC every day to call this stored procedure.
+
+
+
+
+
+---
+
+Step 1: Create the Stored Procedure in PostgreSQL
+
+CREATE OR REPLACE PROCEDURE sp_delete_old_records()
 LANGUAGE plpgsql
-AS $function$
-DECLARE
-    err_context text;
-    transactions_deleted_count int;
-    devices_audit_deleted_count int;
+AS $$
 BEGIN
-    -- Delete from hpov_s2im_transactions and get the deleted count
-    DELETE FROM hpov_s2im_transactions WHERE collected_time < NOW() - INTERVAL '7 days';
-    GET DIAGNOSTICS transactions_deleted_count = ROW_COUNT;
+    -- Delete records older than 7 days from hpov_s2im_transactions
+    DELETE FROM hpov_s2im_transactions 
+    WHERE collected_time < NOW() - INTERVAL '7 days';
 
-    -- Delete from hpov_s2im_devices_audit and get the deleted count
-    DELETE FROM hpov_s2im_devices_audit WHERE update_timestamp < NOW() - INTERVAL '7 days';
-    GET DIAGNOSTICS devices_audit_deleted_count = ROW_COUNT;
+    -- Delete records older than 7 days from hpov_s2im_devices_audit
+    DELETE FROM hpov_s2im_devices_audit 
+    WHERE update_timestamp < NOW() - INTERVAL '7 days';
 
-    -- Return the counts as a JSON object
-    RETURN json_build_object(
-        'status', 'Transactions Deleted Successfully',
-        'transactions_deleted_count', transactions_deleted_count,
-        'devices_audit_deleted_count', devices_audit_deleted_count
-    );
-EXCEPTION
-    WHEN OTHERS THEN
-        -- Handle exceptions and return error details
-        GET STACKED DIAGNOSTICS err_context = PG_EXCEPTION_CONTEXT;
-        RETURN json_build_object(
-            'status', 'Transactions Failed to Delete',
-            'error', SQLERRM,
-            'context', err_context
-        );
+    RAISE NOTICE 'Old records deleted successfully';
 END;
-$function$;
+$$;
+
+This stored procedure ensures that records older than one week are deleted.
+
+
+---
+
+Step 2: Configure Database Properties (YAML)
+
+Modify your application.yml to include:
+
+dbconfig:
+  dbUpdateUrl: "http://your-database-api/update"
+  dbCallUrl: "http://your-database-api/call"
+  transactionDeleteStpName: "sp_delete_old_records"
+
+
+---
+
+Step 3: Implement the Scheduled Job
+
+Modify or create a service to invoke the stored procedure at midnight UTC.
+
+Scheduler Implementation
+
+package com.verizon.ucs.scheduler;
+
+import com.verizon.ucs.util.RestTemplateCustomizer;
+import com.verizon.ucs.properties.DbProperties;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
+
+@Component
+public class DatabaseCleanupScheduler {
+
+    private static final Logger logger = LoggerFactory.getLogger(DatabaseCleanupScheduler.class);
+
+    private final RestTemplateCustomizer restTemplateCustomizer;
+    private final DbProperties dbProperties;
+
+    public DatabaseCleanupScheduler(RestTemplateCustomizer restTemplateCustomizer, DbProperties dbProperties) {
+        this.restTemplateCustomizer = restTemplateCustomizer;
+        this.dbProperties = dbProperties;
+    }
+
+    @Scheduled(cron = "0 0 0 * * ?")  // Runs at midnight UTC every day
+    public void executeDeleteStoredProc() {
+        try {
+            logger.info("Starting scheduled task: Deleting old records...");
+            String stpName = dbProperties.getTransactionDeleteStpName();
+            restTemplateCustomizer.getServerListFromDatabase(stpName, "");  
+            logger.info("Stored procedure '{}' executed successfully", stpName);
+        } catch (Exception e) {
+            logger.error("Error executing stored procedure for cleanup: ", e);
+        }
+    }
+}
+
+
+---
+
+Step 4: Enable Scheduling in Spring Boot
+
+Ensure your main application class has @EnableScheduling:
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableScheduling;
+
+@SpringBootApplication
+@EnableScheduling
+public class UcsApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(UcsApplication.class, args);
+    }
+}
+
+
+---
+
+Summary
+
+✔ Stored Procedure: Deletes old records from both tables.
+✔ Scheduled Task: Runs every midnight UTC to invoke the stored procedure.
+✔ Spring Boot Integration: Uses RestTemplateCustomizer to call the stored procedure.
+
+Let me know if you need modifications!
