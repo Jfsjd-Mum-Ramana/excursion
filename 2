@@ -1,3 +1,14 @@
-transaction_id                               |server_id|is_updated_host|collected_time     |   --> column values for transactions
+INSERT INTO hpov_s2im_transactions (transaction_id, server_id, is_updated_host, collected_time) VALUES
+('TXN001', 'SRV001', TRUE, NOW() - INTERVAL '5 days'),
+('TXN002', 'SRV002', FALSE, NOW() - INTERVAL '8 days'),
+('TXN003', 'SRV003', TRUE, NOW() - INTERVAL '10 days'),
+('TXN004', 'SRV004', FALSE, NOW() - INTERVAL '2 days');
 
-operation|update_timestamp   |userid          |ip_address    |host_name                             |     ---> columns values for audit
+
+
+
+INSERT INTO hpov_s2im_devices_audit (operation, update_timestamp, userid, ip_address, host_name) VALUES
+('CREATE', NOW() - INTERVAL '6 days', 'user1', '192.168.1.10', 'hostA'),
+('DELETE', NOW() - INTERVAL '9 days', 'user2', '192.168.1.11', 'hostB'),
+('UPDATE', NOW() - INTERVAL '12 days', 'user3', '192.168.1.12', 'hostC'),
+('CREATE', NOW() - INTERVAL '3 days', 'user4', '192.168.1.13', 'hostD');
