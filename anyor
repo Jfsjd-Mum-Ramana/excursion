@@ -1,129 +1,15 @@
-Here's how you can implement the scheduler to execute the stored procedure once a week at midnight UTC.
-
-1. Update application.yml (or .properties)
-
-Ensure the scheduler cron expression is set to trigger at midnight UTC every Sunday:
-
-scheduler:
-  ttl:
-    cron: "0 0 0 ? * SUN"  # Runs every Sunday at midnight UTC
-
-2. Modify TtlScheduler.java
-
-Update the scheduler to execute the stored procedure once a week:
-
-package com.verizon.ucs.service;
-
-import org.springframework.stereotype.Component;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.scheduling.annotation.Scheduled;
-
-import com.verizon.ucs.model.DataWrapperDTO;
-import com.verizon.ucs.properties.DbProperties;
-import com.verizon.ucs.util.RestTemplateCustomizer;
-
-@Component
-public class TtlScheduler {
-    private static final Logger logger = LoggerFactory.getLogger(TtlScheduler.class);
-
-    @Autowired
-    private RestTemplateCustomizer restTemplateCustomizer;
-
-    @Autowired
-    private DbProperties databaseConfig;
-
-    // Scheduled to run every Sunday at midnight UTC
-    @Scheduled(cron = "${scheduler.ttl.cron}")
-    public void scheduleCallStp() {
-        logger.info("Starting scheduleCallStp method to trigger stored procedure.");
-        try {
-            DataWrapperDTO dto = new DataWrapperDTO();
-            dto.setParameterList(new String[] { "dummy" });
-            dto.setStpName(databaseConfig.getTransactionDeleteStpName()); // Calls delete_hpov_s2im_transactions
-
-            restTemplateCustomizer.callApi(dto);
-            logger.info("Stored procedure executed successfully.");
-        } catch (Exception e) {
-            logger.error("Error executing stored procedure in scheduleCallStp method", e);
-        }
-    }
-}
+Create a scheduler.
+Develop a single stored procedure (STP) to delete records from the hpov_s2im_devices_audit and hpov_s2im_transactions tables.
+Configure the STP to run once a week at midnight (UTC) to delete the records.
 
 
----
+These are the column values of the table
 
-3. Create the Stored Procedure
-
-The stored procedure will delete records from hpov_s2im_devices_audit and hpov_s2im_transactions.
-
-CREATE OR REPLACE PROCEDURE delete_hpov_s2im_transactions()
-LANGUAGE plpgsql
-AS $$
-BEGIN
-    -- Delete from transactions table
-    DELETE FROM hpov_s2im_transactions WHERE collected_time < NOW() - INTERVAL '30 days';
-
-    -- Delete from devices audit table
-    DELETE FROM hpov_s2im_devices_audit WHERE collected_time < NOW() - INTERVAL '30 days';
-
-    -- Log success (optional)
-    RAISE NOTICE 'Old records deleted successfully';
-EXCEPTION
-    WHEN OTHERS THEN
-        RAISE WARNING 'Error occurred while deleting old records: %', SQLERRM;
-END;
-$$;
+transaction_id |server_id|is_updated_host|collected_time     |
+(hpov_s2im_transactions)
 
 
----
+operation|update_timestamp   |userid  |ip_address    |host_name  |
+(hpov_s2im_devices_audit)
 
-4. Testing the Implementation
-
-a) Manual Execution
-
-Run the stored procedure manually to ensure it works:
-
-CALL delete_hpov_s2im_transactions();
-
-b) Verify Deletions
-
-Check if old records are removed:
-
-SELECT COUNT(*) FROM hpov_s2im_transactions WHERE collected_time < NOW() - INTERVAL '30 days';
-SELECT COUNT(*) FROM hpov_s2im_devices_audit WHERE collected_time < NOW() - INTERVAL '30 days';
-
-c) Check Scheduler Logs
-
-Run the scheduler manually for testing:
-
-new TtlScheduler().scheduleCallStp();
-
-Check the application logs to confirm execution.
-
-
----
-
-5. Documentation
-
-Implementation Details:
-
-Scheduler triggers the stored procedure every Sunday at midnight UTC.
-
-The stored procedure deletes records older than 30 days.
-
-Error handling is included to log warnings if execution fails.
-
-
-Testing Details:
-
-Manually executed and verified deletions.
-
-Checked logs for confirmation.
-
-Validated scheduler triggers the stored procedure as expected.
-
-
-This ensures the process is optimized, automated, and well-documented.
 
