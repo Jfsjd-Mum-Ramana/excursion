@@ -1,169 +1,38 @@
-The error "Field pulsarClient required a bean of type 'org.apache.pulsar.client.api.PulsarClient' that could not be found" indicates that Spring Boot is unable to find the PulsarClient bean. This usually happens if the PulsarConfig.java class is missing or not properly loaded by Spring.
-
-
----
-
-1️⃣ Fix: Ensure Pulsar Client Bean is Defined
-
-You need to define PulsarClient as a Spring bean in a configuration class.
-
-Create PulsarConfig.java
-
-This class ensures that the Pulsar client is created and available for dependency injection.
-
-package com.verizon.ucs.config;
-
-import org.apache.pulsar.client.api.PulsarClient;
-import org.apache.pulsar.client.impl.auth.AuthenticationTls;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-
-@Configuration
-public class PulsarConfig {
-
-    @Value("${vmb.serviceUrl}")
-    private String serviceUrl;
-
-    @Value("${vmb.tlsTrustCertsFile}")
-    private String tlsTrustCertsFile;
-
-    @Value("${vmb.tlsCertFile}")
-    private String tlsCertFile;
-
-    @Value("${vmb.tlsKeyFile}")
-    private String tlsKeyFile;
-
-    @Bean
-    public PulsarClient pulsarClient() throws Exception {
-        return PulsarClient.builder()
-                .serviceUrl(serviceUrl)
-                .tlsTrustCertsFilePath(tlsTrustCertsFile)
-                .authentication(new AuthenticationTls(tlsCertFile, tlsKeyFile))
-                .build();
-    }
-}
-
-Explanation
-
-@Configuration: Marks this class as a configuration provider.
-
-@Bean: Defines the pulsarClient() method as a Spring-managed bean.
-
-Spring will now inject the PulsarClient bean into other services.
-
-
-
----
-
-2️⃣ Fix: Inject PulsarClient in PulsarConsumerService
-
-Now, modify PulsarConsumerService.java to correctly inject the PulsarClient bean.
-
-Updated PulsarConsumerService.java
-
-package com.verizon.ucs.service.pulsar;
-
-import org.apache.pulsar.client.api.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-
-@Service
-public class PulsarConsumerService {
-
-    private static final Logger logger = LoggerFactory.getLogger(PulsarConsumerService.class);
-
-    private final PulsarClient pulsarClient;
-
-    @Autowired
-    public PulsarConsumerService(PulsarClient pulsarClient) {
-        this.pulsarClient = pulsarClient;
-    }
-
-    public void consumeMessages(String topicName) {
-        try {
-            Consumer<byte[]> consumer = pulsarClient.newConsumer()
-                    .topic(topicName)
-                    .subscriptionName("lov-subscription")
-                    .subscribe();
-
-            logger.info("Listening for messages on topic: {}", topicName);
-
-            while (true) {
-                Message<byte[]> msg = consumer.receive();
-                String message = new String(msg.getData());
-
-                logger.info("Received message: {}", message);
-
-                consumer.acknowledge(msg);
-            }
-        } catch (PulsarClientException | InterruptedException e) {
-            logger.error("Failed to consume messages", e);
-        }
-    }
-}
-
-Fixes & Improvements
-
-Inject PulsarClient using Constructor Injection instead of @Autowired on the field.
-
-Ensures that Spring Boot properly injects the PulsarClient bean.
-
-
-
----
-
-3️⃣ Fix: Ensure Spring Boot Scans the Configuration
-
-Ensure Spring Boot scans the PulsarConfig class by adding @ComponentScan in your main application class.
-
-Updated Application.java
-
-package com.verizon.ucs;
-
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.context.annotation.ComponentScan;
-
-@SpringBootApplication
-@ComponentScan(basePackages = "com.verizon.ucs")
-public class Application {
-
-    public static void main(String[] args) {
-        SpringApplication.run(Application.class, args);
-    }
-}
-
-Why This Fix Works
-
-@ComponentScan(basePackages = "com.verizon.ucs") ensures that Spring loads all beans, including PulsarConfig.
-
-
-
----
-
-4️⃣ Verify & Test
-
-Restart the application
-
-mvn spring-boot:run
-
-Check logs
-
-If successful, you should see logs like:
-
-INFO  Listening for messages on topic: persistent://enmv/psc-alarm/nexus-meter-lov
-
-
-
----
-
-✅ Final Checklist to Fix "PulsarClient Bean Not Found"
-
-✅ Step 1: Create PulsarConfig.java and define @Bean public PulsarClient pulsarClient()
-✅ Step 2: Use constructor injection in PulsarConsumerService instead of field @Autowired
-✅ Step 3: Ensure @ComponentScan(basePackages = "com.verizon.ucs") is set in Application.java
-✅ Step 4: Restart the application and
-
+CREATE OR REPLACE FUNCTION eclipse.delete_hpov_s2im_transactions()
+RETURNS json
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    transactions_deleted_count INT;
+    devices_audit_deleted_count INT;
+    err_context TEXT;
+BEGIN
+    -- Delete old records from hpov_s2im_transactions
+    DELETE FROM hpov_s2im_transactions WHERE collected_time < NOW() - INTERVAL '7 days';
+    GET DIAGNOSTICS transactions_deleted_count = ROW_COUNT;
+
+    -- Delete old records from hpov_s2im_devices_audit
+    DELETE FROM hpov_s2im_devices_audit WHERE update_timestamp < NOW() - INTERVAL '7 days';
+    GET DIAGNOSTICS devices_audit_deleted_count = ROW_COUNT;
+
+    -- Return deletion summary
+    RETURN json_build_object(
+        'status', 'Transactions Deleted Successfully',
+        'transactions_deleted_count', transactions_deleted_count,
+        'devices_audit_deleted_count', devices_audit_deleted_count
+    );
+EXCEPTION
+    WHEN OTHERS THEN
+        -- Capture exception details
+        GET STACKED DIAGNOSTICS err_context = PG_EXCEPTION_CONTEXT;
+        RETURN json_build_object(
+            'status', 'Transactions Failed to Delete',
+            'error', SQLERRM,
+            'context', err_context
+        );
+END;
+$$;
+
+
+
+This is the function I have done according to this cnage the code will work properly
