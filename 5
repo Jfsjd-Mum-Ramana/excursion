@@ -1,16 +1,14 @@
-package com.verizon.ucs.service;
+package com.example.scheduler;
 
-import org.springframework.stereotype.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.stereotype.Component;
 
-import com.verizon.ucs.model.DataWrapperDTO;
-import com.verizon.ucs.properties.DbProperties;
-import com.verizon.ucs.util.RestTemplateCustomizer;
+import com.example.config.DbProperties;
+import com.example.dto.DataWrapperDTO;
+import com.example.service.RestTemplateCustomizer;
 
 @Component
 public class TtlScheduler {
@@ -22,46 +20,92 @@ public class TtlScheduler {
     @Autowired
     private DbProperties databaseConfig;
 
-    @Scheduled(cron = "${scheduler.ttl.cron}") // Run based on cron expression from YAML
+    @Scheduled(cron = "${scheduler.ttl.cron}") // Uses YAML config for cron timing
     public void scheduleCallFunction() {
         String functionName = databaseConfig.getTransactionDeleteFunctionName();
-        logger.info("Starting transaction deletion using function: {}", functionName);
+        logger.info("▶️ Starting transaction deletion using function: {}", functionName);
 
         try {
             DataWrapperDTO dto = new DataWrapperDTO();
-            dto.setParameterList(new String[]{"value"}); // Function requires an argument
             dto.setFunctionName(functionName);
+            dto.setParameterList(new String[]{"value"}); // Ensure the correct parameter is passed
 
-            logger.info("Sending request with DTO: {}", dto);
+            logger.info("▶️ Sending request with DTO: {}", dto);
 
-            // Call API and get response as String
             String responseBody = restTemplateCustomizer.callApi(dto);
 
-            logger.info("Raw API Response Body: {}", responseBody);
+            if (responseBody == null) {
+                logger.error("❌ Null response received from API ❌");
+            } else {
+                logger.info("✅ Raw API Response Body: {}", responseBody);
+                parseAndLogResponse(responseBody);
+            }
 
-            // Log response details
-            parseAndLogResponse(responseBody);
-
-        } catch (HttpClientErrorException e) {
-            logger.error("HTTP Error: Status Code = {}, Response Body = {}", e.getStatusCode(), e.getResponseBodyAsString());
-        } catch (HttpServerErrorException e) {
-            logger.error("Server Error: Response Body = {}", e.getResponseBodyAsString());
         } catch (Exception e) {
-            logger.error("Unexpected error while deleting transactions.", e);
+            logger.error("❌ Unexpected error while deleting transactions ❌", e);
         }
     }
 
     private void parseAndLogResponse(String responseBody) {
         if (responseBody == null || responseBody.isEmpty()) {
-            logger.error("Empty response received from function call.");
+            logger.error("❌ Empty response received from function call ❌");
             return;
         }
 
         try {
-            // Log response directly
-            logger.info("Function execution result: {}", responseBody);
+            logger.info("✅ Function Execution Result: {}", responseBody);
         } catch (Exception e) {
-            logger.error("Error while parsing response: {}", responseBody, e);
+            logger.error("❌ Error while parsing response: {} ❌", responseBody, e);
+        }
+    }
+}
+
+
+
+
+
+package com.example.service;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.*;
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestTemplate;
+
+import com.example.config.DbProperties;
+import com.example.dto.DataWrapperDTO;
+
+@Component
+public class RestTemplateCustomizer {
+    private static final Logger logger = LoggerFactory.getLogger(RestTemplateCustomizer.class);
+
+    @Autowired
+    private RestTemplate restTemplate;
+
+    @Autowired
+    private DbProperties databaseConfig;
+
+    public String callApi(DataWrapperDTO dto) {
+        String url = databaseConfig.getDbCallUrl(); // API URL from YAML config
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        HttpEntity<DataWrapperDTO> request = new HttpEntity<>(dto, headers);
+
+        try {
+            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, request, String.class);
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                logger.info("✅ API Call Successful: {}", response.getBody());
+                return response.getBody();
+            } else {
+                logger.error("❌ Unexpected API Response: Status Code = {}, Body = {}", response.getStatusCode(), response.getBody());
+                return null;
+            }
+        } catch (Exception e) {
+            logger.error("❌ Error calling API: {}", e.getMessage(), e);
+            return null;
         }
     }
 }
