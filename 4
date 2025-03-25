@@ -1,81 +1,9 @@
-Here are the fully updated classes, ensuring proper function execution, logging, and response handling.
+Here’s the updated TtlScheduler class that ensures the response is logged properly and retrieved as a String from the RestTemplateCustomizer class.
 
 
 ---
 
-1. DataWrapperDTO (Updated)
-
-This DTO correctly represents the function call request.
-
-package com.verizon.ucs.model;
-
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import lombok.Data;
-
-import java.util.Arrays;
-
-@Data
-@JsonIgnoreProperties(ignoreUnknown = true)
-public class DataWrapperDTO {
-    private String functionName;  // Updated from stpName
-    private String[] parameterList;
-
-    public String getFunctionName() {
-        return functionName;
-    }
-
-    public void setFunctionName(String functionName) {
-        this.functionName = functionName;
-    }
-
-    @Override
-    public String toString() {
-        return "DataWrapperDTO{" +
-                "functionName='" + functionName + '\'' +
-                ", parameterList=" + Arrays.toString(parameterList) +
-                '}';
-    }
-}
-
-
----
-
-2. DbProperties (Updated)
-
-Ensure correct function name reference in the YAML.
-
-package com.verizon.ucs.properties;
-
-import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.context.annotation.Configuration;
-import lombok.Data;
-
-@Configuration
-@Data
-@ConfigurationProperties(prefix = "dbconfig")
-public class DbProperties {
-    private String dbUpdateUrl;
-    private String dbCallUrl;
-    private String serverStpName;
-    private String transactionStpName;
-    private String deviceStpName;
-    private String transactionDeleteFunctionName;  // Renamed from transactionDeleteStpName
-
-    public String getTransactionDeleteFunctionName() {
-        return transactionDeleteFunctionName;
-    }
-
-    public void setTransactionDeleteFunctionName(String transactionDeleteFunctionName) {
-        this.transactionDeleteFunctionName = transactionDeleteFunctionName;
-    }
-}
-
-
----
-
-3. TtlScheduler (Updated)
-
-This class properly calls the function and handles the response.
+Updated TtlScheduler Class
 
 package com.verizon.ucs.service;
 
@@ -87,7 +15,6 @@ import com.verizon.ucs.util.RestTemplateCustomizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -103,22 +30,22 @@ public class TtlScheduler {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @Scheduled(cron = "${scheduler.ttl.cron}")  // Ensuring cron is configured in YAML
+    @Scheduled(cron = "${scheduler.ttl.cron}")
     public void scheduleCallFunction() {
         String functionName = databaseConfig.getTransactionDeleteFunctionName();
         logger.info("Starting transaction deletion using function: {}", functionName);
 
         try {
             DataWrapperDTO dto = new DataWrapperDTO();
-            dto.setParameterList(new String[]{"dummy"}); // Ensure valid parameters
+            dto.setParameterList(new String[]{"dummy"});
             dto.setFunctionName(functionName);
 
             logger.info("Sending request with DTO: {}", dto);
 
-            ResponseEntity<String> response = restTemplateCustomizer.callApi(dto);
-            String responseBody = response.getBody();
+            // Call API and get response as String
+            String responseBody = restTemplateCustomizer.callApi(dto);
 
-            logger.info("API Response: {}", responseBody);
+            logger.info("Raw API Response Body: {}", responseBody);
 
             Integer deletedTransactions = parseDeletedTransactions(responseBody);
 
@@ -137,18 +64,21 @@ public class TtlScheduler {
         try {
             logger.info("Parsing API Response: {}", responseBody);
 
-            // Case 1: Response is a direct number (e.g., "5")
-            return Integer.valueOf(responseBody);
+            return Integer.valueOf(responseBody.trim());
         } catch (NumberFormatException e1) {
             try {
-                // Case 2: Function returns JSON (e.g., { "delete_hpov_s2im_transactions": 5 })
                 JsonNode jsonNode = objectMapper.readTree(responseBody);
-                if (jsonNode.has("delete_hpov_s2im_transactions")) {
-                    return jsonNode.get("delete_hpov_s2im_transactions").asInt();
-                } else {
-                    logger.warn("Response JSON does not contain expected function output.");
-                    return null;
+
+                logger.info("Parsed JSON Response: {}", jsonNode.toPrettyString());
+
+                for (JsonNode value : jsonNode) {
+                    if (value.isInt()) {
+                        return value.asInt();
+                    }
                 }
+
+                logger.warn("No integer value found in JSON response.");
+                return null;
             } catch (Exception e2) {
                 logger.error("Failed to parse deleted transaction count from response: {}", responseBody, e2);
                 return null;
@@ -160,39 +90,31 @@ public class TtlScheduler {
 
 ---
 
-4. YAML Configuration
+Key Fixes
 
-Ensure correct function reference in application.yaml:
-
-dbconfig:
-  transactionDeleteFunctionName: eclipse.delete_hpov_s2im_transactions
+1. Retrieves API Response as String instead of ResponseEntity<String>.
 
 
----
-
-Final Checks
-
-1. Verify Function Execution in SQL
-
-SELECT eclipse.delete_hpov_s2im_transactions('dummy');
-
-Ensure it returns an integer (e.g., 5).
-
-If NULL or 0, check function logic.
+2. Logs the raw response from RestTemplateCustomizer.
 
 
-
-2. Check Logs
-
-Should show "Transactions deleted successfully" with a number.
-
-If "No transactions were deleted", verify function execution.
-
+3. Handles both plain text and JSON responses dynamically.
 
 
 
 
 ---
 
-Now it should work properly. Let me know if you face any issues!
+Next Steps
+
+Run the scheduler and check logs for:
+
+Raw API Response Body: <actual response>
+
+Ensure the response contains a numeric value.
+
+If response is JSON, modify the function to return only an integer.
+
+
+Let me know if you need further adjustments!
 
