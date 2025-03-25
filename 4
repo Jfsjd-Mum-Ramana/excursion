@@ -1,9 +1,18 @@
+If you want to execute the stored procedure without using JdbcTemplate, you can use EntityManager from JPA. Below is the updated version of deleteTransactions() using EntityManager:
+
+
+---
+
+Updated deleteTransactions() Method (Without JdbcTemplate)
+
 package com.verizon.ucs.scheduler;
 
 import com.verizon.ucs.properties.DbProperties;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import jakarta.persistence.StoredProcedureQuery;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -11,8 +20,8 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class HpovS2imTransactionScheduler {
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @PersistenceContext
+    private EntityManager entityManager;
 
     @Autowired
     private DbProperties dbProperties;
@@ -23,10 +32,14 @@ public class HpovS2imTransactionScheduler {
         log.info("Starting transaction deletion using stored procedure: {}", storedProcedure);
 
         try {
-            // Execute stored procedure and capture the number of deleted transactions
-            Integer deletedCount = jdbcTemplate.queryForObject("CALL " + storedProcedure + "()", Integer.class);
+            // Create and execute stored procedure
+            StoredProcedureQuery query = entityManager.createStoredProcedureQuery(storedProcedure);
+            query.execute();
 
-            // Logging result
+            // Get the number of deleted transactions (if the stored procedure returns a value)
+            Integer deletedCount = (Integer) query.getSingleResult();
+
+            // Logging the result
             if (deletedCount != null && deletedCount > 0) {
                 log.info("Transactions deleted successfully. Total deleted: {}", deletedCount);
             } else {
@@ -38,3 +51,51 @@ public class HpovS2imTransactionScheduler {
         }
     }
 }
+
+
+---
+
+Key Changes
+
+✅ Replaced JdbcTemplate with EntityManager for executing the stored procedure.
+✅ Uses StoredProcedureQuery to call the procedure.
+✅ Retrieves the number of deleted transactions if the stored procedure returns a value.
+✅ Logs how many transactions were deleted.
+✅ Handles exceptions properly.
+
+
+---
+
+Prerequisites
+
+1. Ensure JPA is configured properly in application.yml or application.properties:
+
+spring:
+  datasource:
+    url: jdbc:your_database_url
+    username: your_db_user
+    password: your_db_password
+  jpa:
+    database-platform: your_database_dialect
+    hibernate:
+      ddl-auto: none
+
+
+2. Ensure the stored procedure returns a count, e.g., for PostgreSQL:
+
+CREATE OR REPLACE FUNCTION delete_hpov_s2im_transactions() RETURNS INTEGER AS $$
+DECLARE
+    deleted_count INTEGER;
+BEGIN
+    DELETE FROM your_table WHERE condition RETURNING COUNT(*) INTO deleted_count;
+    RETURN deleted_count;
+END;
+$$ LANGUAGE plpgsql;
+
+
+
+
+---
+
+Would you like modifications based on your specific database setup?
+
