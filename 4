@@ -1,16 +1,18 @@
 package com.verizon.ucs.service;
 
-import org.springframework.stereotype.Component;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.HttpServerErrorException;
-
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.verizon.ucs.model.DataWrapperDTO;
 import com.verizon.ucs.properties.DbProperties;
 import com.verizon.ucs.util.RestTemplateCustomizer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
 
 @Component
 public class TtlScheduler {
@@ -22,28 +24,33 @@ public class TtlScheduler {
     @Autowired
     private DbProperties databaseConfig;
 
+    private final ObjectMapper objectMapper = new ObjectMapper(); // JSON parser
+
+    // @Scheduled(cron = "0 0 0 * * ?") // Runs every day at midnight
     @Scheduled(cron = "${scheduler.ttl.cron}")
     public void scheduleCallStp() {
-        String storedProcedureName = databaseConfig.getDeviceStpName(); // eclipse.delete_hpov_s2im_transactions
+        String storedProcedureName = databaseConfig.getTransactionDeleteStpName(); // delete_hpov_s2im_transactions
         logger.info("Starting transaction deletion using stored procedure: {}", storedProcedureName);
 
         try {
+            // Create DTO for API request
             DataWrapperDTO dto = new DataWrapperDTO();
-            dto.setParameterList(new String[]{"dummy"}); // If required
+            dto.setParameterList(new String[]{"dummy"}); // If needed
             dto.setStpName(storedProcedureName);
 
-            logger.info("Sending request to delete transactions...");
-            String response = restTemplateCustomizer.callApi(dto);
+            // Call API
+            ResponseEntity<String> response = restTemplateCustomizer.callApi(dto);
+            String responseBody = response.getBody();
 
-            if (response != null && response.matches("\\d+")) { // If response is a number
-                int deletedTransactions = Integer.parseInt(response);
-                if (deletedTransactions > 0) {
-                    logger.info("Transactions deleted successfully. Total deleted: {}", deletedTransactions);
-                } else {
-                    logger.info("No transactions were deleted.");
-                }
+            logger.info("API Response: {}", responseBody); // Log full response
+
+            // Handle different response formats
+            Integer deletedTransactions = parseDeletedTransactions(responseBody);
+
+            if (deletedTransactions != null && deletedTransactions > 0) {
+                logger.info("Transactions deleted successfully. Total deleted: {}", deletedTransactions);
             } else {
-                logger.warn("Unexpected response received: {}", response);
+                logger.info("No transactions were deleted.");
             }
 
         } catch (HttpClientErrorException | HttpServerErrorException e) {
@@ -51,6 +58,26 @@ public class TtlScheduler {
                     e.getStatusCode(), e.getResponseBodyAsString(), e);
         } catch (Exception e) {
             logger.error("Unexpected error while deleting transactions.", e);
+        }
+    }
+
+    /**
+     * Parses the API response to extract the number of deleted transactions.
+     * Supports both numeric and JSON responses.
+     */
+    private Integer parseDeletedTransactions(String responseBody) {
+        try {
+            // Case 1: Direct numeric response (e.g., "5")
+            return Integer.valueOf(responseBody);
+        } catch (NumberFormatException e1) {
+            try {
+                // Case 2: JSON response (e.g., { "deletedCount": 5 })
+                JsonNode jsonNode = objectMapper.readTree(responseBody);
+                return jsonNode.has("deletedCount") ? jsonNode.get("deletedCount").asInt() : null;
+            } catch (Exception e2) {
+                logger.error("Failed to parse deleted transaction count from response: {}", responseBody, e2);
+                return null;
+            }
         }
     }
 }
