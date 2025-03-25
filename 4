@@ -1,82 +1,12 @@
-package com.verizon.ucs.model;
-
-/***
- * DTO to send large data, its used to load the data to db.
- */
-import java.util.Arrays;
-import java.util.List;
-
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.verizon.ucs.properties.DbProperties;
-
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.HttpServerErrorException;
-import org.springframework.web.client.RestTemplate;
-
-
-
-import lombok.Data;
-
-@Data
-@JsonIgnoreProperties(ignoreUnknown = true)
-public class DataWrapperDTO {
-
-	private String stpName;	
-	private String[] parameterList;	
-	private String data;	
-	
-	public String getStpName() {
-		return stpName;
-	}
-	public void setStpName(String stpName) {
-		this.stpName = stpName;
-	}
-	
-	public String[] getParameterList() {
-		return parameterList;
-	}
-	public void setParameterList(String[] parameterList) {
-		this.parameterList = parameterList;
-	}
-	public String getData() {
-		return data;
-	}
-	public void setData(String data) {
-		this.data = data;
-	}
-
-	@Override
-	public String toString() {
-		return "DataWrapperDTO{" +
-				"parameterList=" + Arrays.toString(parameterList) +
-				", stpName='" + stpName + '\'' +
-				'}';
-	}
-	
-	
-}
-
-
 package com.verizon.ucs.service;
 
 import org.springframework.stereotype.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
-import org.springframework.web.client.RestTemplate;
 
 import com.verizon.ucs.model.DataWrapperDTO;
 import com.verizon.ucs.properties.DbProperties;
@@ -92,87 +22,28 @@ public class TtlScheduler {
     @Autowired
     private DbProperties databaseConfig;
 
-    // @Scheduled(cron = "0 0 0 * * ?") // Runs every day at midnight
     @Scheduled(cron = "${scheduler.ttl.cron}")
     public void scheduleCallStp() {
-        String storedProcedureName = databaseConfig.getTransactionDeleteStpName(); // delete_hpov_s2im_transactions
+        String storedProcedureName = databaseConfig.getDeviceStpName(); // eclipse.delete_hpov_s2im_transactions
         logger.info("Starting transaction deletion using stored procedure: {}", storedProcedureName);
 
         try {
             DataWrapperDTO dto = new DataWrapperDTO();
-            dto.setParameterList(new String[] { "dummy" }); // If needed
+            dto.setParameterList(new String[]{"dummy"}); // If required
             dto.setStpName(storedProcedureName);
 
-            Integer deletedTransactions = Integer.valueOf(restTemplateCustomizer.callApi(dto));
+            logger.info("Sending request to delete transactions...");
+            String response = restTemplateCustomizer.callApi(dto);
 
-            if (deletedTransactions != null && deletedTransactions > 0) {package com.verizon.ucs.properties;
-
-import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.context.annotation.Configuration;
-
-import lombok.Data;
-
-@Configuration
-@Data
-@ConfigurationProperties(prefix = "dbconfig")
-public class DbProperties {
-	private String dbUpdateUrl;
-	private String dbCallUrl;
-	private String serverStpName;
-	private String transactionStpName;
-	private String deviceStpName;
-	private String transactionDeleteStpName;
-
-	public String getDbUpdateUrl() {
-		return dbUpdateUrl;
-	}
-
-	public void setDbUpdateUrl(String dbUpdateUrl) {
-		this.dbUpdateUrl = dbUpdateUrl;
-	}
-
-	public String getDbCallUrl() {
-		return dbCallUrl;
-	}
-
-	public void setDbCallUrl(String dbCallUrl) {
-		this.dbCallUrl = dbCallUrl;
-	}
-
-	public String getServerStpName() {
-		return serverStpName;
-	}
-
-	public void setServerStpName(String serverStpName) {
-		this.serverStpName = serverStpName;
-	}
-
-	public String getTransactionStpName() {
-		return transactionStpName;
-	}
-
-	public void setTransactionStpName(String transactionStpName) {
-		this.transactionStpName = transactionStpName;
-	}
-
-	public String getDeviceStpName() {
-		return deviceStpName;
-	}
-
-	public void setDeviceStpName(String deviceStpName) {
-		this.deviceStpName = deviceStpName;
-
-	}
-	public String getTransactionDeleteStpName() {
-		return transactionDeleteStpName;
-	}
-	public void setTransactionDeleteStpName(String transactionDeleteStpName) {
-		this.transactionDeleteStpName = transactionDeleteStpName;
-	}
-}
-                logger.info("Transactions deleted successfully. Total deleted: {}", deletedTransactions);
+            if (response != null && response.matches("\\d+")) { // If response is a number
+                int deletedTransactions = Integer.parseInt(response);
+                if (deletedTransactions > 0) {
+                    logger.info("Transactions deleted successfully. Total deleted: {}", deletedTransactions);
+                } else {
+                    logger.info("No transactions were deleted.");
+                }
             } else {
-                logger.info("No transactions were deleted.");
+                logger.warn("Unexpected response received: {}", response);
             }
 
         } catch (HttpClientErrorException | HttpServerErrorException e) {
@@ -183,5 +54,3 @@ public class DbProperties {
         }
     }
 }
-
-
