@@ -29,7 +29,9 @@ public class TtlScheduler {
         try {
             DataWrapperDTO dto = new DataWrapperDTO();
             dto.setFunctionName(functionName);
-            dto.setParameterList(new String[]{"value"}); // Ensure the correct parameter is passed
+            dto.setParameterList(new String[]{"value"});
+            dto.setStpName(databaseConfig.getTransactionDeleteFunctionName());
+            dto.setData("Some data");
 
             logger.info(" Sending request with DTO: {}");
 
@@ -432,10 +434,10 @@ public class RestTemplateCustomizer {
       		
 	
 }
-Calling API with DTO: ::::: {"stpName":null,"parameterList":["value"],"data":null,"functionName":"eclipse.delete_hpov_s2im_transactions"}
-{"log_publish":false,"app_name":"ms-hpov-s2im-inventory","log_time_stamp":"1742878801422","date_time":"2025-03-25T05:00:01.422Z","VSAD_ID":"ENMV","logger_class":"com.verizon.ucs.util.RestTemplateCustomizer","server_host":"worker-014","log_level":"INFO","log_message":"Transaction Response Body : {\"ERROR_REASON\":null}","log_level_value":20000,"logger_thread":"scheduling-1"}
-{"log_publish":false,"app_name":"ms-hpov-s2im-inventory","log_time_stamp":"1742878801422","date_time":"2025-03-25T05:00:01.422Z","VSAD_ID":"ENMV","logger_class":"com.verizon.ucs.service.TtlScheduler","server_host":"worker-014","log_level":"INFO","log_message":" Raw API Response Body: {\"ERROR_REASON\":null}","log_level_value":20000,"logger_thread":"scheduling-1"}
-{"log_publish":false,"app_name":"ms-hpov-s2im-inventory","log_time_stamp":"1742878801422","date_time":"2025-03-25T05:00:01.422Z","VSAD_ID":"ENMV","logger_class":"com.verizon.ucs.service.TtlScheduler","server_host":"worker-014","log_level":"INFO","log_message":"Function Execution Result: {\"ERROR_REASON\":null}","log_level_value":20000,"logger_thread":"scheduling-1"}
-{"log_publish":false,"app_name":"ms-hpov-s2im-inventory","log_time_stamp":"1742878920009","date_time":"2025-03-25T05:02:00.009Z","VSAD_ID":"ENMV","logger_class":"com.verizon.ucs.service.TtlScheduler","server_host":"worker-014","log_level":"INFO","log_message":" Starting transaction deletion using function: eclipse.delete_hpov_s2im_transactions","log_level_value":20000,"logger_thread":"scheduling-1"}
-{"log_publish":false,"app_name":"ms-hpov-s2im-inventory","log_time_stamp":"1742878920009","date_time":"2025-03-25T05:02:00.009Z","VSAD_ID":"ENMV","logger_class":"com.verizon.ucs.service.TtlScheduler","server_host":"worker-014","log_level":"INFO","log_message":" Sending request with DTO: {}","log_level_value":20000,"logger_thread":"scheduling-1"}
-Calling API with DTO: ::::: {"stpName":null,"parameterList":["value"],"data":null,"functionName":"eclipse.delete_hpov_s2im_transactions"}
+
+The logs are getting like this please resolve this:
+
+Calling API with DTO: ::::: {"stpName":"eclipse.delete_hpov_s2im_transactions","parameterList":["value"],"data":"Some data","functionName":"eclipse.delete_hpov_s2im_transactions"}
+{"log_publish":false,"app_name":"ms-hpov-s2im-inventory","log_time_stamp":"1742879281837","date_time":"2025-03-25T05:08:01.837Z","VSAD_ID":"ENMV","logger_class":"com.verizon.ucs.util.RestTemplateCustomizer","server_host":"worker-014","log_level":"INFO","log_message":"Transaction Response Body : {\"status\" : \"Transactions Failed to Delete\", \"error\" : \"relation \\\"hpov_s2im_devices_audit\\\" does not exist\", \"context\" : \"PL\/pgSQL function delete_hpov_s2im_transactions(t","log_level_value":20000,"logger_thread":"scheduling-1"}
+{"log_publish":false,"app_name":"ms-hpov-s2im-inventory","log_time_stamp":"1742879281837","date_time":"2025-03-25T05:08:01.837Z","VSAD_ID":"ENMV","logger_class":"com.verizon.ucs.service.TtlScheduler","server_host":"worker-014","log_level":"INFO","log_message":" Raw API Response Body: {\"status\" : \"Transactions Failed to Delete\", \"error\" : \"relation \\\"hpov_s2im_devices_audit\\\" does not exist\", \"context\" : \"PL\/pgSQL function delete_hpov_s2im_transactions(text)","log_level_value":20000,"logger_thread":"scheduling-1"}
+{"log_publish":false,"app_name":"ms-hpov-s2im-inventory","log_time_stamp":"1742879281837","date_time":"2025-03-25T05:08:01.837Z","VSAD_ID":"ENMV","logger_class":"com.verizon.ucs.service.TtlScheduler","server_host":"worker-014","log_level":"INFO","log_message":"Function Execution Result: {\"status\" : \"Transactions Failed to Delete\", \"error\" : \"relation \\\"hpov_s2im_devices_audit\\\" does not exist\", \"context\" : \"PL\/pgSQL function delete_hpov_s2im_transactions(te","log_level_value":20000,"logger_thread":"scheduling-1"}
