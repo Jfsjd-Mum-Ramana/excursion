@@ -1,21 +1,88 @@
-CREATE OR REPLACE FUNCTION eclipse.delete_hpov_s2im_transactions()
+package com.verizon.ucs.service;
+
+import com.verizon.ucs.model.DataWrapperDTO;
+import com.verizon.ucs.properties.DbProperties;
+import com.verizon.ucs.util.RestTemplateCustomizer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
+
+
+
+@Component
+public class TtlScheduler {
+    private static final Logger logger = LoggerFactory.getLogger(TtlScheduler.class);
+
+    @Autowired
+    private RestTemplateCustomizer restTemplateCustomizer;
+
+    @Autowired
+    private DbProperties databaseConfig;
+
+    @Scheduled(cron = "${scheduler.ttl.cron}") // Uses YAML config for cron timing
+    public void scheduleCallFunction() {
+        String functionName = databaseConfig.getTransactionDeleteFunctionName();
+        logger.info(" Starting transaction deletion using function: {}", functionName);
+
+        try {
+            DataWrapperDTO dto = new DataWrapperDTO();
+            dto.setFunctionName(functionName);
+            dto.setParameterList(new String[]{"value"});
+            dto.setStpName(databaseConfig.getTransactionDeleteFunctionName());
+            dto.setData("Some data");
+
+            logger.info(" Sending request with DTO: {}");
+
+            String responseBody = restTemplateCustomizer.callApi(dto);
+
+            if (responseBody == null) {
+                logger.error(" Null response received from API ");
+            } else {
+                logger.info(" Raw API Response Body: {}", responseBody);
+                parseAndLogResponse(responseBody);
+            }
+
+        } catch (Exception e) {
+            logger.error(" Unexpected error while deleting transactions ", e);
+        }
+    }
+
+    private void parseAndLogResponse(String responseBody) {
+        if (responseBody == null || responseBody.isEmpty()) {
+            logger.error(" Empty response received from function call ");
+            return;
+        }
+
+        try {
+            logger.info("Function Execution Result: {}", responseBody);
+        } catch (Exception e) {
+            logger.error(" Error while parsing response: {} ", responseBody, e);
+        }
+    }
+}
+
+This is scheduker class 
+
+CREATE OR REPLACE FUNCTION eclipse.delete_hpov_s2im_transactions(dummy text)
 RETURNS json
 LANGUAGE plpgsql
-AS $$
+AS $function$
 DECLARE
-    transactions_deleted_count INT;
-    devices_audit_deleted_count INT;
-    err_context TEXT;
+    err_context text;
+    transactions_deleted_count int;
+    devices_audit_deleted_count int;
 BEGIN
-    -- Delete old records from hpov_s2im_transactions
+    -- Delete from hpov_s2im_transactions and get the deleted count
     DELETE FROM hpov_s2im_transactions WHERE collected_time < NOW() - INTERVAL '7 days';
     GET DIAGNOSTICS transactions_deleted_count = ROW_COUNT;
 
-    -- Delete old records from hpov_s2im_devices_audit
+    -- Delete from hpov_s2im_devices_audit and get the deleted count
     DELETE FROM hpov_s2im_devices_audit WHERE update_timestamp < NOW() - INTERVAL '7 days';
     GET DIAGNOSTICS devices_audit_deleted_count = ROW_COUNT;
 
-    -- Return deletion summary
+    -- Return the counts as a JSON object
     RETURN json_build_object(
         'status', 'Transactions Deleted Successfully',
         'transactions_deleted_count', transactions_deleted_count,
@@ -23,7 +90,7 @@ BEGIN
     );
 EXCEPTION
     WHEN OTHERS THEN
-        -- Capture exception details
+        -- Handle exceptions and return error details
         GET STACKED DIAGNOSTICS err_context = PG_EXCEPTION_CONTEXT;
         RETURN json_build_object(
             'status', 'Transactions Failed to Delete',
@@ -31,4 +98,6 @@ EXCEPTION
             'context', err_context
         );
 END;
-$$;
+$function$;
+
+This is created function now modify the code to work well
