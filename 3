@@ -1,41 +1,44 @@
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.scheduling.annotation.Scheduled;
+package com.verizon.ucs.service;
+
 import org.springframework.stereotype.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.verizon.ucs.model.DeviceInfo;
-import com.verizon.ucs.service.NexusService;
-import com.verizon.ucs.service.VmbEclipsePublisherService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.RestTemplate;
+
+import com.verizon.ucs.model.DataWrapperDTO;
+import com.verizon.ucs.properties.DbProperties;
+import com.verizon.ucs.util.RestTemplateCustomizer;
 
 @Component
-public class NexusScheduler {
-    private static final Logger logger = LoggerFactory.getLogger(NexusScheduler.class);
+public class TtlScheduler {
+    private static final Logger logger = LoggerFactory.getLogger(TtlScheduler.class);
 
-    @Value("${scheduler.threadPoolSize}")
-    private int threadPoolSize;
+    @Autowired
+    private RestTemplateCustomizer restTemplateCustomizer;
 
-    private final NexusService nexusService;
-    private final VmbEclipsePublisherService vmbEclipsePublisherService;
+    @Autowired
+    private DbProperties databaseConfig;
 
-    public NexusScheduler(NexusService nexusService, VmbEclipsePublisherService vmbEclipsePublisherService) {
-        this.nexusService = nexusService;
-        this.vmbEclipsePublisherService = vmbEclipsePublisherService;
-    }
-
-    @Scheduled(fixedRate = 5000)  // Running every 5 seconds for testing purposes
-    public void scheduleTask() {
-        logger.info("Starting Scheduler (Hardcoded Test)");
-
-        // Hardcode a test device info for Nexus 1450
-        DeviceInfo deviceInfo = new DeviceInfo();
-        deviceInfo.setDeviceIP("192.168.1.100"); // Simulate unreachable device IP
-        deviceInfo.setModel("Nexus 1450"); // Nexus 1450 model
-
-        // Simulate the device processing with a failure (unreachable device)
+    // @Scheduled(cron = "0 0 0 * * ?") // Every day at midnight
+    @Scheduled(cron = "${scheduler.ttl.cron}")
+    public void scheduleCallStp() {
         try {
-            nexusService.processDevice(deviceInfo);
+
+            DataWrapperDTO dto = new DataWrapperDTO();
+            dto.setParameterList(new String[] { "dummy" });
+            dto.setStpName(databaseConfig.getTransactionDeleteStpName());// delete_hpov_s2im_transactions
+            restTemplateCustomizer.callApi(dto);
         } catch (Exception e) {
-            logger.error("Exception while processing device: {}", deviceInfo, e);
+            logger.error("error while deleting the transactions", e);
         }
     }
+
 }
