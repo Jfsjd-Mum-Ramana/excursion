@@ -1,38 +1,77 @@
-CREATE OR REPLACE FUNCTION eclipse.delete_hpov_s2im_transactions()
-RETURNS json
-LANGUAGE plpgsql
-AS $$
-DECLARE
-    transactions_deleted_count INT;
-    devices_audit_deleted_count INT;
-    err_context TEXT;
-BEGIN
-    -- Delete old records from hpov_s2im_transactions
-    DELETE FROM hpov_s2im_transactions WHERE collected_time < NOW() - INTERVAL '7 days';
-    GET DIAGNOSTICS transactions_deleted_count = ROW_COUNT;
+package com.verizon.ucs.service;
 
-    -- Delete old records from hpov_s2im_devices_audit
-    DELETE FROM hpov_s2im_devices_audit WHERE update_timestamp < NOW() - INTERVAL '7 days';
-    GET DIAGNOSTICS devices_audit_deleted_count = ROW_COUNT;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.verizon.ucs.model.DataWrapperDTO;
+import com.verizon.ucs.properties.DbProperties;
+import com.verizon.ucs.util.RestTemplateCustomizer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
 
-    -- Return deletion summary
-    RETURN json_build_object(
-        'status', 'Transactions Deleted Successfully',
-        'transactions_deleted_count', transactions_deleted_count,
-        'devices_audit_deleted_count', devices_audit_deleted_count
-    );
-EXCEPTION
-    WHEN OTHERS THEN
-        -- Capture exception details
-        GET STACKED DIAGNOSTICS err_context = PG_EXCEPTION_CONTEXT;
-        RETURN json_build_object(
-            'status', 'Transactions Failed to Delete',
-            'error', SQLERRM,
-            'context', err_context
-        );
-END;
-$$;
+@Component
+public class TtlScheduler {
+    private static final Logger logger = LoggerFactory.getLogger(TtlScheduler.class);
 
+    @Autowired
+    private RestTemplateCustomizer restTemplateCustomizer;
 
+    @Autowired
+    private DbProperties databaseConfig;
 
-This is the function I have done according to this cnage the code will work properly
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Scheduled(cron = "${scheduler.ttl.cron}")
+    public void scheduleCallFunction() {
+        String functionName = databaseConfig.getTransactionDeleteFunctionName();
+        logger.info("Starting transaction deletion using function: {}", functionName);
+
+        try {
+            // Prepare the DTO
+            DataWrapperDTO dto = new DataWrapperDTO();
+            dto.setParameterList(new String[]{});  // No parameters needed
+            dto.setFunctionName(functionName);
+
+            logger.info("Sending request with DTO: {}", dto);
+
+            // Call API and get response as String
+            String responseBody = restTemplateCustomizer.callApi(dto);
+
+            logger.info("Raw API Response Body: {}", responseBody);
+
+            // Parse and log response
+            parseAndLogResponse(responseBody);
+
+        } catch (Exception e) {
+            logger.error("Unexpected error while deleting transactions.", e);
+        }
+    }
+
+    private void parseAndLogResponse(String responseBody) {
+        try {
+            JsonNode jsonNode = objectMapper.readTree(responseBody);
+
+            logger.info("Parsed JSON Response: {}", jsonNode.toPrettyString());
+
+            String status = jsonNode.has("status") ? jsonNode.get("status").asText() : "Unknown status";
+            int transactionsDeleted = jsonNode.has("transactions_deleted_count") 
+                                      ? jsonNode.get("transactions_deleted_count").asInt() 
+                                      : 0;
+            int devicesAuditDeleted = jsonNode.has("devices_audit_deleted_count") 
+                                      ? jsonNode.get("devices_audit_deleted_count").asInt() 
+                                      : 0;
+
+            if (transactionsDeleted > 0 || devicesAuditDeleted > 0) {
+                logger.info("Transaction Deletion Summary: Status: {}, Transactions Deleted: {}, Devices Audit Deleted: {}",
+                        status, transactionsDeleted, devicesAuditDeleted);
+            } else {
+                logger.warn("No transactions or devices audit records were deleted. Status: {}", status);
+            }
+
+        } catch (Exception e) {
+            logger.error("Failed to parse JSON response from function: {}", responseBody, e);
+        }
+    }
+}
