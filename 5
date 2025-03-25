@@ -1,14 +1,15 @@
-package com.example.scheduler;
+package com.verizon.ucs.service;
 
+import com.verizon.ucs.model.DataWrapperDTO;
+import com.verizon.ucs.properties.DbProperties;
+import com.verizon.ucs.util.RestTemplateCustomizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import com.example.config.DbProperties;
-import com.example.dto.DataWrapperDTO;
-import com.example.service.RestTemplateCustomizer;
+
 
 @Component
 public class TtlScheduler {
@@ -23,89 +24,418 @@ public class TtlScheduler {
     @Scheduled(cron = "${scheduler.ttl.cron}") // Uses YAML config for cron timing
     public void scheduleCallFunction() {
         String functionName = databaseConfig.getTransactionDeleteFunctionName();
-        logger.info("▶️ Starting transaction deletion using function: {}", functionName);
+        logger.info(" Starting transaction deletion using function: {}", functionName);
 
         try {
             DataWrapperDTO dto = new DataWrapperDTO();
             dto.setFunctionName(functionName);
             dto.setParameterList(new String[]{"value"}); // Ensure the correct parameter is passed
 
-            logger.info("▶️ Sending request with DTO: {}", dto);
+            logger.info(" Sending request with DTO: {}");
 
             String responseBody = restTemplateCustomizer.callApi(dto);
 
             if (responseBody == null) {
-                logger.error("❌ Null response received from API ❌");
+                logger.error(" Null response received from API ");
             } else {
-                logger.info("✅ Raw API Response Body: {}", responseBody);
+                logger.info(" Raw API Response Body: {}", responseBody);
                 parseAndLogResponse(responseBody);
             }
 
         } catch (Exception e) {
-            logger.error("❌ Unexpected error while deleting transactions ❌", e);
+            logger.error(" Unexpected error while deleting transactions ", e);
         }
     }
 
     private void parseAndLogResponse(String responseBody) {
         if (responseBody == null || responseBody.isEmpty()) {
-            logger.error("❌ Empty response received from function call ❌");
+            logger.error(" Empty response received from function call ");
             return;
         }
 
         try {
-            logger.info("✅ Function Execution Result: {}", responseBody);
+            logger.info("Function Execution Result: {}", responseBody);
         } catch (Exception e) {
-            logger.error("❌ Error while parsing response: {} ❌", responseBody, e);
+            logger.error(" Error while parsing response: {} ", responseBody, e);
         }
     }
 }
 
+package com.verizon.ucs.util;
 
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
-
-
-package com.example.service;
+//import org.json.simple.JSONArray;
+//import org.json.simple.JSONObject;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.*;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestTemplate;
 
-import com.example.config.DbProperties;
-import com.example.dto.DataWrapperDTO;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.verizon.ucs.model.ApiResponse;
+import com.verizon.ucs.model.DataWrapperDTO;
+import com.verizon.ucs.model.DeviceDTO;
+import com.verizon.ucs.model.ServerDTO;
+import com.verizon.ucs.model.TransactionDTO;
+import com.verizon.ucs.properties.DbProperties;
+
 
 @Component
 public class RestTemplateCustomizer {
-    private static final Logger logger = LoggerFactory.getLogger(RestTemplateCustomizer.class);
 
-    @Autowired
-    private RestTemplate restTemplate;
+	private static final Logger logger = LoggerFactory.getLogger(RestTemplateCustomizer.class);
 
-    @Autowired
-    private DbProperties databaseConfig;
+	@Autowired
+	private DbProperties databaseConfig;
 
-    public String callApi(DataWrapperDTO dto) {
-        String url = databaseConfig.getDbCallUrl(); // API URL from YAML config
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
+	@Autowired
+	private RestTemplate restTemplate;
 
-        HttpEntity<DataWrapperDTO> request = new HttpEntity<>(dto, headers);
+	public RestTemplateCustomizer(RestTemplate restTemplate) {
+		this.restTemplate = restTemplate;
+	}
 
+	public HttpEntity<String> getHttpEntity(String jsonInputRequest, String type) throws Exception {
+		HttpHeaders httpHeaders = new HttpHeaders();
+		
+		httpHeaders.setContentType(MediaType.APPLICATION_JSON);
+		HttpEntity<String> entity = new HttpEntity<String>(jsonInputRequest, httpHeaders);
+		return entity;
+	}
+
+	@SuppressWarnings("unchecked")
+	public <T> T sendRequest(Object json, TypeReference typeReference) throws Exception {
+		ObjectMapper mapper = new ObjectMapper();
+		return (T) mapper.convertValue(json, typeReference);
+	}
+
+	public ApiResponse getServerListFromDatabase(String stpName, String param) {
+		try {
+			ApiResponse apiResponse = new ApiResponse();
+			String url = databaseConfig.getDbCallUrl();
+			HttpHeaders headers = new HttpHeaders();
+			headers.setContentType(MediaType.APPLICATION_JSON);
+
+			logger.info("URL: {}", url);
+			logger.info("Request Params: stpName={}, param={}", stpName, param);
+
+			String requestJson = generateSTPGetRequest(stpName, param);
+			logger.info("Request JSON: {}", requestJson);
+
+			HttpEntity<String> entity = new HttpEntity<>(requestJson, headers);
+
+			ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
+
+			logger.info("Response Status Code: {}", response.getStatusCode());
+			logger.info("Response Body: {}", response.getBody());
+
+			return returnDbApiResponse(apiResponse, response);
+		} catch (Exception e) {
+			logger.error("Error while fetching server list from database", e);
+			return null;
+		}
+	}
+
+	private String generateSTPGetRequest(String stpName, String param) {
+		return String.format("[{\"stp\":\"%s\"},{\"param\":\"%s\"}]", stpName, param);
+	}
+
+	private ApiResponse returnDbApiResponse(ApiResponse apiResponse, ResponseEntity<String> response) {
+		ObjectMapper mapper = new ObjectMapper();
+		apiResponse.setResponseCode(response.getStatusCodeValue());
+		apiResponse.setResponseMessage(((HttpStatus) response.getStatusCode()).getReasonPhrase());
+		if (response.getStatusCode().is2xxSuccessful()) {
+			try {
+				String responseBody = response.getBody();
+				if (responseBody != null) {
+					if (responseBody.startsWith("{\"ERROR_REASON\"")) {
+						Map<String, String> errorResponse = mapper.readValue(responseBody,
+								new TypeReference<Map<String, String>>() {
+								});
+						logger.error("Error response: {}", errorResponse);
+						apiResponse.setResponseCode(500);
+						apiResponse.setResponseMessage(errorResponse.get("ERROR_REASON"));
+						apiResponse.setSystemMessage(
+								"An error occurred while processing your request. Please try again later.");
+					} else if (responseBody.startsWith("[[{\"status\"")) {
+						// No data found
+						List<List<Map<String, String>>> statusResponse = mapper.readValue(responseBody,
+								new TypeReference<List<List<Map<String, String>>>>() {
+								});
+						apiResponse.setResponseCode(404);
+						apiResponse.setResponseMessage(statusResponse.get(0).get(0).get("status"));
+					} else {
+						List<List<List<ServerDTO>>> validResponse = mapper.readValue(responseBody,
+								new TypeReference<List<List<List<ServerDTO>>>>() {
+								});
+						apiResponse.setData(validResponse.stream().flatMap(List::stream).flatMap(List::stream)
+								.collect(Collectors.toList()));
+					}
+				} else {
+					apiResponse.setResponseCode(500);
+					apiResponse.setResponseMessage("Response body is null");
+				}
+			} catch (Exception e) {
+				logger.error("Exception in returnDbApiResponse => ", e);
+				apiResponse.setResponseCode(500);
+				apiResponse.setResponseMessage("Error parsing response body: " + e.getMessage());
+			}
+		} else if (response.getStatusCode().is5xxServerError()) {
+			apiResponse.setSystemMessage("Database is Down.");
+		}
+		return apiResponse;
+	}
+	
+	private ApiResponse returnDbApiResponseForDevice(ApiResponse apiResponse, ResponseEntity<String> response) {
+		ObjectMapper mapper = new ObjectMapper();
+		apiResponse.setResponseCode(response.getStatusCodeValue());
+		apiResponse.setResponseMessage(((HttpStatus) response.getStatusCode()).getReasonPhrase());
+		if (response.getStatusCode().is2xxSuccessful()) {
+			try {
+				String responseBody = response.getBody();
+				if (responseBody != null) {
+					if (responseBody.startsWith("{\"ERROR_REASON\"")) {
+						Map<String, String> errorResponse = mapper.readValue(responseBody,
+								new TypeReference<Map<String, String>>() {
+								});
+						logger.error("Error response: {}", errorResponse);
+						apiResponse.setResponseCode(500);
+						apiResponse.setResponseMessage(errorResponse.get("ERROR_REASON"));
+						apiResponse.setSystemMessage(
+								"An error occurred while processing your request. Please try again later.");
+					} else if (responseBody.startsWith("[[{\"status\"")) {
+						// No data found
+						List<List<Map<String, String>>> statusResponse = mapper.readValue(responseBody,
+								new TypeReference<List<List<Map<String, String>>>>() {
+								});
+						apiResponse.setResponseCode(404);
+						apiResponse.setResponseMessage(statusResponse.get(0).get(0).get("status"));
+					} else {
+						List<List<List<DeviceDTO>>> validResponse = mapper.readValue(responseBody,
+								new TypeReference<List<List<List<DeviceDTO>>>>() {
+								});
+						apiResponse.setData(validResponse.stream().flatMap(List::stream).flatMap(List::stream)
+								.collect(Collectors.toList()));
+					}
+				} else {
+					apiResponse.setResponseCode(500);
+					apiResponse.setResponseMessage("Response body is null");
+				}
+			} catch (Exception e) {
+				logger.error("Exception in returnDbApiResponse => ", e);
+				apiResponse.setResponseCode(500);
+				apiResponse.setResponseMessage("Error parsing response body: " + e.getMessage());
+			}
+		} else if (response.getStatusCode().is5xxServerError()) {
+			apiResponse.setSystemMessage("Db is Down.");
+		}
+		return apiResponse;
+	}
+
+
+	public ApiResponse storeTransactionsInDatabase(List<TransactionDTO> transactions, String operation) {
+		String url = databaseConfig.getDbUpdateUrl();
+		ApiResponse apiResponse = new ApiResponse();
+
+			try {
+				HttpHeaders headers = new HttpHeaders();
+				headers.setContentType(MediaType.APPLICATION_JSON);
+				logger.info("DB Transaction URL :::  ", url);
+				String requestJson = generateInsertTransactionsRequest(transactions,operation);
+				logger.info(" Requested Json "+ requestJson);
+	
+				HttpEntity<String> entity = new HttpEntity<>(requestJson, headers);
+	
+				ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
+	
+				logger.info("Response Status Code: {}", response.getStatusCode());
+				logger.info("Response Body: {}", response.getBody());
+				
+				return returnTransactionResponse(apiResponse, response);
+					
+				
+			} catch (Exception e) {
+				logger.error("Error while storing transactions in database {}", e);
+				 return null;
+			}
+		} 
+	
+	  public String generateInsertTransactionsRequest(List<TransactionDTO> transactions,String operation) {
+		  try {
+			  ObjectMapper mapper = new ObjectMapper();
+			  String transactionsJson = mapper.writeValueAsString(transactions);
+			  DataWrapperDTO dto = new DataWrapperDTO();
+			  dto.setData(transactionsJson);
+			  dto.setParameterList(new String[]{operation});
+			  dto.setStpName(databaseConfig.getTransactionStpName());
+			  return mapper.writeValueAsString(dto);
+		  } catch (Exception e) {
+			  logger.error("Error generating JSON request {} ", e.getMessage());
+			  return "Transaction Request isn't built Successfully";
+		  }
+	  }
+
+	private ApiResponse returnTransactionResponse(ApiResponse apiResponse, ResponseEntity<String> response) {
+		ObjectMapper mapper = new ObjectMapper();
+		apiResponse.setResponseCode(response.getStatusCodeValue());
+		apiResponse.setResponseMessage(((HttpStatus) response.getStatusCode()).getReasonPhrase());
+		if (response.getStatusCode().is2xxSuccessful()) {
+			try {
+				String responseBody = response.getBody();
+				if (responseBody != null) {
+					if (responseBody.startsWith("{\"ERROR_REASON\"")) {
+						Map<String, String> errorResponse = mapper.readValue(responseBody,
+								new TypeReference<Map<String, String>>() {
+								});
+						logger.error("Error response: {}", errorResponse);
+						apiResponse.setResponseCode(500);
+						apiResponse.setResponseMessage(errorResponse.get("ERROR_REASON"));
+						apiResponse.setSystemMessage(
+								"An error occurred while processing your request. Please try again later.");
+					} else if (responseBody.startsWith("[[{\"status\"")) {
+						// No data found
+						List<List<Map<String, String>>> statusResponse = mapper.readValue(responseBody,
+								new TypeReference<List<List<Map<String, String>>>>() {
+								});
+						apiResponse.setResponseCode(404);
+						apiResponse.setResponseMessage(statusResponse.get(0).get(0).get("status"));
+					} else {
+						apiResponse.setResponseCode(200);
+						apiResponse.setResponseMessage("Transaction Inserted Successfully !!!!!!!! ");
+					}
+				} else {
+					apiResponse.setResponseCode(500);
+					apiResponse.setResponseMessage("Response body is null");
+				}
+			} catch (Exception e) {
+				logger.error("Exception in returnDbApiResponse => ", e);
+				apiResponse.setResponseCode(500);
+				apiResponse.setResponseMessage("Error parsing response body: " + e.getMessage());
+			}
+		} else if (response.getStatusCode().is5xxServerError()) {
+			apiResponse.setSystemMessage("Db is Down.");
+		}
+		return apiResponse;
+	}
+
+	public String callApi(DataWrapperDTO dto) throws JsonProcessingException {
+		System.out.println("Calling API with DTO: ::::: " + new ObjectMapper().writeValueAsString(dto));
+		try {
+			String apiUrl = databaseConfig.getDbUpdateUrl();
+			HttpHeaders headers = new HttpHeaders();
+			headers.set("Content-Type", "application/json");
+
+			HttpEntity<DataWrapperDTO> request = new HttpEntity<>(dto, headers);
+
+			ResponseEntity<String> response = restTemplate.exchange(apiUrl, HttpMethod.POST, request, String.class);
+			logger.info("Transaction Response Body : {}", response.getBody());
+			return response.getBody();
+		} catch (HttpClientErrorException | HttpServerErrorException e) {
+			// Handle client and server errors
+			return "Error: " + e.getStatusCode() + " - " + e.getResponseBodyAsString();
+		} catch (Exception e) {
+			// Handle other exceptions
+			return "Error: " + e.getMessage();
+		}
+	}
+
+	public ApiResponse getHostListFromDB(String stpName, String param) {
+	    try {
+	        ApiResponse apiResponse = new ApiResponse();
+	        String url = databaseConfig.getDbCallUrl();
+	        HttpHeaders headers = new HttpHeaders();
+	        headers.setContentType(MediaType.APPLICATION_JSON);
+
+	        logger.info("URL: {}", url);
+	        logger.info("Request Params: stpName={}, param={}", stpName, param);
+
+	        String requestJson = generateSTPGetRequest(stpName, param);
+	        logger.info("Request JSON: {}", requestJson);
+
+	        HttpEntity<String> entity = new HttpEntity<>(requestJson, headers);
+
+	        ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
+
+	        logger.info("Response Status Code: {}", response.getStatusCode());
+	        logger.info("Response Body: {}", response.getBody());
+
+	        return returnDbApiResponseForDevice(apiResponse, response);
+	    } catch (Exception e) {
+	        logger.error("Error while fetching data from database", e);
+	        ApiResponse errorResponse = new ApiResponse();
+	        errorResponse.setResponseCode(500);
+	        errorResponse.setResponseMessage("Error while fetching data from database");
+	        errorResponse.setSystemMessage(e.getMessage());
+	        return errorResponse;
+	    }
+	}
+	
+	public void updateTransactionStatusInDatabase(List<TransactionDTO> transactions) {
         try {
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, request, String.class);
+        	String url = databaseConfig.getDbUpdateUrl();
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            
+            ObjectMapper mapper = new ObjectMapper();
+            String transactionJson = mapper.writeValueAsString(transactions);
+            
+            DataWrapperDTO dataWrapper = new DataWrapperDTO();
+            dataWrapper.setStpName(databaseConfig.getTransactionStpName());
+            dataWrapper.setParameterList(new String[]{"update"}); 
+            dataWrapper.setData(transactionJson);
 
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                logger.info("✅ API Call Successful: {}", response.getBody());
-                return response.getBody();
+            String requestJson = mapper.writeValueAsString(dataWrapper);
+
+            HttpEntity<String> entity = new HttpEntity<>(requestJson, headers);
+
+            ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
+
+            logger.info("Response Status Code: {}", response.getStatusCode());
+            logger.info("Response Body: {}", response.getBody());
+
+            // Handle the JSON response
+            if (response.getStatusCode().is2xxSuccessful()) {
+                Map<String, Object> responseBody = mapper.readValue(response.getBody(),
+                        new TypeReference<Map<String, Object>>() {
+                        });
+                if (responseBody.containsKey("error")) {
+                    logger.error("Error updating transaction status: {}", responseBody.get("error"));
+                } else {
+                    logger.info("Transaction status updated successfully: {}", responseBody);
+                }
             } else {
-                logger.error("❌ Unexpected API Response: Status Code = {}, Body = {}", response.getStatusCode(), response.getBody());
-                return null;
+                logger.error("Failed to update transaction status: {}", response.getBody());
             }
+        } catch (HttpClientErrorException | HttpServerErrorException e) {
+            // Handle client and server errors
+            logger.error("Error: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
         } catch (Exception e) {
-            logger.error("❌ Error calling API: {}", e.getMessage(), e);
-            return null;
+            // Handle other exceptions
+            logger.error("Error: {}", e.getMessage());
         }
     }
+      		
+	
 }
+Calling API with DTO: ::::: {"stpName":null,"parameterList":["value"],"data":null,"functionName":"eclipse.delete_hpov_s2im_transactions"}
+{"log_publish":false,"app_name":"ms-hpov-s2im-inventory","log_time_stamp":"1742878801422","date_time":"2025-03-25T05:00:01.422Z","VSAD_ID":"ENMV","logger_class":"com.verizon.ucs.util.RestTemplateCustomizer","server_host":"worker-014","log_level":"INFO","log_message":"Transaction Response Body : {\"ERROR_REASON\":null}","log_level_value":20000,"logger_thread":"scheduling-1"}
+{"log_publish":false,"app_name":"ms-hpov-s2im-inventory","log_time_stamp":"1742878801422","date_time":"2025-03-25T05:00:01.422Z","VSAD_ID":"ENMV","logger_class":"com.verizon.ucs.service.TtlScheduler","server_host":"worker-014","log_level":"INFO","log_message":" Raw API Response Body: {\"ERROR_REASON\":null}","log_level_value":20000,"logger_thread":"scheduling-1"}
+{"log_publish":false,"app_name":"ms-hpov-s2im-inventory","log_time_stamp":"1742878801422","date_time":"2025-03-25T05:00:01.422Z","VSAD_ID":"ENMV","logger_class":"com.verizon.ucs.service.TtlScheduler","server_host":"worker-014","log_level":"INFO","log_message":"Function Execution Result: {\"ERROR_REASON\":null}","log_level_value":20000,"logger_thread":"scheduling-1"}
+{"log_publish":false,"app_name":"ms-hpov-s2im-inventory","log_time_stamp":"1742878920009","date_time":"2025-03-25T05:02:00.009Z","VSAD_ID":"ENMV","logger_class":"com.verizon.ucs.service.TtlScheduler","server_host":"worker-014","log_level":"INFO","log_message":" Starting transaction deletion using function: eclipse.delete_hpov_s2im_transactions","log_level_value":20000,"logger_thread":"scheduling-1"}
+{"log_publish":false,"app_name":"ms-hpov-s2im-inventory","log_time_stamp":"1742878920009","date_time":"2025-03-25T05:02:00.009Z","VSAD_ID":"ENMV","logger_class":"com.verizon.ucs.service.TtlScheduler","server_host":"worker-014","log_level":"INFO","log_message":" Sending request with DTO: {}","log_level_value":20000,"logger_thread":"scheduling-1"}
+Calling API with DTO: ::::: {"stpName":null,"parameterList":["value"],"data":null,"functionName":"eclipse.delete_hpov_s2im_transactions"}
