@@ -1,3 +1,82 @@
+Here are the fully updated classes, ensuring proper function execution, logging, and response handling.
+
+
+---
+
+1. DataWrapperDTO (Updated)
+
+This DTO correctly represents the function call request.
+
+package com.verizon.ucs.model;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import lombok.Data;
+
+import java.util.Arrays;
+
+@Data
+@JsonIgnoreProperties(ignoreUnknown = true)
+public class DataWrapperDTO {
+    private String functionName;  // Updated from stpName
+    private String[] parameterList;
+
+    public String getFunctionName() {
+        return functionName;
+    }
+
+    public void setFunctionName(String functionName) {
+        this.functionName = functionName;
+    }
+
+    @Override
+    public String toString() {
+        return "DataWrapperDTO{" +
+                "functionName='" + functionName + '\'' +
+                ", parameterList=" + Arrays.toString(parameterList) +
+                '}';
+    }
+}
+
+
+---
+
+2. DbProperties (Updated)
+
+Ensure correct function name reference in the YAML.
+
+package com.verizon.ucs.properties;
+
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.context.annotation.Configuration;
+import lombok.Data;
+
+@Configuration
+@Data
+@ConfigurationProperties(prefix = "dbconfig")
+public class DbProperties {
+    private String dbUpdateUrl;
+    private String dbCallUrl;
+    private String serverStpName;
+    private String transactionStpName;
+    private String deviceStpName;
+    private String transactionDeleteFunctionName;  // Renamed from transactionDeleteStpName
+
+    public String getTransactionDeleteFunctionName() {
+        return transactionDeleteFunctionName;
+    }
+
+    public void setTransactionDeleteFunctionName(String transactionDeleteFunctionName) {
+        this.transactionDeleteFunctionName = transactionDeleteFunctionName;
+    }
+}
+
+
+---
+
+3. TtlScheduler (Updated)
+
+This class properly calls the function and handles the response.
+
 package com.verizon.ucs.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -11,8 +90,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.HttpServerErrorException;
 
 @Component
 public class TtlScheduler {
@@ -24,56 +101,54 @@ public class TtlScheduler {
     @Autowired
     private DbProperties databaseConfig;
 
-    private final ObjectMapper objectMapper = new ObjectMapper(); // JSON parser
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
-    // @Scheduled(cron = "0 0 0 * * ?") // Runs every day at midnight
-    @Scheduled(cron = "${scheduler.ttl.cron}")
-    public void scheduleCallStp() {
-        String storedProcedureName = databaseConfig.getTransactionDeleteStpName(); // delete_hpov_s2im_transactions
-        logger.info("Starting transaction deletion using stored procedure: {}", storedProcedureName);
+    @Scheduled(cron = "${scheduler.ttl.cron}")  // Ensuring cron is configured in YAML
+    public void scheduleCallFunction() {
+        String functionName = databaseConfig.getTransactionDeleteFunctionName();
+        logger.info("Starting transaction deletion using function: {}", functionName);
 
         try {
-            // Create DTO for API request
             DataWrapperDTO dto = new DataWrapperDTO();
-            dto.setParameterList(new String[]{"dummy"}); // If needed
-            dto.setStpName(storedProcedureName);
+            dto.setParameterList(new String[]{"dummy"}); // Ensure valid parameters
+            dto.setFunctionName(functionName);
 
-            // Call API
+            logger.info("Sending request with DTO: {}", dto);
+
             ResponseEntity<String> response = restTemplateCustomizer.callApi(dto);
             String responseBody = response.getBody();
 
-            logger.info("API Response: {}", responseBody); // Log full response
+            logger.info("API Response: {}", responseBody);
 
-            // Handle different response formats
             Integer deletedTransactions = parseDeletedTransactions(responseBody);
 
             if (deletedTransactions != null && deletedTransactions > 0) {
                 logger.info("Transactions deleted successfully. Total deleted: {}", deletedTransactions);
             } else {
-                logger.info("No transactions were deleted.");
+                logger.warn("No transactions were deleted. Verify function execution.");
             }
 
-        } catch (HttpClientErrorException | HttpServerErrorException e) {
-            logger.error("HTTP error while deleting transactions: Status Code = {}, Response Body = {}",
-                    e.getStatusCode(), e.getResponseBodyAsString(), e);
         } catch (Exception e) {
             logger.error("Unexpected error while deleting transactions.", e);
         }
     }
 
-    /**
-     * Parses the API response to extract the number of deleted transactions.
-     * Supports both numeric and JSON responses.
-     */
     private Integer parseDeletedTransactions(String responseBody) {
         try {
-            // Case 1: Direct numeric response (e.g., "5")
+            logger.info("Parsing API Response: {}", responseBody);
+
+            // Case 1: Response is a direct number (e.g., "5")
             return Integer.valueOf(responseBody);
         } catch (NumberFormatException e1) {
             try {
-                // Case 2: JSON response (e.g., { "deletedCount": 5 })
+                // Case 2: Function returns JSON (e.g., { "delete_hpov_s2im_transactions": 5 })
                 JsonNode jsonNode = objectMapper.readTree(responseBody);
-                return jsonNode.has("deletedCount") ? jsonNode.get("deletedCount").asInt() : null;
+                if (jsonNode.has("delete_hpov_s2im_transactions")) {
+                    return jsonNode.get("delete_hpov_s2im_transactions").asInt();
+                } else {
+                    logger.warn("Response JSON does not contain expected function output.");
+                    return null;
+                }
             } catch (Exception e2) {
                 logger.error("Failed to parse deleted transaction count from response: {}", responseBody, e2);
                 return null;
@@ -81,3 +156,43 @@ public class TtlScheduler {
         }
     }
 }
+
+
+---
+
+4. YAML Configuration
+
+Ensure correct function reference in application.yaml:
+
+dbconfig:
+  transactionDeleteFunctionName: eclipse.delete_hpov_s2im_transactions
+
+
+---
+
+Final Checks
+
+1. Verify Function Execution in SQL
+
+SELECT eclipse.delete_hpov_s2im_transactions('dummy');
+
+Ensure it returns an integer (e.g., 5).
+
+If NULL or 0, check function logic.
+
+
+
+2. Check Logs
+
+Should show "Transactions deleted successfully" with a number.
+
+If "No transactions were deleted", verify function execution.
+
+
+
+
+
+---
+
+Now it should work properly. Let me know if you face any issues!
+
