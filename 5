@@ -1,15 +1,16 @@
 package com.verizon.ucs.service;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.verizon.ucs.model.DataWrapperDTO;
-import com.verizon.ucs.properties.DbProperties;
-import com.verizon.ucs.util.RestTemplateCustomizer;
+import org.springframework.stereotype.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
+
+import com.verizon.ucs.model.DataWrapperDTO;
+import com.verizon.ucs.properties.DbProperties;
+import com.verizon.ucs.util.RestTemplateCustomizer;
 
 @Component
 public class TtlScheduler {
@@ -21,17 +22,14 @@ public class TtlScheduler {
     @Autowired
     private DbProperties databaseConfig;
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
-
-    @Scheduled(cron = "${scheduler.ttl.cron}")
+    @Scheduled(cron = "${scheduler.ttl.cron}") // Run based on cron expression from YAML
     public void scheduleCallFunction() {
         String functionName = databaseConfig.getTransactionDeleteFunctionName();
         logger.info("Starting transaction deletion using function: {}", functionName);
 
         try {
-            // Prepare the DTO
             DataWrapperDTO dto = new DataWrapperDTO();
-            dto.setParameterList(new String[]{});  // No parameters needed
+            dto.setParameterList(new String[]{"value"}); // Function requires an argument
             dto.setFunctionName(functionName);
 
             logger.info("Sending request with DTO: {}", dto);
@@ -41,37 +39,29 @@ public class TtlScheduler {
 
             logger.info("Raw API Response Body: {}", responseBody);
 
-            // Parse and log response
+            // Log response details
             parseAndLogResponse(responseBody);
 
+        } catch (HttpClientErrorException e) {
+            logger.error("HTTP Error: Status Code = {}, Response Body = {}", e.getStatusCode(), e.getResponseBodyAsString());
+        } catch (HttpServerErrorException e) {
+            logger.error("Server Error: Response Body = {}", e.getResponseBodyAsString());
         } catch (Exception e) {
             logger.error("Unexpected error while deleting transactions.", e);
         }
     }
 
     private void parseAndLogResponse(String responseBody) {
+        if (responseBody == null || responseBody.isEmpty()) {
+            logger.error("Empty response received from function call.");
+            return;
+        }
+
         try {
-            JsonNode jsonNode = objectMapper.readTree(responseBody);
-
-            logger.info("Parsed JSON Response: {}", jsonNode.toPrettyString());
-
-            String status = jsonNode.has("status") ? jsonNode.get("status").asText() : "Unknown status";
-            int transactionsDeleted = jsonNode.has("transactions_deleted_count") 
-                                      ? jsonNode.get("transactions_deleted_count").asInt() 
-                                      : 0;
-            int devicesAuditDeleted = jsonNode.has("devices_audit_deleted_count") 
-                                      ? jsonNode.get("devices_audit_deleted_count").asInt() 
-                                      : 0;
-
-            if (transactionsDeleted > 0 || devicesAuditDeleted > 0) {
-                logger.info("Transaction Deletion Summary: Status: {}, Transactions Deleted: {}, Devices Audit Deleted: {}",
-                        status, transactionsDeleted, devicesAuditDeleted);
-            } else {
-                logger.warn("No transactions or devices audit records were deleted. Status: {}", status);
-            }
-
+            // Log response directly
+            logger.info("Function execution result: {}", responseBody);
         } catch (Exception e) {
-            logger.error("Failed to parse JSON response from function: {}", responseBody, e);
+            logger.error("Error while parsing response: {}", responseBody, e);
         }
     }
 }
