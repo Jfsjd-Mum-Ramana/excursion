@@ -1,728 +1,632 @@
-spring:
-  application:
-    name: ${APP_NAME:ms-hpov-s2im-inventory}
-    port: ${PORT:8083}
+package com.verizon.ucs.service;
+
+import com.newrelic.api.agent.NewRelic;
+import com.verizon.ucs.model.DeviceInfo;
+import com.verizon.ucs.properties.AppProperties;
+import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
+
+import java.util.HashMap;
+import java.util.Map;
+
+@Component
+public class NewRelicService {
+	private static Logger logger = LoggerFactory.getLogger(NewRelicService.class);
+	public static final String events = "enmv1PSCnexus:events";
+	private static Map<String, Object> basicAttributes;
+
+	@Autowired
+	private AppProperties appProperties;
+
+	@PostConstruct
+	public void init() {
+		String appName = System.getenv().get("APP_NAME");
+		String environment = System.getenv().get("APPENV");
+		basicAttributes = new HashMap<>();
+		basicAttributes.put("clusterID", appProperties.getPodNamespace());
+		basicAttributes.put("podName", appProperties.getPodName());
+		basicAttributes.put("podNameSpace", appProperties.getPodNamespace());
+		basicAttributes.put("environment", environment);
+		basicAttributes.put("appName", appName);
+
+		logger.info("INIT_NR: {}", basicAttributes);
+		logger.info("Recording custom event in init: {}", events);
+		NewRelic.getAgent().getInsights().recordCustomEvent(events, basicAttributes);
+	}
+
+	public void publishedMessage(String status, DeviceInfo deviceInfo) {
+		try {
+			Map<String, Object> attributes = new HashMap<>();
+			basicAttributes.forEach(attributes::put);
+
+			attributes.put("status", status);
+			attributes.put("count", 1);
+			attributes.put("deviceIP", deviceInfo.getDeviceIP());
+			attributes.put("deviceModel", deviceInfo.getModel());
+			attributes.put("deviceName", deviceInfo.getDeviceName());
+
+			logger.info("status: {}", status);
+			logger.info("attributes: {}", attributes);
+			logger.info("Recording custom event in publishedMessage: {}", events);
+
+			NewRelic.getAgent().getInsights().recordCustomEvent(events, attributes);
+
+		} catch (Exception e) {
+			e.printStackTrace();
+			logger.warn("Exception while passing new relic: " + e);
+		}
+	}
+}
+
+
+package com.verizon.ucs.service;
+
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.function.Function;
+
+import com.verizon.eclipse.pulsar.producer.EclipsePulsarProducerNr;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.retry.support.RetryTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.verizon.ucs.config.Constants;
+import com.verizon.ucs.model.DeviceInfo;
+import com.verizon.ucs.parser.Nexus1250Parser;
+import com.verizon.ucs.parser.Nexus1450Parser;
+import com.verizon.ucs.parser.Nexus1500Parser;
+import com.verizon.ucs.properties.NexusProperties;
+import com.verizon.ucs.properties.VMBProperties;
+import com.verizon.ucs.util.Validation;
+
+@Service
+public class NexusService {
+    private static final Logger logger = LoggerFactory.getLogger(NexusService.class);
+
+    @Autowired
+    private NewRelicService newRelicService;
+
+    @Autowired
+    private NexusProperties nexusProperties;
+
+    @Autowired
+    private VMBProperties vMBProperties;
+
+    @Autowired
+    private Validation validation;
+
+    @Autowired
+    private RestTemplate restTemplate;
+
+    @Autowired
+    private RetryTemplate retryTemplate;
+
+    @Autowired
+    private VmbEclipsePublisherService vmbEclipsePublisherService;
+
+    private Map<String, EclipsePulsarProducerNr> producers = new HashMap<>();
     
-logging:
-  vsad: ${VSAD_ID:ENMV}
-  level.root: ${LOG_LEVEL:INFO}
-  level.org.springframework.: INFO
-  #appenderref: ${LOG_APPENDER:STDOUT_JSON_PATTERN}
-  appenderref: ${LOG_APPENDER:STDOUT_JSON_PATTERN}
-  logtruncate: ${LOG_TRUNCATE:true}
-  nodename: ${NODE_NAME:worker-014}
-  logpath: ${LOG_PATH:/prod/eclapp/log}
-dbconfig:
-  dbUpdateUrl: ${DB_UPDATE_URL:https://ucs-api-np-twb1-idn.vzwnet.com/papi/api/load}
-  dbCallUrl: ${DB_CALL_URL:https://ucs-api-np-twb1-idn.vzwnet.com/papi/api/call}
-  serverStpName: eclipse.get_hpov_s2im_all_servers
-  transactionStpName: eclipse.load_hpov_s2im_transactions
-  deviceStpName: eclipse.get_hpov_s2im_devices
-    
-redisconfig:
-  redisMqHost: ${REDIS_SERVICE_URL:localhost}
-  redisMqPwd: ${REDISPWD:""}
-  redisMqPort: ${REDIS_PORT:6379}
-  redisMqConsumerGrp: ${REDISMQ_CONSUMER_GRP:hpov-s2im-consumer-grp}
-  redisClusterFlag: ${REDIS_CLUSTER_FLAG:true}
-  redisMinIdleThreads: ${MIN_IDLE_THREADS:10}
-  redisMqMsgsReadCount: ${REDISMQ_MSG_READ_LIMIT:5}
-  redisWaitTimeForThreads: ${REDISMQ_MSG_READ_PAUSE:10000}
-  redisMQueName: ${QUEUE_NAME:hpov-s2im-inventory-stream-key}
-  podNamespace: ${POD_NAMESPACE:twbgohaavzbcucs-y-vz-npapp-enmv}
-  podName: ${POD_NAME:podNameCheck}
-  
-server:
-  error:
-    whitelabel:
-      enabled: false
-  sshPort: 22
-  sshUserName: ${SERVER_USER_NAME:devunra}
-  sshPassPhrase: ${SERVER_PWD:s2imtool}
-  sshPrivateKey: ${SERVER_PKEY:NP/server.pem}  
-  sshHostPath: ${SERVER_HOST_PATH:/tmp/hosts}  
+    private ObjectMapper mapper = new ObjectMapper();
+
+    public Object processDevice(DeviceInfo devInfo) throws Exception {
+        devInfo.setModelNo(devInfo.getModel().replace("Nexus ", ""));
+
+        Function<String, ?> parser = getParser(devInfo.getModelNo());
+        if (parser != null) {
+            return getNexusData(devInfo, parser);
+        } else {
+            logger.info("Unsupported device type: {}", devInfo.getModelNo());
+            return null;
+        }
+    }
+
+    private Function<String, ?> getParser(String deviceType) throws Exception {
+        switch (deviceType) {
+            case Constants.DEVICE_TYPE_1250:
+                return response -> {
+                    try {
+                        return new Nexus1250Parser().parse(response);
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                };
+            case Constants.DEVICE_TYPE_1450:
+                return response -> new Nexus1450Parser().parse(response);
+            case Constants.DEVICE_TYPE_1500:
+                return response -> {
+                    try {
+                        return new Nexus1500Parser().parse(response);
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                };
+            default:
+                return null;
+        }
+    }
+
+    public <T> T getNexusData(DeviceInfo devInfo, Function<String, T> parser) throws Exception {
+        String response;
+
+        if (nexusProperties.isUseSampleData()) {
+            response = new String(Files.readAllBytes(Paths.get(nexusProperties.getSampleDataPaths().get(devInfo.getModelNo()))));
+        } else {
+            response = fetchDataFromDevice(devInfo);
+        }
+
+        if (response != null) {
+            T data = parser.apply(response);
+            logger.info("NexusData::  {}", data);
+
+            boolean isErrorData = validation.validateData(devInfo, data);
+            String ucgData = null;
+            
+            if (isErrorData) {
+            	 ucgData = validation.generateUCGdata(devInfo, mapper.writeValueAsString(data),vMBProperties.getLovTopic());
+            }else {
+            	ucgData = validation.generateUCGdata(devInfo, mapper.writeValueAsString(data),vMBProperties.getVmbTopic());
+            }
+            publishAsyncWithNewRelic(vMBProperties.getVmbTopic(), ucgData, devInfo);
+            return data;
+        }
+        return null;
+    }
+
+    private String fetchDataFromDevice(DeviceInfo devInfo) throws Exception {
+        return retryTemplate.execute(context -> {
+            String url = nexusProperties.getApiEndpoints().get(devInfo.getModelNo()).replace("{siteIP}", devInfo.getDeviceIP());
+
+            switch (devInfo.getModelNo()) {
+                case Constants.DEVICE_TYPE_1250:
+                    return restTemplate.getForObject(url, String.class);
+                case Constants.DEVICE_TYPE_1450:
+                    return restTemplate.postForObject(url, getHttpEntity(), String.class);
+                case Constants.DEVICE_TYPE_1500:
+                    return restTemplate.getForObject(url, String.class);
+                default:
+                    throw new IllegalArgumentException("Unsupported device type: " + devInfo.getModelNo());
+            }
+        }, context -> {
+            // Recovery logic
+            Throwable lastThrowable = context.getLastThrowable();
+            String errorMessage = lastThrowable != null ? lastThrowable.getMessage() : "Unknown error";
+            logger.info("All retry attempts failed. Executing recovery logic. Error: {}", errorMessage);
+            String lovMsg = validation.generateUCGdata(devInfo, errorMessage,vMBProperties.getLovTopic());
+            vmbEclipsePublisherService.publishAsync(vMBProperties.getLovTopic(), lovMsg, devInfo.getDeviceIP());
+            return null;
+        });
+    }
+
+    private HttpEntity<String> getHttpEntity() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        return new HttpEntity<>(createRequestPayload(Constants.REQUEST_BODY_1450), headers);
+    }
+
+    private String createRequestPayload(String[] chans) {
+        Map<String, Object> payloadMap = Map.of("chans", chans);
+        try {
+            return mapper.writeValueAsString(payloadMap);
+        } catch (JsonProcessingException e) {
+            logger.error("Error creating JSON request payload", e);
+            return null;
+        }
+    }
+    public void publishAsyncWithNewRelic(String topic, String message, DeviceInfo deviceInfo) {
+        EclipsePulsarProducerNr producer = producers.get(topic);
+        String partitionKey = deviceInfo.getDeviceIP();
+        logger.info("Entering publishAsyncWithNewRelic method");
+        logger.info("Topic: {}", topic);
+        logger.info("Message: {}", message);
+        logger.info("DeviceInfo: {}", deviceInfo);
+
+        if (producer != null) {
+            logger.info("Producer found for topic: {}", topic);
+            producer.publishAsyncWithNr(message, partitionKey);
+            publishAsyncNewRelic(topic, deviceInfo);
+            logger.info("Async message sent to topic {}: {}", topic, message);
+        } else {
+            logger.error("Producer for topic {} not found", topic);
+        }
+    }
+    public void publishAsyncNewRelic(String topic, DeviceInfo deviceInfo) {
+        String status;
+        if (topic.contains("lov")) {
+            status = "FAILURE";
+        } else {
+            status = "SUCCESS";
+        }
+        newRelicService.publishedMessage(status, deviceInfo);
+    }
+}
+
+
+package com.verizon.ucs.service;
+
+//import org.apache.pulsar.client.api.Consumer;
+import org.apache.pulsar.client.api.Message;
+//import org.apache.pulsar.client.api.PulsarClient;
+import org.apache.pulsar.client.api.SubscriptionType;
+import org.apache.pulsar.shade.client.api.v2.Consumer;
+import org.apache.pulsar.shade.client.api.v2.PulsarClient;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
+
+import com.verizon.ucs.properties.VMBProperties;
+
+import jakarta.annotation.PostConstruct;
+
+@Component
+public class VmbConsumerService {
+	private static final Logger logger = LoggerFactory.getLogger(VmbConsumerService.class);
+
+	@Autowired
+	private PulsarClient pulsarClient;
+
+	@Autowired
+	private VMBProperties vMBConfig;
+
+	@PostConstruct
+	public void init() {
+		if (vMBConfig.isEnableConsumer()) {
+			new Thread(() -> process(vMBConfig.getLovTopic(), pulsarClient, "enmv-nexus-lov-sub-name")).start();
+			new Thread(() -> process(vMBConfig.getVmbTopic(), pulsarClient, "enmv-nexus-alarm-sub-name")).start();
+		}
+	}
+
+	public void process(String topicName, PulsarClient client, String subscriberName) {
+		logger.info("topicName = {}, subscriberName = {}", topicName, subscriberName);
+		Consumer<byte[]> consumer = null;
+		try {
+			consumer = client.newConsumer().topic(topicName).subscriptionName(subscriberName)
+					.subscriptionType(SubscriptionType.Shared).subscribe();
+
+			consumeMessage(consumer);
+		} catch (Exception e) {
+			logger.error("Exception in creating subscription name", e);
+		}
+	}
+
+	public void consumeMessage(Consumer<byte[]> consumer) {
+		if (consumer != null) {
+			while (true) {
+				Message<byte[]> message = null;
+				try {
+					logger.info("Going to consume");
+					message = consumer.receive();
+					logger.info("The consumed message is {}", new String(message.getValue()));
+					logger.info("The consumed key is {}", message.getKey());
+					consumer.acknowledge(message);
+				} catch (Exception e) {
+					logger.error("Exception in Consumer", e);
+					if (message != null) {
+						consumer.negativeAcknowledge(message);
+					}
+				}
+			}
+		}
+	}
+}
+
+package com.verizon.ucs.service;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import com.verizon.eclipse.pulsar.producer.EclipsePulsarProducerNr;
+import com.verizon.ucs.properties.VMBProperties;
+
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
+
+import java.util.HashMap;
+import java.util.Map;
+
+@Service
+public class VmbEclipsePublisherService {
+    private static final Logger logger = LoggerFactory.getLogger(VmbEclipsePublisherService.class);
+
+    private Map<String, EclipsePulsarProducerNr> producers = new HashMap<>();
+
+    @Autowired
+    private VMBProperties vmbConfig;
+
+    @PostConstruct
+    public void init() {
+        logger.info("Initializing Pulsar producers");
+
+        try {
+            // Initialize producers for different topics
+            initializeProducer(vmbConfig.getVmbTopic());
+            initializeProducer(vmbConfig.getLovTopic());
+        } catch (Exception e) {
+            logger.error("Failed to initialize Pulsar producers", e);
+        }
+    }
+
+    private void initializeProducer(String topic) throws Exception {
+        EclipsePulsarProducerNr producer = new EclipsePulsarProducerNr(true,
+                vmbConfig.getServiceUrl(),
+                vmbConfig.getTlsTrustCertsFile(),
+                vmbConfig.getTlsKeyFile(),
+                vmbConfig.getTlsCertFile(),
+                topic
+        );
+        producers.put(topic, producer);
+        logger.info("Initialized producer for topic: {}", topic);
+    }
+
+    @PreDestroy
+    public void shutDown() {
+        try {
+            logger.info("Shutting down Pulsar producers");
+            for (EclipsePulsarProducerNr producer : producers.values()) {
+                if (producer != null) {
+                    producer.shutDown();
+                }
+            }
+        } catch (Throwable e) {
+            logger.error("Exception while shutting down Pulsar producers", e);
+        }
+    }
+
+    public void publish(String topic, String message) throws Exception {
+        EclipsePulsarProducerNr producer = producers.get(topic);
+        if (producer != null) {
+            producer.publish(message);
+            logger.info("Message sent to topic {}: {}", topic, message);
+        } else {
+            logger.error("Producer for topic {} not found", topic);
+        }
+    }
+
+    public void publishAsync(String topic, String message, String partitionKey) {
+        EclipsePulsarProducerNr producer = producers.get(topic);
+        if (producer != null) {
+            producer.publishAsyncWithNr(message, partitionKey);
+            logger.info("Async message sent to topic {}: {}", topic, message);
+        } else {
+            logger.error("Producer for topic {} not found", topic);
+        }
+    }
+}
+
+package com.verizon.ucs.service;
+
+//import org.apache.pulsar.client.api.Producer;
+import org.apache.pulsar.client.api.ProducerBuilder;
+//import org.apache.pulsar.client.api.PulsarClient;
+import org.apache.pulsar.client.api.Schema;
+import org.apache.pulsar.shade.client.api.v2.Producer;
+import org.apache.pulsar.shade.client.api.v2.PulsarClient;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import com.verizon.ucs.properties.VMBProperties;
+
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
+
+import java.util.HashMap;
+import java.util.Map;
+
+@Service
+public class VmbProducerService {
+    private static final Logger logger = LoggerFactory.getLogger(VmbProducerService.class);
+
+    @Autowired
+    private VMBProperties vmbConfig;
+
+    @Autowired
+    private PulsarClient pulsarClient;
+
+    private Map<String, Producer<String>> producers = new HashMap<>();
+
+    //@PostConstruct
+    public void init() throws Exception {
+        logger.info("Initializing Pulsar producers");
+
+        // Initialize producers for different topics
+        //initializeProducer(vmbConfig.getLovTopic());
+        initializeProducer(vmbConfig.getVmbTopic());
+    }
+
+    private void initializeProducer(String topic) throws Exception {
+        ProducerBuilder<String> producerBuilder = pulsarClient.newProducer(Schema.STRING)
+                .topic(topic)
+                .enableBatching(true)
+                .batchingMaxMessages(1000)
+                .batchingMaxPublishDelay(10, java.util.concurrent.TimeUnit.MILLISECONDS);
+
+        Producer<String> producer = producerBuilder.create();
+        producers.put(topic, producer);
+        logger.info("Initialized producer for topic: {}", topic);
+    }
+
+    @PreDestroy
+    public void shutDown() {
+        try {
+            logger.info("Shutting down Pulsar producers and client");
+            for (Producer<String> producer : producers.values()) {
+                if (producer != null) {
+                    producer.close();
+                }
+            }
+            if (pulsarClient != null) {
+                pulsarClient.close();
+            }
+        } catch (Exception e) {
+            logger.error("Exception while shutting down Pulsar producers and client", e);
+        }
+    }
+
+    public void sendMessage(String topic, String message) throws Exception {
+        Producer<String> producer = producers.get(topic);
+        if (producer != null) {
+            producer.send(message);
+            logger.info("Message sent to topic {}: {}", topic, message);
+        } else {
+            logger.error("Producer for topic {} not found", topic);
+        }
+    }
+}
+
+package com.verizon.ucs.properties;
+
+import lombok.Data;
+
+import java.util.HashMap;
+import java.util.Map;
+
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
+
+/***
+ * TrapPropertiesYml - model class to read data from environment specific YAML
+ * configuration file. This file maps the data from 'trap-properties' section of
+ * YAML file.
+ * 
+ *
+ */
+
+@Data
+@Component
+@ConfigurationProperties(prefix = "commonprops")
+public class AppProperties {
+	public String appName;
+	private String environment;
+	private String podNamespace;
+	private String podName;
+
+	
+	public String getAppName() {
+		return appName;
+	}
+
+	public void setAppName(String appName) {
+		this.appName = appName;
+	}
+
+	public String getEnvironment() {
+		return environment;
+	}
+
+	public void setEnvironment(String environment) {
+		this.environment = environment;
+	}
+
+	public String getPodNamespace() {
+		return podNamespace;
+	}
+
+	public void setPodNamespace(String podNamespace) {
+		this.podNamespace = podNamespace;
+	}
+
+	public String getPodName() {
+		return podName;
+	}
+
+	public void setPodName(String podName) {
+		this.podName = podName;
+	}
+	
+	
+
+}
+
 
 package com.verizon.ucs.properties;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
-import lombok.Data;
-
 @Configuration
-@Data
-@ConfigurationProperties(prefix = "dbconfig")
-public class DbProperties {
-	private String dbUpdateUrl;
-	private String dbCallUrl;
-	private String serverStpName;
-	private String transactionStpName;
-	private String deviceStpName;
+@ConfigurationProperties(prefix = "vmb")
+public class VMBProperties {
+	private String serviceUrl;	
+	private String tlsCertFile;
+	private String tlsKeyFile;
+	private String tlsTrustCertsFile;
+	private String vmbTopic;
+	private String lovTopic;
+	private boolean isEnableConsumer;
 
-	public String getDbUpdateUrl() {
-		return dbUpdateUrl;
-	}
-
-	public void setDbUpdateUrl(String dbUpdateUrl) {
-		this.dbUpdateUrl = dbUpdateUrl;
-	}
-
-	public String getDbCallUrl() {
-		return dbCallUrl;
-	}
-
-	public void setDbCallUrl(String dbCallUrl) {
-		this.dbCallUrl = dbCallUrl;
-	}
-
-	public String getServerStpName() {
-		return serverStpName;
-	}
-
-	public void setServerStpName(String serverStpName) {
-		this.serverStpName = serverStpName;
-	}
-
-	public String getTransactionStpName() {
-		return transactionStpName;
-	}
-
-	public void setTransactionStpName(String transactionStpName) {
-		this.transactionStpName = transactionStpName;
-	}
-
-	public String getDeviceStpName() {
-		return deviceStpName;
-	}
-
-	public void setDeviceStpName(String deviceStpName) {
-		this.deviceStpName = deviceStpName;
-
-	}
-}
-package com.verizon.ucs.model;
-
-/***
- * DTO to send large data, its used to load the data to db.
- */
-import java.util.List;
-
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.verizon.ucs.properties.DbProperties;
-
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.HttpServerErrorException;
-import org.springframework.web.client.RestTemplate;
-
-
-
-import lombok.Data;
-
-@Data
-@JsonIgnoreProperties(ignoreUnknown = true)
-public class DataWrapperDTO {
-
-	private String stpName;	
-	private String[] parameterList;	
-	private String data;	
 	
-	public String getStpName() {
-		return stpName;
+	public String getServiceUrl() {
+		return serviceUrl;
 	}
-	public void setStpName(String stpName) {
-		this.stpName = stpName;
+
+	public void setServiceUrl(String serviceUrl) {
+		this.serviceUrl = serviceUrl;
 	}
-	
-	public String[] getParameterList() {
-		return parameterList;
+
+	public String getTlsCertFile() {
+		return tlsCertFile;
 	}
-	public void setParameterList(String[] parameterList) {
-		this.parameterList = parameterList;
+
+	public void setTlsCertFile(String tlsCertFile) {
+		this.tlsCertFile = tlsCertFile;
 	}
-	public String getData() {
-		return data;
+
+	public String getTlsKeyFile() {
+		return tlsKeyFile;
 	}
-	public void setData(String data) {
-		this.data = data;
+
+	public void setTlsKeyFile(String tlsKeyFile) {
+		this.tlsKeyFile = tlsKeyFile;
 	}
-	
-	
-	
-	
+
+	public String getTlsTrustCertsFile() {
+		return tlsTrustCertsFile;
+	}
+
+	public void setTlsTrustCertsFile(String tlsTrustCertsFile) {
+		this.tlsTrustCertsFile = tlsTrustCertsFile;
+	}
+
+	public String getVmbTopic() {
+		return vmbTopic;
+	}
+
+	public void setVmbTopic(String vmbTopic) {
+		this.vmbTopic = vmbTopic;
+	}
+
+	public String getLovTopic() {
+		return lovTopic;
+	}
+
+	public void setLovTopic(String lovTopic) {
+		this.lovTopic = lovTopic;
+	}
+
+	public boolean isEnableConsumer() {
+		return isEnableConsumer;
+	}
+
+	public void setEnableConsumer(boolean isEnableConsumer) {
+		this.isEnableConsumer = isEnableConsumer;
+	}
+	   
 }
 
-package com.verizon.ucs.util;
-
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
-
-//import org.json.simple.JSONArray;
-//import org.json.simple.JSONObject;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
-import org.springframework.stereotype.Component;
-import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.HttpServerErrorException;
-import org.springframework.web.client.RestTemplate;
-
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.verizon.ucs.model.ApiResponse;
-import com.verizon.ucs.model.DataWrapperDTO;
-import com.verizon.ucs.model.DeviceDTO;
-import com.verizon.ucs.model.ServerDTO;
-import com.verizon.ucs.model.TransactionDTO;
-import com.verizon.ucs.properties.DbProperties;
-
-
-@Component
-public class RestTemplateCustomizer {
-
-	private static final Logger logger = LoggerFactory.getLogger(RestTemplateCustomizer.class);
-
-	@Autowired
-	private DbProperties databaseConfig;
-
-	@Autowired
-	private RestTemplate restTemplate;
-
-	public RestTemplateCustomizer(RestTemplate restTemplate) {
-		this.restTemplate = restTemplate;
-	}
-
-	public HttpEntity<String> getHttpEntity(String jsonInputRequest, String type) throws Exception {
-		HttpHeaders httpHeaders = new HttpHeaders();
-		
-		httpHeaders.setContentType(MediaType.APPLICATION_JSON);
-		HttpEntity<String> entity = new HttpEntity<String>(jsonInputRequest, httpHeaders);
-		return entity;
-	}
-
-	@SuppressWarnings("unchecked")
-	public <T> T sendRequest(Object json, TypeReference typeReference) throws Exception {
-		ObjectMapper mapper = new ObjectMapper();
-		return (T) mapper.convertValue(json, typeReference);
-	}
-
-	public ApiResponse getServerListFromDatabase(String stpName, String param) {
-		try {
-			ApiResponse apiResponse = new ApiResponse();
-			String url = databaseConfig.getDbCallUrl();
-			HttpHeaders headers = new HttpHeaders();
-			headers.setContentType(MediaType.APPLICATION_JSON);
-
-			logger.info("URL: {}", url);
-			logger.info("Request Params: stpName={}, param={}", stpName, param);
-
-			String requestJson = generateSTPGetRequest(stpName, param);
-			logger.info("Request JSON: {}", requestJson);
-
-			HttpEntity<String> entity = new HttpEntity<>(requestJson, headers);
-
-			ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
-
-			logger.info("Response Status Code: {}", response.getStatusCode());
-			logger.info("Response Body: {}", response.getBody());
-
-			return returnDbApiResponse(apiResponse, response);
-		} catch (Exception e) {
-			logger.error("Error while fetching server list from database", e);
-			return null;
-		}
-	}
-
-	private String generateSTPGetRequest(String stpName, String param) {
-		return String.format("[{\"stp\":\"%s\"},{\"param\":\"%s\"}]", stpName, param);
-	}
-
-	private ApiResponse returnDbApiResponse(ApiResponse apiResponse, ResponseEntity<String> response) {
-		ObjectMapper mapper = new ObjectMapper();
-		apiResponse.setResponseCode(response.getStatusCodeValue());
-		apiResponse.setResponseMessage(((HttpStatus) response.getStatusCode()).getReasonPhrase());
-		if (response.getStatusCode().is2xxSuccessful()) {
-			try {
-				String responseBody = response.getBody();
-				if (responseBody != null) {
-					if (responseBody.startsWith("{\"ERROR_REASON\"")) {
-						Map<String, String> errorResponse = mapper.readValue(responseBody,
-								new TypeReference<Map<String, String>>() {
-								});
-						logger.error("Error response: {}", errorResponse);
-						apiResponse.setResponseCode(500);
-						apiResponse.setResponseMessage(errorResponse.get("ERROR_REASON"));
-						apiResponse.setSystemMessage(
-								"An error occurred while processing your request. Please try again later.");
-					} else if (responseBody.startsWith("[[{\"status\"")) {
-						// No data found
-						List<List<Map<String, String>>> statusResponse = mapper.readValue(responseBody,
-								new TypeReference<List<List<Map<String, String>>>>() {
-								});
-						apiResponse.setResponseCode(404);
-						apiResponse.setResponseMessage(statusResponse.get(0).get(0).get("status"));
-					} else {
-						List<List<List<ServerDTO>>> validResponse = mapper.readValue(responseBody,
-								new TypeReference<List<List<List<ServerDTO>>>>() {
-								});
-						apiResponse.setData(validResponse.stream().flatMap(List::stream).flatMap(List::stream)
-								.collect(Collectors.toList()));
-					}
-				} else {
-					apiResponse.setResponseCode(500);
-					apiResponse.setResponseMessage("Response body is null");
-				}
-			} catch (Exception e) {
-				logger.error("Exception in returnDbApiResponse => ", e);
-				apiResponse.setResponseCode(500);
-				apiResponse.setResponseMessage("Error parsing response body: " + e.getMessage());
-			}
-		} else if (response.getStatusCode().is5xxServerError()) {
-			apiResponse.setSystemMessage("Database is Down.");
-		}
-		return apiResponse;
-	}
-	
-	private ApiResponse returnDbApiResponseForDevice(ApiResponse apiResponse, ResponseEntity<String> response) {
-		ObjectMapper mapper = new ObjectMapper();
-		apiResponse.setResponseCode(response.getStatusCodeValue());
-		apiResponse.setResponseMessage(((HttpStatus) response.getStatusCode()).getReasonPhrase());
-		if (response.getStatusCode().is2xxSuccessful()) {
-			try {
-				String responseBody = response.getBody();
-				if (responseBody != null) {
-					if (responseBody.startsWith("{\"ERROR_REASON\"")) {
-						Map<String, String> errorResponse = mapper.readValue(responseBody,
-								new TypeReference<Map<String, String>>() {
-								});
-						logger.error("Error response: {}", errorResponse);
-						apiResponse.setResponseCode(500);
-						apiResponse.setResponseMessage(errorResponse.get("ERROR_REASON"));
-						apiResponse.setSystemMessage(
-								"An error occurred while processing your request. Please try again later.");
-					} else if (responseBody.startsWith("[[{\"status\"")) {
-						// No data found
-						List<List<Map<String, String>>> statusResponse = mapper.readValue(responseBody,
-								new TypeReference<List<List<Map<String, String>>>>() {
-								});
-						apiResponse.setResponseCode(404);
-						apiResponse.setResponseMessage(statusResponse.get(0).get(0).get("status"));
-					} else {
-						List<List<List<DeviceDTO>>> validResponse = mapper.readValue(responseBody,
-								new TypeReference<List<List<List<DeviceDTO>>>>() {
-								});
-						apiResponse.setData(validResponse.stream().flatMap(List::stream).flatMap(List::stream)
-								.collect(Collectors.toList()));
-					}
-				} else {
-					apiResponse.setResponseCode(500);
-					apiResponse.setResponseMessage("Response body is null");
-				}
-			} catch (Exception e) {
-				logger.error("Exception in returnDbApiResponse => ", e);
-				apiResponse.setResponseCode(500);
-				apiResponse.setResponseMessage("Error parsing response body: " + e.getMessage());
-			}
-		} else if (response.getStatusCode().is5xxServerError()) {
-			apiResponse.setSystemMessage("Db is Down.");
-		}
-		return apiResponse;
-	}
-
-
-	public ApiResponse storeTransactionsInDatabase(List<TransactionDTO> transactions, String operation) {
-		String url = databaseConfig.getDbUpdateUrl();
-		ApiResponse apiResponse = new ApiResponse();
-
-			try {
-				HttpHeaders headers = new HttpHeaders();
-				headers.setContentType(MediaType.APPLICATION_JSON);
-				logger.info("DB Transaction URL :::  ", url);
-				String requestJson = generateInsertTransactionsRequest(transactions,operation);
-				logger.info(" Requested Json "+ requestJson);
-	
-				HttpEntity<String> entity = new HttpEntity<>(requestJson, headers);
-	
-				ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
-	
-				logger.info("Response Status Code: {}", response.getStatusCode());
-				logger.info("Response Body: {}", response.getBody());
-				
-				return returnTransactionResponse(apiResponse, response);
-					
-				
-			} catch (Exception e) {
-				logger.error("Error while storing transactions in database {}", e);
-				 return null;
-			}
-		} 
-	
-	  public String generateInsertTransactionsRequest(List<TransactionDTO> transactions,String operation) {
-		  try {
-			  ObjectMapper mapper = new ObjectMapper();
-			  String transactionsJson = mapper.writeValueAsString(transactions);
-			  DataWrapperDTO dto = new DataWrapperDTO();
-			  dto.setData(transactionsJson);
-			  dto.setParameterList(new String[]{operation});
-			  dto.setStpName(databaseConfig.getTransactionStpName());
-			  return mapper.writeValueAsString(dto);
-		  } catch (Exception e) {
-			  logger.error("Error generating JSON request {} ", e.getMessage());
-			  return "Transaction Request isn't built Successfully";
-		  }
-	  }
-
-	private ApiResponse returnTransactionResponse(ApiResponse apiResponse, ResponseEntity<String> response) {
-		ObjectMapper mapper = new ObjectMapper();
-		apiResponse.setResponseCode(response.getStatusCodeValue());
-		apiResponse.setResponseMessage(((HttpStatus) response.getStatusCode()).getReasonPhrase());
-		if (response.getStatusCode().is2xxSuccessful()) {
-			try {
-				String responseBody = response.getBody();
-				if (responseBody != null) {
-					if (responseBody.startsWith("{\"ERROR_REASON\"")) {
-						Map<String, String> errorResponse = mapper.readValue(responseBody,
-								new TypeReference<Map<String, String>>() {
-								});
-						logger.error("Error response: {}", errorResponse);
-						apiResponse.setResponseCode(500);
-						apiResponse.setResponseMessage(errorResponse.get("ERROR_REASON"));
-						apiResponse.setSystemMessage(
-								"An error occurred while processing your request. Please try again later.");
-					} else if (responseBody.startsWith("[[{\"status\"")) {
-						// No data found
-						List<List<Map<String, String>>> statusResponse = mapper.readValue(responseBody,
-								new TypeReference<List<List<Map<String, String>>>>() {
-								});
-						apiResponse.setResponseCode(404);
-						apiResponse.setResponseMessage(statusResponse.get(0).get(0).get("status"));
-					} else {
-						apiResponse.setResponseCode(200);
-						apiResponse.setResponseMessage("Transaction Inserted Successfully !!!!!!!! ");
-					}
-				} else {
-					apiResponse.setResponseCode(500);
-					apiResponse.setResponseMessage("Response body is null");
-				}
-			} catch (Exception e) {
-				logger.error("Exception in returnDbApiResponse => ", e);
-				apiResponse.setResponseCode(500);
-				apiResponse.setResponseMessage("Error parsing response body: " + e.getMessage());
-			}
-		} else if (response.getStatusCode().is5xxServerError()) {
-			apiResponse.setSystemMessage("Db is Down.");
-		}
-		return apiResponse;
-	}
-
-	public String callApi(DataWrapperDTO dto) throws JsonProcessingException {
-		System.out.println("Calling API with DTO: ::::: " + new ObjectMapper().writeValueAsString(dto));
-		try {
-			String apiUrl = databaseConfig.getDbUpdateUrl();
-			HttpHeaders headers = new HttpHeaders();
-			headers.set("Content-Type", "application/json");
-
-			HttpEntity<DataWrapperDTO> request = new HttpEntity<>(dto, headers);
-
-			ResponseEntity<String> response = restTemplate.exchange(apiUrl, HttpMethod.POST, request, String.class);
-			logger.info("Transaction Response Body : {}", response.getBody());
-			return response.getBody();
-		} catch (HttpClientErrorException | HttpServerErrorException e) {
-			// Handle client and server errors
-			return "Error: " + e.getStatusCode() + " - " + e.getResponseBodyAsString();
-		} catch (Exception e) {
-			// Handle other exceptions
-			return "Error: " + e.getMessage();
-		}
-	}
-
-	public ApiResponse getHostListFromDB(String stpName, String param) {
-	    try {
-	        ApiResponse apiResponse = new ApiResponse();
-	        String url = databaseConfig.getDbCallUrl();
-	        HttpHeaders headers = new HttpHeaders();
-	        headers.setContentType(MediaType.APPLICATION_JSON);
-
-	        logger.info("URL: {}", url);
-	        logger.info("Request Params: stpName={}, param={}", stpName, param);
-
-	        String requestJson = generateSTPGetRequest(stpName, param);
-	        logger.info("Request JSON: {}", requestJson);
-
-	        HttpEntity<String> entity = new HttpEntity<>(requestJson, headers);
-
-	        ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
-
-	        logger.info("Response Status Code: {}", response.getStatusCode());
-	        logger.info("Response Body: {}", response.getBody());
-
-	        return returnDbApiResponseForDevice(apiResponse, response);
-	    } catch (Exception e) {
-	        logger.error("Error while fetching data from database", e);
-	        ApiResponse errorResponse = new ApiResponse();
-	        errorResponse.setResponseCode(500);
-	        errorResponse.setResponseMessage("Error while fetching data from database");
-	        errorResponse.setSystemMessage(e.getMessage());
-	        return errorResponse;
-	    }
-	}
-	
-	public void updateTransactionStatusInDatabase(List<TransactionDTO> transactions) {
-        try {
-        	String url = databaseConfig.getDbUpdateUrl();
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            
-            ObjectMapper mapper = new ObjectMapper();
-            String transactionJson = mapper.writeValueAsString(transactions);
-            
-            DataWrapperDTO dataWrapper = new DataWrapperDTO();
-            dataWrapper.setStpName(databaseConfig.getTransactionStpName());
-            dataWrapper.setParameterList(new String[]{"update"}); 
-            dataWrapper.setData(transactionJson);
-
-            String requestJson = mapper.writeValueAsString(dataWrapper);
-
-            HttpEntity<String> entity = new HttpEntity<>(requestJson, headers);
-
-            ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
-
-            logger.info("Response Status Code: {}", response.getStatusCode());
-            logger.info("Response Body: {}", response.getBody());
-
-            // Handle the JSON response
-            if (response.getStatusCode().is2xxSuccessful()) {
-                Map<String, Object> responseBody = mapper.readValue(response.getBody(),
-                        new TypeReference<Map<String, Object>>() {
-                        });
-                if (responseBody.containsKey("error")) {
-                    logger.error("Error updating transaction status: {}", responseBody.get("error"));
-                } else {
-                    logger.info("Transaction status updated successfully: {}", responseBody);
-                }
-            } else {
-                logger.error("Failed to update transaction status: {}", response.getBody());
-            }
-        } catch (HttpClientErrorException | HttpServerErrorException e) {
-            // Handle client and server errors
-            logger.error("Error: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
-        } catch (Exception e) {
-            // Handle other exceptions
-            logger.error("Error: {}", e.getMessage());
-        }
-    }
-      		
-	
-}
-
-package com.verizon.ucs.service;
-
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.sql.Timestamp;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.io.ClassPathResource;
-import org.springframework.core.io.Resource;
-import org.springframework.stereotype.Component;
-
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.jcraft.jsch.ChannelSftp;
-import com.jcraft.jsch.JSch;
-import com.jcraft.jsch.JSchException;
-import com.jcraft.jsch.Session;
-import com.jcraft.jsch.SftpException;
-import com.verizon.ucs.model.ApiResponse;
-import com.verizon.ucs.model.DeviceDTO;
-import com.verizon.ucs.model.ServerDTO;
-import com.verizon.ucs.model.TransactionDTO;
-import com.verizon.ucs.properties.DbProperties;
-import com.verizon.ucs.properties.MSRedisProperties;
-import com.verizon.ucs.properties.ServerProperties;
-import com.verizon.ucs.util.RestTemplateCustomizer;
-
-@Component
-public class ServerTransactionService {
-	private static final Logger logger = LoggerFactory.getLogger(ServerTransactionService.class);
-
-	@Autowired
-	RestTemplateCustomizer restTemplateCustomizer;
-	
-	@Autowired
-	private DbProperties databaseConfig;
-	
-	@Autowired
-	private MSRedisProperties redisProperties;
-	
-	@Autowired
-	private ServerProperties serverProperties;
-	
-	public void processServerTransactions() throws JsonProcessingException {
-        List<ServerDTO> serverList = getServerListFromDatabase();
-        List<TransactionDTO> transactions = generateTransactions(serverList);
-        storeTransactionsInDatabase(transactions);
-
-        List<DeviceDTO> devices = getHostListFromDatabase();
-        String hostFileContent = generateHostFileContent(devices);
-
-        updateHostFileOnServers(hostFileContent, transactions, serverList);
-    }
-
-    private List<ServerDTO> getServerListFromDatabase() {
-        ApiResponse apiResponse = restTemplateCustomizer.getServerListFromDatabase(databaseConfig.getServerStpName(), "dummy");
-        if (apiResponse.getResponseCode() == 200 && apiResponse.getData() != null) {
-            return (List<ServerDTO>) apiResponse.getData();
-        } else {
-            logger.error("Failed to fetch server list from database: {}", apiResponse.getResponseMessage());
-            return Collections.emptyList();
-        }
-    }
-
-    private List<TransactionDTO> generateTransactions(List<ServerDTO> serverList) {
-        List<TransactionDTO> transactions = new ArrayList<>();
-        String formattedCollectedTime = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Timestamp(new Date().getTime()));
-
-        for (ServerDTO server : serverList) {
-            String threadName = Thread.currentThread().getName();
-            String transactionId = generateTransactionId(redisProperties.getPodName());
-            transactions.add(new TransactionDTO(transactionId, server.getServer_id(), false, formattedCollectedTime, server.getServer_ip()));
-        }
-
-        return transactions;
-    }
-	private String generateTransactionId(String podName) {
-		return podName + "-" + UUID.randomUUID().toString().substring(0,6);
-	}
-
-    private void storeTransactionsInDatabase(List<TransactionDTO> transactions) {
-        ApiResponse apiResponse = restTemplateCustomizer.storeTransactionsInDatabase(transactions, "insert");
-        logger.info("Inserted transactions: {}", apiResponse.getResponseMessage());
-    }
-
-    private List<DeviceDTO> getHostListFromDatabase() {
-        ApiResponse dbApiResponse = restTemplateCustomizer.getHostListFromDB(databaseConfig.getDeviceStpName(), "device");
-        if (dbApiResponse.getResponseCode() == 200 && dbApiResponse.getData() != null) {
-            return (List<DeviceDTO>) dbApiResponse.getData();
-        } else {
-            logger.error("Failed to fetch data from database: {}", dbApiResponse.getResponseMessage());
-            return Collections.emptyList();
-        }
-    }
-
-    private String generateHostFileContent(List<DeviceDTO> devices) {
-        StringBuilder content = new StringBuilder();
-        for (DeviceDTO device : devices) {
-            content.append(device.getIpAddress()).append(" ").append(device.getHostName()).append("\n");
-        }
-        return content.toString();
-    }
-
-    private void updateHostFileOnServers(String content, List<TransactionDTO> transactions, List<ServerDTO> serverList) {
-        Map<String, Boolean> serverPublishStatus = new HashMap<>();
-
-        for (ServerDTO server : serverList) {
-            boolean success = writeHostFileToServer(content, server);
-            serverPublishStatus.put(server.getServer_ip(), success);
-
-            if (success) {
-                for (TransactionDTO transaction : transactions) {
-                    if (transaction.getServerIP().equals(server.getServer_ip())) {
-                        transaction.setUpdatedHost(true);
-                        transaction.setCollectedTime(new Timestamp(System.currentTimeMillis()).toString());
-                    }
-                }
-            }
-        }
-
-        // Update the transaction status in the database once
-        restTemplateCustomizer.updateTransactionStatusInDatabase(transactions);
-    }
-
-    private boolean writeHostFileToServer(String content, ServerDTO server) {
-        JSch jsch = new JSch();
-        Session session = null;
-        ChannelSftp channelSftp = null;
-
-        try {
-            // Load the private key as an InputStream
-            Resource resource = new ClassPathResource(serverProperties.getSshPrivateKey());
-            InputStream inputStream = resource.getInputStream();
-
-            // Convert InputStream to byte array
-            byte[] privateKeyBytes = inputStream.readAllBytes();
-
-            // Add the private key to JSch
-            jsch.addIdentity(serverProperties.getSshPrivateKey(), privateKeyBytes, null, serverProperties.getSshPassPhrase().getBytes());
-
-            logger.info("sshUsername: {}, sshPassword: {}, sshHost: {}, sshPort: {}",
-            		serverProperties.getSshUserName(),serverProperties.getSshPassPhrase(),
-            		server.getServer_ip(),serverProperties.getSshPort());
-
-            String sshHost = server.getServer_ip(); // Use the server_name as the IP address
-            session = jsch.getSession(serverProperties.getSshUserName(), sshHost, serverProperties.getSshPort());
-            session.setConfig("StrictHostKeyChecking", "no");
-            session.connect();
-
-            System.out.println("Connected to the server!");
-
-            // Open an SFTP channel
-            channelSftp = (ChannelSftp) session.openChannel("sftp");
-            channelSftp.connect();
-
-            logger.info("Writing host file content to " + serverProperties.getSshHostPath() + " on server: " + sshHost);
-            // Write the content directly to the remote file
-            try (OutputStream outputStream = channelSftp.put(serverProperties.getSshHostPath())) {
-                outputStream.write(content.getBytes());
-            }
-
-            channelSftp.disconnect();
-            session.disconnect();
-            logger.info("Host file content written to " +  serverProperties.getSshHostPath() + " on server: " + sshHost);
-
-            return true;
-        } catch (JSchException | SftpException | IOException e) {
-        	logger.error("Error While Writing File to Server{}", e);
-            return false;
-        } finally {
-            if (channelSftp != null && channelSftp.isConnected()) {
-                channelSftp.disconnect();
-            }
-            if (session != null && session.isConnected()) {
-                session.disconnect();
-                System.out.println("Disconnected from the server.");
-            }
-        }
-    }
-}
-
-
-
-For the above springboot project do this 
-Create a scheduler and it should run every day midnight (UTC) to call STP .
-Develop a single stored procedure (STP) to delete records from the hpov_s2im_devices_audit and hpov_s2im_transactions tables.
-Configure the STP to delete the records once a week .
+For the above project how the newrelic is work and also it is not printing the newrelic logs like are you here... and also the success message please check and resolve the issue
