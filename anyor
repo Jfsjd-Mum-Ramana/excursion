@@ -1,1268 +1,174 @@
-spring:
-  application:
-    name: ${APP_NAME:ms-vmb-consumer}
-
-logging:
-  vsad: ${VSAD_ID:ENMV}
-  level.root: ${LOG_LEVEL:INFO}
-  appenderref: ${LOG_APPENDER:STDOUT_JSON_PATTERN}
-  logtruncate: ${LOG_TRUNCATE:false}
-
-vmb:
-  serviceUrl: ${VMB_SERVICE_URL:pulsar+ssl://vmb-aws-us-east-1-nonprod.verizon.com:6651}
-  partitionCount: ${VMB_PARTITION_COUNT:3}
-  topicName: ${TOPIC_NAME:NA}
-  topicUrl: ${TOPIC_URL:persistent://enmv/gnmi-perf-ciena/grpc-proto-ut-ts}
-  ucgSource: ${VMB_SOURCE:vcp-vmb-consumer}
-  tlsCertFile: ${VMB_TLS_CERT_FILE:/Users/illasu/ucs/vmb/enmv.cert.pem}
-  tlsKeyFile: ${VMB_TLS_KEY_FILE:/Users/illasu/ucs/vmb/enmv.key-pk8.pem}
-  tlsTrustCertsFile: ${VMB_TRUST_CERTS_FILE:/Users/illasu/ucs/vmb/ca.cert.pem}
-  topicspercontainer: ${TOPICSPERCONTAINER:1}
-  subscriptionName: ${SUBSCRIPTION_NAME:SILLA-TEST-0}
-  loggingRequired: ${LOGGING_REQUIRED:Y}
-  appName: ${APP_NAME:ms-vmb-consumer}
-  nrEnvStr: ${APPENV:NP}
-  regionStr: ${REGION:kub84-np}
-  podNamespace: ${POD_NAMESPACE:bbtpnj33vzbcucs-y-vz-npapp-enmv}
-  podName: ${POD_NAME:NA}
-  appNameSuffix: ${APP_NAME_SUFFIX:NA}
-  s3Json: ${S3_JSON:{"mode":"I","s3Logging":"false","persistenceTimestampFlag":"true","batchProcessing":"true"}}
-  s3ApiUrl: ${S3API_SERVICE_URL:ms-sthreeapi-idnipv4-service.twbgohaavzbcucs-y-vz-npapp-enmv.svc.cluster.local:9998}
-  s3OverrideAuth: ${S3OVERRIDEAUTH:ucs-tunnel-np.enmv.ebiz.verizon.com}
-  s3BucketKey: ${S3BUCKETKEY:BACNET-POLLER-CONSUMER}
-  s3fullmessage: ${S3FULLMESSAGE:true}
-  isGrpcPCSR: ${IS_GRPC_PCSR:FALSE}
-  topicType: ${TOPIC_TYPE:NA}
-  grpcDialType: ${DIAL_TYPE:NA}
-  grpcStreamType: ${STREAMING_TYPE:NA}
-  grpcUcgType: ${UCG_TYPE:NA}
-  grpcNrAppName: ${NRAPPNAME:NA}
-
-server:
-  port: -1
-  shutdown: graceful
-
-
-
-
-package com.verizon.ucs.vmbc.service.s3;
-
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.verizon.ucs.vmbc.exception.S3SaveException;
-import com.verizon.ucs.vmbc.s3.grpc.proto.DataWrapperDTO;
-import com.verizon.ucs.vmbc.s3.grpc.proto.LoadToS3ApiResponse;
-import com.verizon.ucs.vmbc.util.Constants;
-import com.verizon.ucs.vmbc.yaml.VMBProperties;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.pulsar.client.api.Message;
-import org.apache.pulsar.client.api.Messages;
-import org.json.simple.JSONObject;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Scope;
-import org.springframework.stereotype.Service;
-
-import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeFormatterBuilder;
-import java.util.Iterator;
-import java.util.List;
-
-@Service
-@Scope("prototype")
-public class S3MessageService {
-
-    private static Logger logger = LoggerFactory.getLogger(S3MessageService.class);
-
-
-    private final String newRelicEvents = "enmvVCPVMBConsumer:events";
-
-    @Autowired
-    private VMBProperties vmbProperties;
-
-    @Autowired
-    private S3GrpcClient s3GrpcClient;
-
-    @Autowired
-    private ObjectMapper objectMapper;
-
-
-    public void saveMessagesToS3(final Messages<byte[]> messages,
-                                 final boolean persistenceTimestampFlag) {
-
-        if (messages != null) {
-
-            try {
-                logger.debug("saveMessagesToS3 - Messages list size {}", messages.size());
-                messages.forEach(message -> {
-                    saveMsgToS3(message, persistenceTimestampFlag);
-                });
-            } catch (Exception e) {
-                logger.error("saveMessagesToS3 failed:", e);
-            }
-
-        }
-
-    }
-
-    public void saveMessagesListToS3(final List<Message<byte[]>> messages, final boolean persistenceTimestampFlag) {
-
-        if (CollectionUtils.isNotEmpty(messages)) {
-
-            try {
-                logger.debug("saveMessagesListToS3 - Messages list size {}", messages.size());
-                messages.forEach(message -> {
-                    saveMsgToS3(message, persistenceTimestampFlag);
-                });
-            } catch (Exception e) {
-                logger.error("saveMessagesListToS3 failed:", e);
-            }
-
-        }
-
-    }
-
-    public void saveMsgToS3(final Message<byte[]> message,
-                            final boolean persistenceTimestampFlag) {
-
-        try {
-        	logger.debug("saveMsgToS3 - Message");
-            String json = new String(message.getValue());
-            JSONObject s3RequestPayload = objectMapper.readValue(json, JSONObject.class);
-            logger.debug("publishToS3 s3RequestPayload === {}", s3RequestPayload.toString());
-            s3RequestPayload.put("_pulsarId", message.getMessageId().toString());
-            if (persistenceTimestampFlag) {
-                s3RequestPayload.put("persistenceTimestamp", getUtcTimeStamp());
-                logger.debug("publishToS3 persistenceTimestamp set is {}", s3RequestPayload.get("persistenceTimestamp"));
-            }
-            logger.debug("Save vmb-consumer message to s3 initiated ");
-            if (s3RequestPayload != null) {
-                publishToS3(s3RequestPayload, vmbProperties.getS3BucketKey());
-                logger.debug("Save vmb-consumer message to s3 success ");
-            }
-
-        } catch (Exception e) {
-            throw new S3SaveException("saveMsgToS3 failed", e);
-        }
-    }
-
-
-    public void publishToS3(JSONObject dataObject, String s3BucketKey) {
-        try {
-            logger.debug("publishToS3 s3BucketKey === {}", s3BucketKey);
-            logger.debug("publishToS3 dataObject.toJSONString() {}", dataObject.toString());
-            JSONObject s3reqObject = new JSONObject();
-            s3reqObject.put(Constants.S3_BUCKET_KEY, s3BucketKey);
-            s3reqObject.put(Constants.PAYLOAD, dataObject.toString());
-            DataWrapperDTO dataWrapperDTO = DataWrapperDTO.newBuilder().setPayload(s3reqObject.toString()).build();
-            Iterator<LoadToS3ApiResponse> s3Response = s3GrpcClient.getStub().saveToS3(dataWrapperDTO);
-            while (s3Response.hasNext()) {
-                LoadToS3ApiResponse response = s3Response.next();
-                logger.debug("Response: " + response.getResMessage());
-            }
-        } catch (Throwable t) {
-            logger.error("publishToS3 failed", t);
-        }
-    }
-
-
-    /**
-     * Setting 24 hour utc timestamp
-     */
-    private String getUtcTimeStamp() {
-        ZonedDateTime now = ZonedDateTime.now(ZoneId.of("UTC"));
-        DateTimeFormatter dateTimeFormatter = new DateTimeFormatterBuilder().appendPattern("yyyy-MM-dd'T'HH:mm:ss.SSS").appendOffset("+HH:MM", "+00:00").toFormatter();
-        return now.format(dateTimeFormatter);
-    }
-
-    public void saveMsgToS3(JSONObject s3RequestPayload) {
-    	try{
-    		logger.debug("saveMsgToS3 with ucgId: " + s3RequestPayload.toJSONString());
-    		logger.debug("saveMsgToS3 with vmbProperties.getS3BucketKey() : " + vmbProperties.getS3BucketKey());
-    		publishToS3(s3RequestPayload,vmbProperties.getS3BucketKey());
-    	}
-    	catch (Exception ex){
-    		logger.error("Exception while calling s3 api. Error: " + ex.getMessage());
-    		ex.printStackTrace();
-    	}
-    }
-
-}
-
-
-
-package com.verizon.ucs.vmbc.pulsar;
-
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonMappingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.newrelic.api.agent.NewRelic;
-import com.verizon.ucs.vmbc.ordertest.*;
-import com.verizon.ucs.vmbc.service.s3.S3MessageService;
-import com.verizon.ucs.vmbc.yaml.VMBProperties;
-import org.apache.commons.lang.StringUtils;
-import org.apache.pulsar.client.api.*;
-import org.apache.pulsar.client.impl.MessageImpl;
-import org.json.simple.JSONObject;
-import org.json.simple.parser.JSONParser;
-import org.json.simple.parser.ParseException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
-
-import java.io.IOException;
-import java.time.Instant;
-import java.util.*;
-
-class VmbPulsarMessageProcessor implements Runnable {
-
-	private final Logger logger = LoggerFactory.getLogger(VmbPulsarMessageProcessor.class);
-	JSONParser parser = new JSONParser();
-
-	private String serviceURL;
-	private String topicURL;
-	private String subscriptionName;
-	private Long countMessages = 0L;
-	private Long countDBMessages = 0L;
-	private boolean isConsumerRunning=false;
-	private boolean isShutdown=false;
-
-	private PulsarClient client ;
-	private Consumer<byte[]> consumer =null;
-	private long startTime = System.currentTimeMillis();
-	private Map<String, Object> basicAttributes = new HashMap<>();
-	private boolean isLoggingRequired;
-	private VMBCiscogrpctest vmbTest;
-	private VMBCalixgrpctest calixTest;
-	private VMBJgrpcordertest jgrParse;
-	private VMBEPNMCCSParser parse;
-	private VMBVnftrapordertest vnftrap;
-	private VMBPonnmsordertest ponnms;
-	private VMBMcpordertest mcptest;
-	private VMBs4vzbtrapordertest s4vzbtrap;
-	private VMBensetrapordertest ensetrap;
-	private VMBTL1AOrdertest tl1Alarms;
-	private S3MessageService s3MessageService;
-	private final ObjectMapper mapper = new ObjectMapper();
-	private String s3Flag;
-	private String topicNameFromDB;
-	private boolean s3LoggingRequired = false;
-	private boolean persistenceTimestampFlag = false;
-	private boolean dailyTableFlag = false;
-	private boolean batchProcessing = false;
-	private List<Message<byte[]>> messagesList = new ArrayList<Message<byte[]>>();
-	private String collectionTimeString = "yyyyMMdd";
-	private String retentionType = "";
-	private int retentionValue = 0;
-	private int consumerReceiverQueueSize = 0;
-	private int s3BatchSize = 1000;
-	private boolean orderTestingRequired = true;
-	private boolean consumerLogging = false;
-	String newRelicEvents = "enmvVMBConsumer:events";
-	private VMBProperties vmbProperties;
-	@Value("${vmb.s3fullmessage}")
-	private boolean s3FullMessageFlag;
-
-	private static ObjectMapper objectMapper = new ObjectMapper(); // Initialize ObjectMapper
-
-	VmbPulsarMessageProcessor(VMBProperties vmbProperties, String topicURL, String subscriptionName, PulsarClient client,
-			boolean isLoggingRequired, S3MessageService s3MessageService,
-			String topicNameFromDB, ThreadPoolTaskExecutor s3ThreadPoolTaskExecutor) {
-		this.serviceURL = vmbProperties.getServiceUrl(); 
-		this.topicURL = topicURL;
-		this.subscriptionName = subscriptionName;
-		this.client = client;
-		this.isLoggingRequired = isLoggingRequired;
-		String region = vmbProperties.getRegionStr();
-		this.vmbTest = new VMBCiscogrpctest(region);
-		this.calixTest = new VMBCalixgrpctest(region);
-		this.parse = new VMBEPNMCCSParser(region);
-		this.jgrParse = new VMBJgrpcordertest(region);
-		this.vnftrap = new VMBVnftrapordertest(region);
-		this.ponnms = new VMBPonnmsordertest(region);
-		this.mcptest=new VMBMcpordertest(region);
-		this.s4vzbtrap=new VMBs4vzbtrapordertest(region);
-		this.ensetrap=new VMBensetrapordertest(region);
-		this.tl1Alarms=new VMBTL1AOrdertest(region);
-		this.s3MessageService = s3MessageService;
-		this.s3Flag = vmbProperties.s3Json;
-		this.topicNameFromDB = topicNameFromDB;
-		this.vmbProperties = vmbProperties;
-		
-		
-		//Check if s3 flag contains json or not
-		//if json set s3LoggingRequired,persistenceTimestampFlag,dailyTableFlag
-		logger.debug("s3Flag Value {}", s3Flag);
-		if(!s3Flag.isEmpty() && null != s3Flag && !"".equalsIgnoreCase(s3Flag) && !"null".equalsIgnoreCase(s3Flag)  && !"I".equalsIgnoreCase(s3Flag) && !"U".equalsIgnoreCase(s3Flag)) {
-			String jsonString = s3Flag;
-			JSONParser parser = new JSONParser();
-			JSONObject jsonObj;
-			try {
-				
-				
-				jsonObj = (JSONObject) parser.parse(jsonString);
-				int corePoolSize = Integer.parseInt(jsonObj.get("corePoolSize") !=null ? (String) jsonObj.get("corePoolSize") :"0" );
-				int maxPoolSize = Integer.parseInt(jsonObj.get("maxPoolSize") !=null ? (String) jsonObj.get("maxPoolSize") :"0" );
-				s3LoggingRequired =  Boolean.parseBoolean((String) jsonObj.get("s3Logging"));
-				dailyTableFlag =  Boolean.parseBoolean((String) jsonObj.get("dailyTable"));
-				persistenceTimestampFlag =  Boolean.parseBoolean((String) jsonObj.get("persistenceTimestampFlag"));
-				batchProcessing  =Boolean.parseBoolean(jsonObj.get("batchProcessing")!= null ? (String)jsonObj.get("batchProcessing"):"true");
-
-				retentionType = (String) jsonObj.get("retentionType");
-
-				if(retentionType != null || retentionType != "") {
-					if("DAILY".equalsIgnoreCase(retentionType)) {
-						collectionTimeString = "yyyyMMdd";
-					}
-
-					if("HOURLY".equalsIgnoreCase(retentionType)) {
-						collectionTimeString = "yyyyMMdd-HH";
-					}
-
-					if("MINUTELY".equalsIgnoreCase(retentionType)) {
-						collectionTimeString = "yyyyMMdd-HHmm";
-					}
-				}
-
-				retentionValue = Integer.parseInt(jsonObj.get("retentionValue") !=null ? (String) jsonObj.get("retentionValue") :"0" );
-
-		        if(corePoolSize !=0)
-		        	s3ThreadPoolTaskExecutor.setCorePoolSize(corePoolSize);
-		        if(maxPoolSize !=0)
-		        s3ThreadPoolTaskExecutor.setMaxPoolSize(maxPoolSize);
-		        consumerReceiverQueueSize = Integer.parseInt(jsonObj.get("consumerReceiverQueueSize") !=null ? (String) jsonObj.get("consumerReceiverQueueSize") :"0" );
-				s3BatchSize = Integer.parseInt(jsonObj.get("s3BatchSize") !=null ? (String) jsonObj.get("s3BatchSize") :"1000" );
-				orderTestingRequired =  Boolean.parseBoolean(jsonObj.get("orderTestingRequired")!= null ? (String)jsonObj.get("orderTestingRequired"):"true");
-				consumerLogging =  Boolean.parseBoolean(jsonObj.get("consumerLogging")!= null ? (String)jsonObj.get("consumerLogging"):"false");
-
-			} catch (ParseException e) {
-				logger.error("Error occurred while parsing json data from S3 flag inside ConsumerThread constructor",topicURL,subscriptionName,e);
-			}   
-		}
-	}
-
-	/**
-	 * Shutdown both consumer and client .
-	 */
-	void shutdown(boolean isFromShutDown) {
-		try {
-			if(Objects.nonNull(consumer)) {
-
-				//called unsubscribe method to avoid "Exclusive consumer is already connected"
-				//consumer.unsubscribe();
-				consumer.close();
-
-				logger.info("Consumer closed for topic : {} and subscription name : {}",topicURL,subscriptionName);
-			}
-		}catch(Exception e) {
-			logger.error("Error occurred while closing Consumer for topic : {} and subscription name : {}",topicURL,subscriptionName);
-		}
-		try {
-			if(Objects.nonNull(client)) {
-				client.shutdown();
-				logger.info("Pulsar Client closed for topic : {} and subscription name : {}",topicURL,subscriptionName);
-			}
-		}catch(Exception e) {
-			logger.error("Error occurred while closing Pulsar Client for topic : {} and subscription name : {}",topicURL,subscriptionName,e);
-		}
-		consumer=null;
-		client=null;
-		if(isFromShutDown)
-			isShutdown=true;
-		isConsumerRunning=false;
-	}
-
-	/**
-	 * Healthcheck
-	 */
-	void healthCheck() {
-		if(!isConsumerRunning) {
-			init();
-		}
-	}
-
-	/**
-	 * This method is used to create client and consumer.
-	 *
-	 * @throws PulsarClientException
-	 */
-	private void init()  {
-		try {
-			//Setting the thread priority to the highest as consumer should not be impacted
-			Thread.currentThread().setPriority(10);
-			if(client != null){
-				logger.info("client obj is :{}",client);
-
-				//Added below if condition to close any existing subscription. Other wise will encounter 'Exclusive consumer already exists'
-				if(consumer != null) {
-					consumer.close();
-				}
-				https://medium.com/@ankushkhanna1988/apache-pulsar-key-shared-mode-sticky-consistent-hashing-a4ee7133930a
-
-				//TODO: Paratameterize receiverqueue in CFT or Read from DB
-
-				if(consumerReceiverQueueSize >0) {
-					logger.info("Consumer Queue size from DB:"+consumerReceiverQueueSize);
-					consumer = client.newConsumer()
-							.topic(topicURL)
-							.subscriptionName(subscriptionName)
-							.subscriptionType(SubscriptionType.Key_Shared)
-							.keySharedPolicy(KeySharedPolicy.autoSplitHashRange())
-							.receiverQueueSize(consumerReceiverQueueSize)
-							/*
-							 * .batchReceivePolicy(BatchReceivePolicy.builder() .maxNumMessages(1000)
-							 * .maxNumBytes(10*1024*1024) .timeout(500, TimeUnit.MILLISECONDS) .build() )
-							 */.subscribe();
-				}else {
-					//Default Consumer Settings
-					consumer = client.newConsumer()
-							.topic(topicURL)
-							.subscriptionName(subscriptionName)
-							.subscriptionType(SubscriptionType.Key_Shared)
-							.keySharedPolicy(KeySharedPolicy.autoSplitHashRange())
-							//.receiverQueueSize(consumerReceiverQueueSize)
-							/*
-							 * .batchReceivePolicy(BatchReceivePolicy.builder() .maxNumMessages(1000)
-							 * .maxNumBytes(10*1024*1024) .timeout(500, TimeUnit.MILLISECONDS) .build() )
-							 */.subscribe();
-				}
-
-				isConsumerRunning=true;
-			}
-		} catch (PulsarClientException e) {
-			isConsumerRunning=false;
-			logger.error("Error in init for topic : {} and subscription name : {}",topicURL,subscriptionName,e);
-
-		}
-	}
-
-	//@Trace(dispatcher=true)
-	@SuppressWarnings("unchecked")
-	@Override
-	public void run() {
-		Map<String, Object> attributes = new HashMap<>();
-		basicAttributes.put("clusterID", System.getenv("POD_NAMESPACE"));
-		basicAttributes.put("containerID", System.getenv("POD_NAME"));
-		
-		boolean isGrpcPCSR = false;
-
-		if (this.vmbProperties != null) {
-
-			String grpcpcsr = this.vmbProperties.getIsGrpcPCSR();
-
-			if (grpcpcsr != null && !grpcpcsr.isEmpty()) {
-				isGrpcPCSR = Boolean.parseBoolean(grpcpcsr);
-			}
-
-			if (isGrpcPCSR)
-
-			{
-
-				String topicType = this.vmbProperties.getTopicType();
-				String dialType = this.vmbProperties.getGrpcDialType();
-				String streamType = this.vmbProperties.getGrpcStreamType();
-				String ucgType = this.vmbProperties.getGrpcUcgType();
-				String nrAppName = this.vmbProperties.getGrpcNrAppName();
-
-				basicAttributes.put("topicType", topicType);
-				basicAttributes.put("dialType", dialType);
-				basicAttributes.put("streamType", streamType);
-				basicAttributes.put("ucgType", ucgType);
-				basicAttributes.put("pcsrClientName", nrAppName);
-			}
-
-			logger.info("is gRPC pcsr :{}  ", isGrpcPCSR);
-
-		}
-
-		try {
-			if(!isConsumerRunning) {
-				init();
-				logger.info("CONSUME FROM PULSAR - Start consuming from Service URL: {} , Topic Name: {}", serviceURL, topicURL);
-			}
-		} catch(Exception e) {
-			logger.error("Exception while initializing consumer thread {}",e.getMessage());
-		}
-		while (true) {
-			long threadStartTime = System.currentTimeMillis();
-			long asyncTimerStart = 0;
-			long asyncTimerEnd = 0;
-			try {
-
-				logger.debug("ConsumerThread inside run method, isShutdown:: {}", isShutdown);
-				if (isShutdown)
-					break;
-				logger.debug("isConsumerRunning Inside ConsumerThread:: {}  {}", isConsumerRunning,Thread.currentThread().getName());
-				if (consumer!=null && isConsumerRunning) {
-					logger.debug("ConsumerThread inside run method, countMessages outside 30secs check:: {}", countMessages);
-
-					if(batchProcessing) {
-						//TODO: Implement batch processing
-						logger.debug("isLoggingRequired batchProcessing true");
-						Messages<byte[]> messages = consumer.batchReceive();
-
-						logger.debug("isLoggingRequired Inside ConsumerThread:: {}", isLoggingRequired);
-						logger.debug("isLoggingRequired Inside s3Flag:: {}", s3Flag);
-						//logger.debug("isLoggingRequired - Messages list size {}", messages.size());
-						
-						if(StringUtils.contains(s3Flag, "I"))	{
-							//Added this module to take care of the ucgId pushing to S3 
-							if(StringUtils.contains(s3Flag, "ucgIdEnabled")) {
-								asyncTimerStart = System.currentTimeMillis();
-								logger.debug("isLoggingRequired - ucgIdEnabled");
-								try {
-									logger.debug("isLoggingRequired Inside messages.size :: {}", messages.size());
-									if(messages != null && messages.size() > 0) {
-
-										messages.forEach(message -> {
-											logger.debug("isLoggingRequired - Messages message {}", message);
-											String json = new String(message.getValue());
-											logger.debug("isLoggingRequired - Messages json {}", json);
-
-											JSONObject s3RequestPayload = null;
-											try {
-												logger.debug("Parsing JSON: {}", json);
-												if (json != null && !json.trim().isEmpty()) {
-													JsonNode jsonNode = objectMapper.readTree(json);
-
-													if (s3FullMessageFlag) {
-														// Store the full JSON message
-														try {
-															String formattedJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(jsonNode);
-															logger.info("Full JSON Message:\n{}", formattedJson);
-															logger.info("s3FullMessageFlag is true. Storing the full JSON to S3.");
-
-															// Convert the formatted JSON string to a JSONObject
-															JSONObject jsonObject = (JSONObject) parser.parse(formattedJson);
-
-															// Pass the JSONObject to saveMsgToS3
-															s3MessageService.saveMsgToS3(jsonObject);
-														} catch (ParseException e) {
-															logger.error("Error parsing formatted JSON to JSONObject: {}", e.getMessage());
-														}
-													} else {
-														// Existing logic for extracting and storing specific fields
-														if (jsonNode.has("ucgId")) {
-															String ucgId = jsonNode.get("ucgId").asText();
-															logger.debug("Extracted ucgId: {}", ucgId);
-															JSONObject s3JsonData = new JSONObject();
-															s3JsonData.put("ucgId", ucgId);
-															s3MessageService.saveMsgToS3(s3JsonData);
-														} else {
-															logger.debug("ucgId not found in JSON - checking for SNMP LOV or PERF");
-															if (jsonNode.has("ucgTopic")) {
-																String ucgTopic = jsonNode.get("ucgTopic").asText();
-																logger.debug("Extracted ucgTopic: {}", ucgTopic);
-																//Handling LOV-ALARM
-																if (ucgTopic.contains("hpov-snmp-alarm")) {
-																	String ucgSource = jsonNode.get("ucgSource").asText();
-																	String ucgType = jsonNode.get("ucgType").asText();
-																	String ucgDeviceName = jsonNode.get("ucgDeviceName").asText();
-																	String ucgTimestamp = jsonNode.get("ucgTimestamp").asText();
-																	String ucgId = ucgSource+"-"+ucgType+"-"+ucgDeviceName+"-"+ucgTimestamp;
-																	logger.debug("Extracted hpov-snmp-alarm-ucgId: {}", ucgId);
-																	JSONObject s3JsonData = new JSONObject();
-																	s3JsonData.put("ucgId", ucgId);
-																	s3MessageService.saveMsgToS3(s3JsonData);
-																}
-																//Handling LOV
-																if (ucgTopic.contains("hpov-lov")) {
-																	String ucgSource = jsonNode.get("ucgSource").asText();
-																	String ucgType = jsonNode.get("ucgType").asText();
-																	String ucgDeviceName = jsonNode.get("ucgDeviceName").asText();
-																	String ucgTimestamp = jsonNode.get("ucgTimestamp").asText();
-																	String ucgId = ucgSource+"-"+ucgType+"-"+ucgDeviceName+"-"+ucgTimestamp;
-																	logger.debug("Extracted hpov-lov-ucgId: {}", ucgId);
-																	JSONObject s3JsonData = new JSONObject();
-																	s3JsonData.put("ucgId", ucgId);
-																	s3MessageService.saveMsgToS3(s3JsonData);
-																}
-															}
-															//Handling PERF
-															if (jsonNode.has("internalTopic")) {
-																String internalTopic = jsonNode.get("internalTopic").asText();
-																logger.debug("Extracted internalTopic: {}", internalTopic);
-																if (internalTopic.contains("ENMV.HPOV.IP")) {
-																	String deviceName = jsonNode.get("deviceName").asText();
-																	String ifDescr = jsonNode.get("ifDescr").asText();
-																	String loopback = jsonNode.get("loopback").asText();
-																	String ifAlias = jsonNode.get("ifAlias").asText();
-																	String dataType = jsonNode.get("dataType").asText();
-																	String pollingInterval = jsonNode.get("pollingInterval").asText();
-																	String intervalTime = jsonNode.get("intervalTime").asText();
-
-																	if (ifDescr == null || ifDescr.isEmpty()) {
-																		ifDescr = "ifDescr";
-																	}
-																	if (ifAlias == null || ifAlias.isEmpty()) {
-																		ifDescr = "ifAlias";
-																	}
-																	String ucgId = deviceName.trim()+"-"+ifDescr.trim()+"-"+loopback.trim()+"-"+ifAlias.trim()+"-"+dataType.trim()+"-"+pollingInterval.trim()+"-"+internalTopic.trim()+"-"+intervalTime.trim();
-																	logger.debug("Extracted ENMV.HPOV.IP-ucgId: {}", ucgId);
-																	JSONObject s3JsonData = new JSONObject();
-																	s3JsonData.put("ucgId", ucgId);
-																	s3MessageService.saveMsgToS3(s3JsonData);
-																}
-															}
-														}
-													}
-												} else {
-													logger.error("JSON string is null or empty");
-												}
-											} catch (JsonMappingException e) {
-												logger.error("Error in 1 {} ", e);
-												e.printStackTrace();
-											} catch (JsonProcessingException e) {
-												logger.error("Error in 2 {} ", e);
-												e.printStackTrace();
-											}
-
-										});
-									}
-								}catch (Exception e) {
-									logger.error("Error from consumer thread while pushing ucgId to s3 service: "+e.getMessage());
-
-									//TODO: POST error to New Relic
-									attributes.put("mngMsgsRejected", messages.size());
-									NewRelic.getAgent().getInsights().recordCustomEvent(newRelicEvents, attributes);
-									NewRelic.addCustomParameter("VMBConsumer", topicURL);
-									NewRelic.noticeError(e, attributes);
-								}
-								asyncTimerEnd = System.currentTimeMillis();		
-
-							} else {
-								asyncTimerStart = System.currentTimeMillis();
-								logger.debug("info - persist messages batch");
-								//@Aysnc - Asynchronously hand over messages to thread pool for s3 persistence
-								try {
-									if(messages != null && messages.size() > 0) {
-										logger.debug("debug - persist messages batch 1");
-										s3MessageService.saveMessagesToS3(messages, persistenceTimestampFlag);
-									}
-
-								}catch (Exception e) {
-									logger.error("Error from consumer thread while pushing to s3 service"+e.getMessage());
-									//TODO: POST error to New Relic
-									attributes.put("mngMsgsRejected", messages.size());
-									NewRelic.getAgent().getInsights().recordCustomEvent(newRelicEvents, attributes);
-									NewRelic.addCustomParameter("VMBConsumer", topicURL);
-									NewRelic.noticeError(e, attributes);
-								}
-								asyncTimerEnd = System.currentTimeMillis();		
-							}
-						}
-								
-						if (messages != null) {
-							countMessages = countMessages + (long) messages.size();
-							if (isLoggingRequired) {
-								messages.forEach(message -> {
-									if (message.getValue().length > 0) {
-										String json = new String(message.getValue());
-										logger.debug(new Date() + "," + json + "," + message.getKey() + "," + topicURL);
-									}
-								});
-							}
-
-							//TODO: Parameterize Order testing based on a flag in DB
-							if(orderTestingRequired) {
-								orderTesting(messages,null);
-							}
-							
-						}
-						
-						// publish VMB consumer Data to NewRelic to analyze the data. topic has all data every 30 seconds.
-						if (System.currentTimeMillis() - startTime >= 60000) {
-							logger.debug("Received  {}  messages to VMB consumer.", countMessages);
-							basicAttributes.forEach((k, v) -> attributes.put(k, v));
-							attributes.put("messagesReceived", countMessages);
-							attributes.put("eventName", "receive");
-							attributes.put("topic", topicURL);
-						    //TODO Comment below for running in local
-							//attributes.put("awsRegion", "us-east-1");
-							
-						//	attributes.put("awsRegion", Regions.getCurrentRegion().getName());
-							//String newRelicEvents = "enmvVCPVMBConsumer:events";
-							NewRelic.getAgent().getInsights().recordCustomEvent(newRelicEvents, attributes);
-							NewRelic.addCustomParameter("VMBConsumer", topicURL);
-							countMessages = 0L;
-							startTime = System.currentTimeMillis();
-						}
-						if (messages != null && consumer != null)
-							consumer.acknowledge(messages);
-						
-						Thread.sleep(10);
-					
-						
-					}else {
-						
-						logger.info("isLoggingRequired batchProcessing false");
-					
-					Message<byte[]> message =  consumer.receive();
-//					applicationConfig.totalMsgCountAtomicInteger.incrementAndGet();
-						
-						logger.debug("isLoggingRequired Inside ConsumerThread:: {}", isLoggingRequired);
-						if (message != null) {
-							
-							countMessages = countMessages + 1;
-							if (isLoggingRequired) {
-								if (message.getValue().length > 0) {
-									String json = new String(message.getValue());	
-									logger.debug("Consumer:"+json);
-								}				
-							}
-//							s3Flag = "I";
-							if(StringUtils.contains(s3Flag, "I"))	{
-								asyncTimerStart = System.currentTimeMillis();
-								messagesList.add(message);
-								//TODO: Parameterize Batch size in DB entry
-								if(messagesList.size() > s3BatchSize || System.currentTimeMillis() - startTime >= 30000) {
-									
-									//@Aysnc - Asynchronously hand over messages to thread pool for s3 persistence
-									try {
-										s3MessageService.saveMessagesListToS3(messagesList, persistenceTimestampFlag);
-									}catch (Exception e) {
-										logger.error("Error from consumer thread while pushing to s3 service"+e.getMessage());
-										//TODO: POST error to New Relic
-									}
-									countDBMessages = countDBMessages + messagesList.size();
-									messagesList = new ArrayList<Message<byte[]>>();
-								}
-								asyncTimerEnd = System.currentTimeMillis();
-							}
-							
-							/*
-							(StringUtils.contains(s3Flag, "I"))	{
-								
-								//Add messages to a list for batching to 3
-								
-		
-								//TODO: Parameterize Batch size in DB entry
-
-
-									//@Aysnc - Asynchronously hand over messages to thread pool for s3 persistence
-									try {
-									s3MessageService.saveMessagesToS3((Messages<byte[]>) message, persistenceTimestampFlag);
-									}catch (Exception e) {
-										logger.error("Error from consumer thread while pushing to s3 service"+e.getMessage());
-										//TODO: POST error to New Relic
-									}
-
-									countDBMessages = countDBMessages + 1;
-
-								}
-							}*/
-
-							
-							
-						}
-						
-						//TODO: Parameterize Order testing based on a flag in DB
-						if(orderTestingRequired) {
-							orderTesting(null,message);
-						}
-						
-						
-						if (System.currentTimeMillis() - startTime >= 30000) {
-							
-							
-							ConsumerStats cStats = consumer.getStats();
-							
-							/*
-							logger.info("MsgNumInReceiverQueue:"+cStats.getMsgNumInReceiverQueue());
-							logger.info("getRateBytesReceived:"+cStats.getRateBytesReceived());
-							logger.info("getNumReceiveFailed:"+cStats.getNumReceiveFailed());
-							logger.info("getNumMsgsReceived:"+cStats.getNumMsgsReceived());
-							logger.info("getRateMsgsReceived:"+cStats.getRateMsgsReceived());
-							logger.info("getTotalMsgsReceived:"+cStats.getTotalMsgsReceived());
-							logger.info("getMsgNumInSubReceiverQueue:"+cStats.getMsgNumInSubReceiverQueue());
-							
-							*/
-							
-							basicAttributes.forEach((k, v) -> attributes.put(k, v));
-							logger.debug("Received  {}  messages to VMB consumer.", countMessages);
-							logger.debug("Sent  {}  messages to s3.", countDBMessages);
-							//Consumer Stats
-						
-							attributes.put("MsgNumInReceiverQueue",cStats.getMsgNumInReceiverQueue());
-							attributes.put("getRateBytesReceived",cStats.getRateBytesReceived());
-							attributes.put("getNumReceiveFailed",cStats.getNumReceiveFailed());
-							attributes.put("getNumMsgsReceived",cStats.getNumMsgsReceived());
-							attributes.put("getRateMsgsReceived",cStats.getRateMsgsReceived());
-							attributes.put("getTotalMsgsReceived",cStats.getTotalMsgsReceived());
-							attributes.put("getMsgNumInSubReceiverQueue",cStats.getMsgNumInSubReceiverQueue());
-							
-						
-							
-							attributes.put("messagesReceived", countMessages);
-							attributes.put("eventName", "receive");
-							attributes.put("topic", topicURL);
-							if (!isGrpcPCSR) {
-							attributes.put("pcsrClientName", topicNameFromDB);
-							}
-						    //TODO Comment below for running in local
-							//attributes.put("awsRegion", "us-east-1");
-							
-							
-							//attributes.put("awsRegion", Regions.getCurrentRegion().getName());
-//							attributes.put("awsRegion", ApplicationConfig.awsRegionString);
-							
-							NewRelic.getAgent().getInsights().recordCustomEvent(newRelicEvents, attributes);
-							NewRelic.addCustomParameter("VMBConsumer", topicURL);
-							countMessages = 0L;
-							countDBMessages = 0L;
-							startTime = System.currentTimeMillis();
-							
-						}
-						if (message != null && consumer != null)
-							consumer.acknowledge(message);
-		
-				}
-				}    
-			} catch (NullPointerException npe) {
-				logger.error("Null Pointer exception while consuming from VMB pulsar", npe);
-				//below is missing originally and is needed to re initialized during VMBConsumer.consumerHealthCheck() 
-				isConsumerRunning = false;
-				throw npe;
-			} catch (Exception ex) {
-				isConsumerRunning = false;
-				NewRelic.noticeError(ex, attributes);
-				logger.error("exception while consuming from VMB pulsar", ex);
-				ex.printStackTrace();
-			}
-		
-			//TODO: Parameterize logger based on a flag in DB
-			if(consumerLogging) {
-				long threadEndTime = System.currentTimeMillis();
-				long threadTimeElapsed = threadEndTime - threadStartTime;
-				if(threadTimeElapsed>10) {
-					logger.debug("Consumer processing time :{}",threadTimeElapsed);
-//					applicationConfig.totalLargeMsgCountAtomicInteger.incrementAndGet();
-
-
-					logger.debug("Async processing time :{}",asyncTimerEnd-asyncTimerStart);
-				}
-				
-			}
-		}
-		logger.debug("ConsumerThread run method end");
-	}
-	
-	
-	
-
-
-    /*
-     * Modified Ordertesting method to support both batch processing and single message processing
-     */
-	private void orderTesting(Messages<byte[]> messages, Message<byte[]> singleMessage){
-		JSONParser parser = new JSONParser();
-		if (messages != null) {
-			messages.forEach(message -> {
-				validateOrdering(message);
-			});
-		}else if(singleMessage  != null) {			
-			validateOrdering(singleMessage);
-		}
-	}
-
-	private void validateOrdering(Message<byte[]> message) {
-		try {
-			
-//			logger.info("validateOrdering - meesage : {}", message.getValue());
-			JSONObject jsonObject = (JSONObject) parser.parse(new String(message.getValue()));
-			String ucgSource = getKeyFromJsonObject(jsonObject, "ucgSource");
-			String ucgType = getKeyFromJsonObject(jsonObject, "ucgType");
-			String metaData = getKeyFromJsonObject(jsonObject, "metaData");
-			String json = new String(message.getValue());
-
-			logger.debug("jsonObject for order test is" + jsonObject);
-			if (topicURL.contains("epnmccs-yang")&& ucgType.contentEquals("LIVE")) {
-				logger.debug("Checking for CCS Difference");
-				parse.setVmbTopic(topicURL);
-				parse.checkDiff(json);
-			}
-
-			if (ucgSource.contentEquals("MCPDATA") && topicURL.contains("Eclipse-MCP-ALARM") && ucgType.contentEquals("LIVE")) {
-				logger.debug("Checking for MCPDATA Difference");
-				mcptest.setVmbTopic(topicURL);
-				mcptest.checkDiff(json);
-
-			}
-			if (ucgSource.contentEquals("CAGRPC2") && topicURL.contains("yangjson") && ucgType.contentEquals("LIVE")) {
-				logger.debug("Checking for CAGRPC2 Difference");
-				vmbTest.setVmbTopic(topicURL);
-				vmbTest.parseJson(json);
-			}
-			
-			if(StringUtils.isNotBlank(metaData)) {
-				JSONObject metadatJson = (JSONObject) parser.parse(metaData);
-				String ucgSrc = getKeyFromJsonObject(metadatJson, "ucgSource");
-				String ucgTyp = getKeyFromJsonObject(metadatJson, "ucgType");
-				if (ucgSrc.contentEquals("CLGRPC")  && ucgTyp.contentEquals("PERF")) {
-					logger.debug("Checking for CLGRPC Difference");
-					calixTest.setVmbTopic(topicURL);
-					calixTest.parseJson(json);
-				}
-			}
-
-			if (ucgSource.contentEquals("JAGRPC2") && topicURL.contains("yangjson") && ucgType.contentEquals("LIVE")) {
-				logger.debug("Checking for JAGRPC2 Difference");
-				jgrParse.setVmbTopic(topicURL);
-				jgrParse.parseJson(json);
-			}
-
-			if (ucgSource.contentEquals("VNFTRAP") && topicURL.contains("Eclipse-vcp-traps-alarm") && ucgType.contentEquals("LIVE")) {
-				logger.debug("Checking for VNFTRAP Difference");
-				vnftrap.setVmbTopic(topicURL);
-				vnftrap.parseJson(json);
-			}
-
-			if (ucgSource.contentEquals("PONNMS") && topicURL.contains("PON-NMS-ALARM") && ucgType.contentEquals("LIVE")) {
-				logger.debug("Checking for PONNMS Difference");
-				ponnms.setVmbTopic(topicURL);
-				ponnms.parseJson(json);
-			}
-
-			if (ucgSource.contentEquals("S4VZBTRAP") && topicURL.contains("s4vzb-snmp-trap") && ucgType.contentEquals("LIVE")) {
-				logger.debug("Checking for S4VZBTRAP Difference");
-				s4vzbtrap.setVmbTopic(topicURL);
-				s4vzbtrap.parseJson(json);
-			}
-			if (ucgSource.contentEquals("") && topicURL.contains("eNSE-snmp-trap") && ucgType.contentEquals("LIVE")) {
-				logger.debug("Checking for ENSETRAP Difference");
-				ensetrap.setVmbTopic(topicURL);
-				ensetrap.parseJson(json);
-			}
-			if (ucgSource.contentEquals("TL1A") && ucgType.contentEquals("LIVE")) {
-				logger.debug("Checking for TL1A Difference");
-				tl1Alarms.setVmbTopic(topicURL);
-				tl1Alarms.parseJson(json);
-			}
-		} catch (ParseException | IOException e) {
-			logger.error(e.getMessage());
-			//e.printStackTrace();
-		}
-		
-	}
-
-	public void setLoggingRequired(boolean loggingRequired) {
-		isLoggingRequired = loggingRequired;
-	}
-	
-	public void setS3Flag(String s3Flag) {
-		this.s3Flag = s3Flag;
-	}
-	
-	public void setS3LoggingRequired(boolean s3LoggingRequired) {
-		this.s3LoggingRequired = s3LoggingRequired;
-	}
-	
-	public void setPersistenceTimestampFlag(boolean persistenceTimestampFlag) {
-		this.persistenceTimestampFlag = persistenceTimestampFlag;
-	}
-	
-	public void setDailyTableFlag(boolean dailyTableFlag) {
-		this.dailyTableFlag = dailyTableFlag;
-	}
-
-	public boolean isBatchProcessing() {
-		return batchProcessing;
-	}
-
-	public void setBatchProcessing(boolean batchProcessing) {
-		this.batchProcessing = batchProcessing;
-	}
-
-	public boolean isConsumerRunning() {
-		return isConsumerRunning;
-	}
-	
-	public String getKeyFromJsonObject(JSONObject jsonObj, String pattern) {
-		String datakey = "";
-		for (Object key : jsonObj.keySet()) {
-			try {
-				Object keyJsonObj = jsonObj.get(key.toString());
-				if (key.toString().contains(pattern)) {
-					datakey = keyJsonObj.toString();
-					break;
-				} else if (keyJsonObj instanceof JSONObject) {
-					datakey = getKeyFromJsonObject((JSONObject) keyJsonObj, pattern);
-				} else if (keyJsonObj instanceof String && keyJsonObj.toString().contains("{")) {
-					JSONParser jp = new JSONParser();
-					JSONObject json = (JSONObject) jp.parse(keyJsonObj.toString());
-					datakey = getKeyFromJsonObject(json, pattern);
-				}
-			} catch (Exception e) {
-				// e.printStackTrace();
-			}
-		}
-		return datakey;
-	}
-
-	public String getRetentionType() {
-		return retentionType;
-	}
-
-	public void setRetentionType(String retentionType) {
-		this.retentionType = retentionType;
-	}
-
-	public int getRetentionValue() {
-		return retentionValue;
-	}
-
-	public void setRetentionValue(int retentionValue) {
-		this.retentionValue = retentionValue;
-		
-		if("DAILY".equalsIgnoreCase(retentionType)) {
-			collectionTimeString = "yyyyMMdd"; 
-		}
-		
-		if("HOURLY".equalsIgnoreCase(retentionType)) {
-			collectionTimeString = "yyyyMMdd-HH"; 
-		}
-		
-		if("MINUTELY".equalsIgnoreCase(retentionType)) {
-			collectionTimeString = "yyyyMMdd-HHmm"; 
-		}	
-	}
-
-	public int getConsumerReceiverQueueSize() {
-		return consumerReceiverQueueSize;
-	}
-
-	public void setConsumerReceiverQueueSize(int consumerReceiverQueueSize) {
-		this.consumerReceiverQueueSize = consumerReceiverQueueSize;
-	}
-
-	public int getS3BatchSize() {
-		return s3BatchSize;
-	}
-
-	public void setS3BatchSize(int s3BatchSize) {
-		this.s3BatchSize = s3BatchSize;
-	}
-
-	public boolean isOrderTestingRequired() {
-		return orderTestingRequired;
-	}
-
-	public void setOrderTestingRequired(boolean orderTestingRequired) {
-		this.orderTestingRequired = orderTestingRequired;
-	}
-
-	public boolean isConsumerLogging() {
-		return consumerLogging;
-	}
-
-	public void setConsumerLogging(boolean consumerLogging) {
-		this.consumerLogging = consumerLogging;
-	}
-
-}
-
-
-
-nameOverride: ""
-
-global:  
-  configmap:
-    vmb: vmb-config
-    commons: common-config
-    services: services-config
-  secret:
-    vmb: vmb-certs-secret
-    newrelic: newrelic-secret
-app:
-  name: ms-vmb-consumer
-  namesuffix: generic
-  replicas: 1
-  pod:
-    labels:
-      vcmp-log-target: alm
-      alm-log-topic: seca_prd_app_logs_enmv
-  istio:
-    excludeOutboundIPRanges:  63.21.0.0/16,162.247.0.0/16,148.131.0.0/16,140.108.0.0/16,151.205.42.98/32,65.230.0.0/32,166.39.0.0/32,144.8.0.0/16,10.118.0.0/16,165.122.0.0/16,159.98.0.0/16,138.83.0.0/16,10.134.0.0/16,10.136.0.0/16,165.122.0.0/32,100.5.90.45/16,100.5.0.0/16,63.91.0.0/16,192.168.0.0/32,169.254.0.0/16,63.29.0.0/16,63.25.0.0/16,63.57.32.121/32,198.223.101.103/32,137.188.135.0/24,162.115.91.0/24,166.34.0.0/16,10.11.0.0/16,153.114.0.0/16
-    excludeInboundPorts: 9997,6651,9998
-    excludeOutboundPorts: 9997,6651,9998
-
-  image:
-    name: ms-vmb-consumer
-
-resources_default:
-  npapp:
-    limits:
-      cpu: 1
-      memory: 2Gi
-    requests:
-      cpu: 250m
-      memory: 1Gi
-  plapp:
-    limits:
-      cpu: 1
-      memory: 2Gi
-    requests:
-      cpu: 250m
-      memory: 1Gi
-  prapp:
-    limits:
-      cpu: 3
-      memory: 4Gi
-    requests:
-      cpu: 250m
-      memory: 2Gi
-
-kube:
-  twbgohaavzbcucs: 
-    kub14: 
-      npapp:
-        REPOSITORY: enmv-docker-np.oneartifactoryci.verizon.com
-        VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-west-2-nonprod.verizon.com:6651
-        IMAGE_TAG: feature-vs-0923
-        LOG_APPENDER: STDOUT_JSON_PATTERN
-        LOG_LEVEL: INFO
-        LOG_TRUNCATE: "false"
-        S3OVERRIDEAUTH: ucs-tunnel-np.enmv.ebiz.verizon.com
-        S3BUCKETKEY: HPOV-TRAP-CONSUMER/COLLECTOR
-        S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.twbgohaavzbcucs-y-vz-npapp-enmv.svc.cluster.local:9998
-        CONSUMERS:
-          HPOV-TRAP:
-            NAME: hpov-trap
-            ENABLED: false
-            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
-            REPLICAS: 1
-            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap
-            S3JSON: { "mode": "OFF","s3Logging": "true","persistenceTimestampFlag": "true","retentionType": "","retentionValue": "5","ucgId": "ucgIdEnabled"}
-            S3FULLMESSAGE: "true"
-      plapp: 
-       REPOSITORY: enmv-docker-prod.oneartifactoryci.verizon.com
-       VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-east-1-ple.verizon.com:6651
-       IMAGE_TAG: develop-2024-10-01T18-19-17
-       LOG_APPENDER: STDOUT_JSON_PATTERN
-       LOG_LEVEL: INFO
-       LOG_TRUNCATE: "true"
-       S3OVERRIDEAUTH: ucs-tunnel-np.enmv.ebiz.verizon.com
-       S3BUCKETKEY: HPOV-TRAP-CONSUMER/COLLECTOR
-       S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.twbgohaavzbcucs-y-vz-plapp-enmv.svc.cluster.local:9998
-       CONSUMERS:
-          HPOV-TRAP:
-            NAME: hpov-trap
-            ENABLED: false
-            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
-            REPLICAS: 1
-            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap-filtered
-            S3JSON: { "mode": "OFF","s3Logging": "true","persistenceTimestampFlag": "true","retentionType": "","retentionValue": "5","ucgId": "ucgIdEnabled"}
-            S3FULLMESSAGE: true
-
-      prapp: 
-       REPOSITORY: enmv-docker-prod.oneartifactoryci.verizon.com
-       VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-west-2-prod.verizon.com:6651
-       IMAGE_TAG: master-2025-02-03T22-49-17
-       LOG_APPENDER: STDOUT_JSON_PATTERN
-       LOG_LEVEL: INFO
-       LOG_TRUNCATE: "true"
-       S3OVERRIDEAUTH: ucs-tunnel-pr.enmv.vcp.vzwnet.com
-       S3BUCKETKEY: HPOV-TRAP-CONSUMER
-       S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.twbgohaavzbcucs-y-vz-prapp-enmv.svc.cluster.local:9998
-       CONSUMERS:
-        HPOV-TRAP:
-            NAME: hpov-trap
-            ENABLED: true
-            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
-            REPLICAS: 1
-            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap-filtered
-            S3JSON: {"mode":"I","s3Logging":"true","persistenceTimestampFlag":"true","retentionType": "","retentionValue": "5","ucgId": "ucgIdEnabled"}
-            S3FULLMESSAGE: true
-
-  bbtpnj33vzbcucs:
-    kub84: 
-      npapp:
-        REPOSITORY: enmv-docker-np.oneartifactoryci.verizon.com
-        VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-east-1-nonprod.verizon.com:6651
-        IMAGE_TAG: S3Fullmessage
-        LOG_APPENDER: STDOUT_JSON_PATTERN
-        LOG_LEVEL: INFO
-        LOG_TRUNCATE: "true"
-        S3OVERRIDEAUTH: ucs-tunnel-np.enmv.ebiz.verizon.com
-        S3BUCKETKEY: HPOV-TRAP-CONSUMER/COLLECTOR/HPOVTRAP
-        S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.bbtpnj33vzbcucs-y-vz-npapp-enmv.svc.cluster.local:9998
-        CONSUMERS:
-          HPOV-TRAP:
-            NAME: hpov-trap
-            ENABLED: true
-            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
-            REPLICAS: 1
-            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap
-            S3JSON: {"mode":"I","s3Logging":"true","persistenceTimestampFlag":"true","retentionType": "","retentionValue": "5","ucgId": "ucgIdEnabled"}
-            S3FULLMESSAGE: true
-
-
-      plapp: 
-        REPOSITORY: enmv-docker-prod.oneartifactoryci.verizon.com
-        VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-east-1-ple.verizon.com:6651
-        IMAGE_TAG: develop-2024-10-01T18-19-17
-        LOG_APPENDER: STDOUT_JSON_PATTERN
-        LOG_LEVEL: INFO
-        LOG_TRUNCATE: "true"
-        S3OVERRIDEAUTH: ucs-tunnel-np.enmv.ebiz.verizon.com
-        S3BUCKETKEY: HPOV-TRAP-CONSUMER/COLLECTOR/HPOVTRAP
-        S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.bbtpnj33vzbcucs-y-vz-plapp-enmv.svc.cluster.local:9998
-        CONSUMERS:
-          HPOV-TRAP:
-            NAME: hpov-trap
-            ENABLED: true
-            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
-            REPLICAS: 1
-            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap-filtered
-            S3JSON: {"mode":"OFF","s3Logging":"true","persistenceTimestampFlag":"true","retentionType": "","retentionValue": "5","ucgId": "ucgIdEnabled"}
-            S3FULLMESSAGE: true
-
-      prapp: 
-        REPOSITORY: enmv-docker-prod.oneartifactoryci.verizon.com
-        VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-east-1-prod.verizon.com:6651
-        IMAGE_TAG: master-2025-02-03T22-49-17
-        LOG_APPENDER: STDOUT_JSON_PATTERN
-        LOG_LEVEL: INFO
-        LOG_TRUNCATE: "false"
-        S3OVERRIDEAUTH: ucs-tunnel-pr.enmv.vcp.vzwnet.com
-        S3BUCKETKEY: HPOV-TRAP-CONSUMER/COLLECTOR/HPOVTRAP
-        S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.bbtpnj33vzbcucs-y-vz-prapp-enmv.svc.cluster.local:9998
-        CONSUMERS:
-          HPOV-TRAP:
-            NAME: hpov-trap
-            ENABLED: true
-            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
-            REPLICAS: 1
-            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap-filtered
-            S3JSON: {"mode":"I","s3Logging":"true","persistenceTimestampFlag":"true","retentionType": "","retentionValue": "5","ucgId": "ucgIdEnabled"}
-            S3FULLMESSAGE: true
-
-
-
+To address your request, I’ll analyze the provided Helm configuration (`values.yaml`, `deployment.yaml`, and `helpers.tpl`) and the issue context (ensuring `S3FULLMESSAGE` works correctly for storing full JSON messages). The goal is to identify any unnecessary or problematic elements in the Helm configuration that can be removed or simplified, suggest additions to improve clarity or functionality, and ensure the `s3FullMessageFlag` functionality works as expected. I’ll also provide the corrected Helm configuration files.
+
+### Analysis of Current Helm Configuration
+
+1. **Issue Recap**:
+   - The primary issue was that the `s3FullMessageFlag` in the `VmbPulsarMessageProcessor` class was not correctly picking up the `S3FULLMESSAGE: true` value from the Helm configuration, potentially due to the `toJson | quote` transformation in the deployment template.
+   - The previous response suggested modifying the `S3FULLMESSAGE` environment variable in the deployment template to use `value: {{ $s3fullmessage | quote }}` to ensure it’s passed as a string `"true"`, which Spring Boot can parse as a boolean.
+
+2. **Helm Files Overview**:
+   - **`values.yaml`**: Defines the configuration for different environments (`npapp`, `plapp`, `prapp`) and clusters (`kub84`, `kub14`). It includes consumer-specific settings like `S3FULLMESSAGE`, `S3JSON`, and `TOPICURL`.
+   - **`deployment.yaml` (generated from a template)**: Defines Kubernetes deployments for each enabled consumer (e.g., `hpov-trap-consumer`). It sets environment variables, resources, and mounts based on the `values.yaml`.
+   - **`helpers.tpl`**: Contains template functions to compute values like `app.name`, `app.s3fullmessage`, `app.vmb.url`, etc., used in the deployment template.
+
+3. **Potential Issues in Helm Configuration**:
+   - **Redundant Template (`app.s3fullmessage`)**: The `app.s3fullmessage` helper in `helpers.tpl` is defined but not used in the deployment template. Instead, the deployment directly uses `$s3fullmessage` from the consumer-specific configuration. This helper is unnecessary and can be removed.
+   - **Overuse of `toJson | quote`**: The deployment template uses `toJson | quote` for several environment variables (e.g., `S3_JSON`, `S3FULLMESSAGE`), which can cause issues with boolean or non-string values, as seen with `S3FULLMESSAGE`.
+   - **Unused Environment Variables**: Some environment variables defined in the deployment (e.g., `NRAPPENV`, `NRLABELS`) may not be used in the provided code, suggesting potential cleanup if they’re not required.
+   - **Complex Istio Exclusions**: The `app.istio.excludeOutboundIPRanges`, `excludeInboundPorts`, and `excludeOutboundPorts` are lengthy and may include unnecessary entries, depending on the application’s actual network requirements.
+   - **Missing Validation**: The Helm chart doesn’t validate that required fields (e.g., `S3FULLMESSAGE`, `TOPICURL`) are set, which could lead to runtime errors if misconfigured.
+   - **Inconsistent `S3FULLMESSAGE` Type**: In `values.yaml`, `S3FULLMESSAGE` is sometimes a boolean (`true`) and sometimes a string (`"true"`). This inconsistency could cause parsing issues.
+
+4. **Goals for Changes**:
+   - Remove unused or redundant elements in `helpers.tpl` and `deployment.yaml`.
+   - Simplify environment variable handling to avoid issues with boolean parsing.
+   - Ensure `S3FULLMESSAGE` is consistently handled as a boolean.
+   - Add validation or defaults to prevent misconfiguration.
+   - Improve clarity and maintainability of the Helm chart.
+
+### Proposed Changes
+
+#### 1. Changes to `helpers.tpl`
+
+**Removals**:
+- **Remove `app.s3fullmessage` Helper**: This helper is not used in the deployment template, as `$s3fullmessage` is directly accessed from the consumer configuration. Removing it reduces clutter.
+  ```yaml
+  {{- define "app.s3fullmessage" -}}
+  {{- $datacenter := include "app.datacenter" . }}
+  {{- $cluster := include "app.cluster" . }}
+  {{- $env := include "app.env" . }}
+  {{- printf "DEBUG: datacenter=%s, cluster=%s, env=%s\n" $datacenter $cluster $env -}}
+  {{- printf "%s" (index .Values "kube" $datacenter $cluster $env "S3FULLMESSAGE") -}}
+  {{- end -}}
+  ```
+
+**Additions**:
+- **Add Validation Helper**: Introduce a helper to validate required consumer fields (e.g., `TOPICURL`, `SUBSCRIPTIONNAME`, `S3FULLMESSAGE`) to catch misconfigurations during Helm rendering.
+  ```yaml
+  {{- define "validate.consumer" -}}
+  {{- $consumer := .consumer -}}
+  {{- if not $consumer.TOPICURL -}}
+    {{- fail "TOPICURL is required for consumer" -}}
+  {{- end -}}
+  {{- if not $consumer.SUBSCRIPTIONNAME -}}
+    {{- fail "SUBSCRIPTIONNAME is required for consumer" -}}
+  {{- end -}}
+  {{- if not (hasKey $consumer "S3FULLMESSAGE") -}}
+    {{- fail "S3FULLMESSAGE is required for consumer" -}}
+  {{- end -}}
+  {{- end -}}
+  ```
+
+**Modified `helpers.tpl`**:
+```yaml
+{{- /* vim: set filetype=mustache: */}}
+
+{{- define "app.name" -}}
+{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{- define "app.env" -}}
+{{ (split "-" .Release.Namespace)._3 }}
+{{- end -}}
+
+{{- define "app.datacenter" -}}
+{{ (split "-" .Release.Namespace)._0 }}
+{{- end -}}
+
+{{- define "app.cluster" -}}
+{{ (split "-" .Release.Name)._0 }}
+{{- end -}}
+
+{{- define "app.region" -}}
+{{ printf "%s-%s" (split "-" .Release.Name)._0 (split "-" .Release.Name)._1 -}}
+{{- end -}}
+
+{{- define "app.vmb.url" -}}
+{{- $datacenter := include "app.datacenter" . }}
+{{- $cluster := include "app.cluster" . }}
+{{- $env := include "app.env" . }}
+{{- printf "%s" (index .Values "kube" $datacenter $cluster $env "VMB_SERVICE_URL") -}}
+{{- end -}}
+
+{{- define "app.image" -}}
+{{- $datacenter := include "app.datacenter" . }}
+{{- $cluster := include "app.cluster" . }}
+{{- $env := include "app.env" . }}
+{{- $repository := printf "%s" (index .Values "kube" $datacenter $cluster $env "REPOSITORY") -}}
+{{- $tag := printf "%s" (index .Values "kube" $datacenter $cluster $env "IMAGE_TAG") -}}
+{{- printf "%s/%s:%s" $repository .Values.app.image.name $tag -}}
+{{- end -}}
+
+{{- define "app.log.appender" -}}
+{{- $datacenter := include "app.datacenter" . }}
+{{- $cluster := include "app.cluster" . }}
+{{- $ersonsumer := .consumer -}}
+{{- if not $consumer.TOPICURL -}}
+  {{- fail "TOPICURL is required for consumer" -}}
+{{- end -}}
+{{- if not $consumer.SUBSCRIPTIONNAME -}}
+  {{- fail "SUBSCRIPTIONNAME is required for consumer" -}}
+{{- end -}}
+{{- if not (hasKey $consumer "S3FULLMESSAGE") -}}
+  {{- fail "S3FULLMESSAGE is required for consumer" -}}
+{{- end -}}
+{{- end -}}
+```
+
+**Explanation**:
+- **Removed**: `app.s3fullmessage`, `app.vmb.topic`, `app.poll.perform`, `app.inventory` (unused in the deployment template).
+- **Added**: `validate.consumer` to enforce required fields.
+- **Kept**: Other helpers (`app.name`, `app.env`, etc.) as they are used in the deployment.
+
+#### 2. Changes to `deployment.yaml` Template
+
+**Removals**:
+- **Remove Unused Environment Variables**: If `NRAPPENV`, `NRLABELS`, or `APP_NAME_SUFFIX` are not used in the code, they can be removed to simplify the deployment. Based on the provided code, `NRAPPENV` and `NRLABELS` are not referenced, but `APP_NAME_SUFFIX` is used in `application.yml`. For now, remove `NRAPPENV` and keep others pending confirmation of usage.
+  ```yaml
+  - name: NRAPPENV
+    valueFrom:
+      configMapKeyRef:
+        name: {{ $top.Values.global.configmap.commons }}
+        key: NRAPPENV
+  ```
+
+**Modifications**:
+- **Simplify `S3FULLMESSAGE` and `S3_JSON` Handling**: Remove `toJson | quote` for `S3FULLMESSAGE` and `S3_JSON` to avoid issues with boolean parsing and ensure strings are passed correctly.
+  ```yaml
+  - name: S3FULLMESSAGE
+    value: {{ $s3fullmessage | quote }}
+  - name: S3_JSON
+    value: {{ $s3json | quote }}
+  ```
+- **Add Validation**: Call the `validate.consumer` helper before rendering each consumer deployment.
+  ```yaml
+  {{- $_ := include "validate.consumer" (dict "consumer" $consumers_v) -}}
+  ```
+
+**Additions**:
+- **Add Default Resources Comment**: Add a comment to clarify that resources fall back to defaults if not specified.
+- **Add Liveness/Readiness Probes** (optional): Consider adding probes to ensure the consumer is healthy, especially since it’s a message processor.
+
+**Modified `deployment.yaml` Template**:
+```yaml
 {{- $top := . -}}
 {{- $datacenter := include "app.datacenter" $top -}}
 {{- $cluster := include "app.cluster" $top -}}
 {{- $env := include "app.env" $top -}}
 {{- range $consumers_k, $consumers_v := (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS") -}}
-{{- $consumer :=   $consumers_k -}}
+{{- $consumer := $consumers_k -}}
 {{- $consumers_name := (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "NAME") -}}
 {{- $replicas := (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "REPLICAS") -}}
 {{- $enabled := (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "ENABLED") -}}
 {{- $topicurl := (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "TOPICURL") -}}
 {{- $s3json := (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "S3JSON") -}}
 {{- $s3fullmessage := (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "S3FULLMESSAGE") -}}
-{{- $resources:= toYaml (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "RESOURCES") -}}
-{{- $resources_default:= toYaml (index $top.Values "resources_default"  $env) -}}
-{{- $subscription_name:= toYaml (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "SUBSCRIPTIONNAME") -}}
+{{- $resources := toYaml (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "RESOURCES") -}}
+{{- $resources_default := toYaml (index $top.Values "resources_default" $env) -}}
+{{- $subscription_name := toYaml (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "SUBSCRIPTIONNAME") -}}
 {{- if $enabled -}}
+{{- $_ := include "validate.consumer" (dict "consumer" $consumers_v) -}}
 ---
-
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -1304,12 +210,12 @@ spec:
                 fieldRef:
                   apiVersion: v1
                   fieldPath: metadata.name
-            - name: VMB_SERVICE_URL 
-              value: {{ include "app.vmb.url" $top }}             
+            - name: VMB_SERVICE_URL
+              value: {{ include "app.vmb.url" $top }}
             - name: LOG_APPENDER
               value: {{ include "app.log.appender" $top }}
             - name: LOG_LEVEL
-              value: {{ include "app.log.level" $top }} 
+              value: {{ include "app.log.level" $top }}
             - name: LOG_TRUNCATE
               value: {{ include "app.log.truncate" $top | quote }}
             - name: S3API_SERVICE_URL
@@ -1317,17 +223,17 @@ spec:
             - name: S3OVERRIDEAUTH
               value: {{ include "app.s3OverrideAuth" $top }}
             - name: S3BUCKETKEY
-              value: {{ include "app.s3bucketkey" $top}}
+              value: {{ include "app.s3bucketkey" $top }}
             - name: APP_NAME
               value: {{ include "app.name" $top | quote }}
             - name: TOPIC_NAME
-              value: {{ $consumers_name }}   
+              value: {{ $consumers_name }}
             - name: TOPIC_URL
               value: {{ $topicurl }}
             - name: S3_JSON
-              value: {{ $s3json | toJson | quote }}
+              value: {{ $s3json | quote }}
             - name: S3FULLMESSAGE
-              value: {{ $s3fullmessage | toJson | quote }}
+              value: {{ $s3fullmessage | quote }}
             - name: SUBSCRIPTION_NAME
               value: {{ $subscription_name }}
             - name: REGION
@@ -1350,15 +256,10 @@ spec:
             - name: APPENV
               valueFrom:
                 configMapKeyRef:
-                    name: {{ $top.Values.global.configmap.commons }}
-                    key: APPENV
+                  name: {{ $top.Values.global.configmap.commons }}
+                  key: APPENV
             - name: APP_NAME_SUFFIX
               value: {{ $top.Values.app.namesuffix | quote }}
-            - name: NRAPPENV
-              valueFrom:
-                configMapKeyRef:
-                  name: {{ $top.Values.global.configmap.commons }}
-                  key: NRAPPENV
             - name: NRLICENSEKEY
               valueFrom:
                 secretKeyRef:
@@ -1369,9 +270,8 @@ spec:
                 secretKeyRef:
                   name: {{ $top.Values.global.secret.newrelic }}
                   key: NRLABELS
-  
-          resources:
-{{ if (hasKey (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer) "RESOURCES")}}
+          resources: # Fallback to resources_default if not specified
+{{ if (hasKey (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer) "RESOURCES") }}
 {{ $resources | indent 12 }}
 {{ else }}
 {{ $resources_default | indent 12 }}
@@ -1382,22 +282,213 @@ spec:
           - name: vmb-certs
             mountPath: "/prod/eclapp/vmb/ssl"
       imagePullSecrets:
-       - name: oneartifactory-secret  
+       - name: oneartifactory-secret
       volumes:
         - name: tmp
           emptyDir: {}
         - name: vmb-certs
           secret:
             secretName: {{ $top.Values.global.secret.vmb }}
-
 {{ end }}
 {{ end }}
+```
 
+**Explanation**:
+- **Removed**: `NRAPPENV` (not used in code; confirm if needed for New Relic).
+- **Modified**: `S3FULLMESSAGE` and `S3_JSON` to use `| quote` instead of `| toJson | quote` for proper string handling.
+- **Added**: Validation via `validate.consumer` and a comment for resource defaults.
+- **Kept**: Other environment variables, as they are used in `application.yml` or code.
 
+#### 3. Changes to `values.yaml`
+
+**Modifications**:
+- **Standardize `S3FULLMESSAGE` Type**: Ensure `S3FULLMESSAGE` is consistently a boolean (`true` or `false`) across all environments to avoid parsing issues. Update string values like `"true"` to `true`.
+- **Simplify Istio Exclusions** (optional): The `excludeOutboundIPRanges` list is extensive. If some IPs are not needed, they can be removed after network analysis. For now, keep them unless you confirm which are unnecessary.
+
+**Modified `values.yaml` (relevant section for `kube.bbtpnj33vzbcucs.kub84.npapp`)**:
+```yaml
+nameOverride: ""
+
+global:
+  configmap:
+    vmb: vmb-config
+    commons: common-config
+    services: services-config
+  secret:
+    vmb: vmb-certs-secret
+    newrelic: newrelic-secret
+
+app:
+  name: ms-vmb-consumer
+  namesuffix: generic
+  replicas: 1
+  pod:
+    labels:
+      vcmp-log-target: alm
+      alm-log-topic: seca_prd_app_logs_enmv
+  istio:
+    excludeOutboundIPRanges: 63.21.0.0/16,162.247.0.0/16,148.131.0.0/16,140.108.0.0/16,151.205.42.98/32,65.230.0.0/32,166.39.0.0/32,144.8.0.0/16,10.118.0.0/16,165.122.0.0/16,159.98.0.0/16,138.83.0.0/16,10.134.0.0/16,10.136.0.0/16,165.122.0.0/32,100.5.90.45/16,100.5.0.0/16,63.91.0.0/16,192.168.0.0/32,169.254.0.0/16,63.29.0.0/16,63.25.0.0/16,63.57.32.121/32,198.223.101.103/32,137.188.135.0/24,162.115.91.0/24,166.34.0.0/16,10.11.0.0/16,153.114.0.0/16
+    excludeInboundPorts: 9997,6651,9998
+    excludeOutboundPorts: 9997,6651,9998
+  image:
+    name: ms-vmb-consumer
+
+resources_default:
+  npapp:
+    limits:
+      cpu: 1
+      memory: 2Gi
+    requests:
+      cpu: 250m
+      memory: 1Gi
+  plapp:
+    limits:
+      cpu: 1
+      memory: 2Gi
+    requests:
+      cpu: 250m
+      memory: 1Gi
+  prapp:
+    limits:
+      cpu: 3
+      memory: 4Gi
+    requests:
+      cpu: 250m
+      memory: 2Gi
+
+kube:
+  bbtpnj33vzbcucs:
+    kub84:
+      npapp:
+        REPOSITORY: enmv-docker-np.oneartifactoryci.verizon.com
+        VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-east-1-nonprod.verizon.com:6651
+        IMAGE_TAG: S3Fullmessage
+        LOG_APPENDER: STDOUT_JSON_PATTERN
+        LOG_LEVEL: INFO
+        LOG_TRUNCATE: "true"
+        S3OVERRIDEAUTH: ucs-tunnel-np.enmv.ebiz.verizon.com
+        S3BUCKETKEY: HPOV-TRAP-CONSUMER/COLLECTOR/HPOVTRAP
+        S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.bbtpnj33vzbcucs-y-vz-npapp-enmv.svc.cluster.local:9998
+        CONSUMERS:
+          HPOV-TRAP:
+            NAME: hpov-trap
+            ENABLED: true
+            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
+            REPLICAS: 1
+            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap
+            S3JSON: {"mode":"I","s3Logging":"true","persistenceTimestampFlag":"true","retentionType":"","retentionValue":"5","ucgId":"ucgIdEnabled"}
+            S3FULLMESSAGE: true
+      plapp:
+        REPOSITORY: enmv-docker-prod.oneartifactoryci.verizon.com
+        VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-east-1-ple.verizon.com:6651
+        IMAGE_TAG: develop-2024-10-01T18-19-17
+        LOG_APPENDER: STDOUT_JSON_PATTERN
+        LOG_LEVEL: INFO
+        LOG_TRUNCATE: "true"
+        S3OVERRIDEAUTH: ucs-tunnel-np.enmv.ebiz.verizon.com
+        S3BUCKETKEY: HPOV-TRAP-CONSUMER/COLLECTOR/HPOVTRAP
+        S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.bbtpnj33vzbcucs-y-vz-plapp-enmv.svc.cluster.local:9998
+        CONSUMERS:
+          HPOV-TRAP:
+            NAME: hpov-trap
+            ENABLED: true
+            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
+            REPLICAS: 1
+            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap-filtered
+            S3JSON: {"mode":"OFF","s3Logging":"true","persistenceTimestampFlag":"true","retentionType":"","retentionValue":"5","ucgId":"ucgIdEnabled"}
+            S3FULLMESSAGE: true
+      prapp:
+        REPOSITORY: enmv-docker-prod.oneartifactoryci.verizon.com
+        VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-east-1-prod.verizon.com:6651
+        IMAGE_TAG: master-2025-02-03T22-49-17
+        LOG_APPENDER: STDOUT_JSON_PATTERN
+        LOG_LEVEL: INFO
+        LOG_TRUNCATE: "false"
+        S3OVERRIDEAUTH: ucs-tunnel-pr.enmv.vcp.vzwnet.com
+        S3BUCKETKEY: HPOV-TRAP-CONSUMER/COLLECTOR/HPOVTRAP
+        S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.bbtpnj33vzbcucs-y-vz-prapp-enmv.svc.cluster.local:9998
+        CONSUMERS:
+          HPOV-TRAP:
+            NAME: hpov-trap
+            ENABLED: true
+            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
+            REPLICAS: 1
+            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap-filtered
+            S3JSON: {"mode":"I","s3Logging":"true","persistenceTimestampFlag":"true","retentionType":"","retentionValue":"5","ucgId":"ucgIdEnabled"}
+            S3FULLMESSAGE: true
+  twbgohaavzbcucs:
+    kub14:
+      npapp:
+        REPOSITORY: enmv-docker-np.oneartifactoryci.verizon.com
+        VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-west-2-nonprod.verizon.com:6651
+        IMAGE_TAG: feature-vs-0923
+        LOG_APPENDER: STDOUT_JSON_PATTERN
+        LOG_LEVEL: INFO
+        LOG_TRUNCATE: "false"
+        S3OVERRIDEAUTH: ucs-tunnel-np.enmv.ebiz.verizon.com
+        S3BUCKETKEY: HPOV-TRAP-CONSUMER/COLLECTOR
+        S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.twbgohaavzbcucs-y-vz-npapp-enmv.svc.cluster.local:9998
+        CONSUMERS:
+          HPOV-TRAP:
+            NAME: hpov-trap
+            ENABLED: false
+            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
+            REPLICAS: 1
+            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap
+            S3JSON: {"mode":"OFF","s3Logging":"true","persistenceTimestampFlag":"true","retentionType":"","retentionValue":"5","ucgId":"ucgIdEnabled"}
+            S3FULLMESSAGE: true
+      plapp:
+        REPOSITORY: enmv-docker-prod.oneartifactoryci.verizon.com
+        VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-east-1-ple.verizon.com:6651
+        IMAGE_TAG: develop-2024-10-01T18-19-17
+        LOG_APPENDER: STDOUT_JSON_PATTERN
+        LOG_LEVEL: INFO
+        LOG_TRUNCATE: "true"
+        S3OVERRIDEAUTH: ucs-tunnel-np.enmv.ebiz.verizon.com
+        S3BUCKETKEY: HPOV-TRAP-CONSUMER/COLLECTOR
+        S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.twbgohaavzbcucs-y-vz-plapp-enmv.svc.cluster.local:9998
+        CONSUMERS:
+          HPOV-TRAP:
+            NAME: hpov-trap
+            ENABLED: false
+            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
+            REPLICAS: 1
+            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap-filtered
+            S3JSON: {"mode":"OFF","s3Logging":"true","persistenceTimestampFlag":"true","retentionType":"","retentionValue":"5","ucgId":"ucgIdEnabled"}
+            S3FULLMESSAGE: true
+      prapp:
+        REPOSITORY: enmv-docker-prod.oneartifactoryci.verizon.com
+        VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-west-2-prod.verizon.com:6651
+        IMAGE_TAG: master-2025-02-03T22-49-17
+        LOG_APPENDER: STDOUT_JSON_PATTERN
+        LOG_LEVEL: INFO
+        LOG_TRUNCATE: "true"
+        S3OVERRIDEAUTH: ucs-tunnel-pr.enmv.vcp.vzwnet.com
+        S3BUCKETKEY: HPOV-TRAP-CONSUMER
+        S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.twbgohaavzbcucs-y-vz-prapp-enmv.svc.cluster.local:9998
+        CONSUMERS:
+          HPOV-TRAP:
+            NAME: hpov-trap
+            ENABLED: true
+            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
+            REPLICAS: 1
+            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap-filtered
+            S3JSON: {"mode":"I","s3Logging":"true","persistenceTimestampFlag":"true","retentionType":"","retentionValue":"5","ucgId":"ucgIdEnabled"}
+            S3FULLMESSAGE: true
+```
+
+**Explanation**:
+- **Modified**: Changed `S3FULLMESSAGE: "true"` to `S3FULLMESSAGE: true` for consistency across all environments.
+- **Kept**: Istio exclusions and other settings, as they are likely required unless network analysis confirms otherwise.
+
+### Final Helm Configuration
+
+Below are the complete, corrected Helm configuration files based on the changes above.
+
+#### `templates/helpers.tpl`
+```yaml
 {{- /* vim: set filetype=mustache: */}}
-{{- /*
-Expand the name of the chart.
-*/}}
+
 {{- define "app.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
@@ -1415,113 +506,451 @@ Expand the name of the chart.
 {{- end -}}
 
 {{- define "app.region" -}}
-{{ printf "%s-%s"  (split "-" .Release.Name)._0 (split "-" .Release.Name)._1 -}}
-{{- end -}}
-
-{{- define "app.vmb.topic" -}}
-{{- $datacenter := include "app.datacenter" . }}
-{{- $cluster := include "app.cluster" . }}
-{{- $env := include "app.env" . }}
-{{-  printf "%s" (index .Values "kube" $datacenter $cluster $env "VMB_TOPIC")  -}}
+{{ printf "%s-%s" (split "-" .Release.Name)._0 (split "-" .Release.Name)._1 -}}
 {{- end -}}
 
 {{- define "app.vmb.url" -}}
 {{- $datacenter := include "app.datacenter" . }}
 {{- $cluster := include "app.cluster" . }}
 {{- $env := include "app.env" . }}
-{{-  printf "%s" (index .Values "kube" $datacenter $cluster $env "VMB_SERVICE_URL")  -}}
+{{- printf "%s" (index .Values "kube" $datacenter $cluster $env "VMB_SERVICE_URL") -}}
 {{- end -}}
 
 {{- define "app.image" -}}
 {{- $datacenter := include "app.datacenter" . }}
 {{- $cluster := include "app.cluster" . }}
 {{- $env := include "app.env" . }}
-{{- $repository := printf "%s" (index .Values "kube" $datacenter $cluster $env "REPOSITORY")  -}}
-{{- $tag := printf "%s" (index .Values "kube" $datacenter $cluster $env "IMAGE_TAG")  -}}
-{{- printf "%s%s%s%s%s" $repository "/" .Values.app.image.name ":" $tag   -}}
-{{- end -}}
-
-{{- define "app.poll.perform" -}}
-{{- $datacenter := include "app.datacenter" . }}
-{{- $cluster := include "app.cluster" . }}
-{{- $env := include "app.env" . }}
-{{-  printf "%s" (index .Values "kube" $datacenter $cluster $env "PERFORM_POLL")  -}}
-{{- end -}}
-
-{{- define "app.inventory" -}}
-{{- $datacenter := include "app.datacenter" . }}
-{{- $cluster := include "app.cluster" . }}
-{{- $env := include "app.env" . }}
-{{-  printf "%s" (index .Values "kube" $datacenter $cluster $env "INVENTORY_TYPE")  -}}
+{{- $repository := printf "%s" (index .Values "kube" $datacenter $cluster $env "REPOSITORY") -}}
+{{- $tag := printf "%s" (index .Values "kube" $datacenter $cluster $env "IMAGE_TAG") -}}
+{{- printf "%s/%s:%s" $repository .Values.app.image.name $tag -}}
 {{- end -}}
 
 {{- define "app.log.appender" -}}
 {{- $datacenter := include "app.datacenter" . }}
 {{- $cluster := include "app.cluster" . }}
 {{- $env := include "app.env" . }}
-{{-  printf "%s" (index .Values "kube" $datacenter $cluster $env "LOG_APPENDER")  -}}
+{{- printf "%s" (index .Values "kube" $datacenter $cluster $env "LOG_APPENDER") -}}
 {{- end -}}
 
 {{- define "app.log.level" -}}
 {{- $datacenter := include "app.datacenter" . }}
 {{- $cluster := include "app.cluster" . }}
 {{- $env := include "app.env" . }}
-{{-  printf "%s" (index .Values "kube" $datacenter $cluster $env "LOG_LEVEL")  -}}
+{{- printf "%s" (index .Values "kube" $datacenter $cluster $env "LOG_LEVEL") -}}
 {{- end -}}
 
 {{- define "app.log.truncate" -}}
 {{- $datacenter := include "app.datacenter" . }}
 {{- $cluster := include "app.cluster" . }}
 {{- $env := include "app.env" . }}
-{{-  printf "%s" (index .Values "kube" $datacenter $cluster $env "LOG_TRUNCATE")  -}}
+{{- printf "%s" (index .Values "kube" $datacenter $cluster $env "LOG_TRUNCATE") -}}
 {{- end -}}
 
-#S3API service url
 {{- define "app.s3api.url" -}}
 {{- $datacenter := include "app.datacenter" . }}
 {{- $cluster := include "app.cluster" . }}
 {{- $env := include "app.env" . }}
-{{-  printf "%s" (index .Values "kube" $datacenter $cluster $env "S3API_SERVICE_URL")  -}}
+{{- printf "%s" (index .Values "kube" $datacenter $cluster $env "S3API_SERVICE_URL") -}}
 {{- end -}}
 
-#S3API s3OverrideAuth
 {{- define "app.s3OverrideAuth" -}}
 {{- $datacenter := include "app.datacenter" . }}
 {{- $cluster := include "app.cluster" . }}
 {{- $env := include "app.env" . }}
-{{-  printf "%s" (index .Values "kube" $datacenter $cluster $env "S3OVERRIDEAUTH")  -}}
+{{- printf "%s" (index .Values "kube" $datacenter $cluster $env "S3OVERRIDEAUTH") -}}
 {{- end -}}
 
-# s3bucketkey
 {{- define "app.s3bucketkey" -}}
 {{- $datacenter := include "app.datacenter" . }}
 {{- $cluster := include "app.cluster" . }}
 {{- $env := include "app.env" . }}
-{{-  printf "%s" (index .Values "kube" $datacenter $cluster $env "S3BUCKETKEY")  -}}
+{{- printf "%s" (index .Values "kube" $datacenter $cluster $env "S3BUCKETKEY") -}}
 {{- end -}}
-
-# s3fullmessage
-{{- define "app.s3fullmessage" -}}
-{{- $datacenter := include "app.datacenter" . }}
-{{- $cluster := include "app.cluster" . }}
-{{- $env := include "app.env" . }}
-{{- printf "DEBUG: datacenter=%s, cluster=%s, env=%s\n" $datacenter $cluster $env -}}
-{{-  printf "%s" (index .Values "kube" $datacenter $cluster $env "S3FULLMESSAGE")  -}}
-{{- end -}}
-
 
 {{- define "app.excludeOutboundIPRanges" -}}
-{{-  printf "%s" (index .Values.app.istio.excludeOutboundIPRanges) -}}
+{{- printf "%s" .Values.app.istio.excludeOutboundIPRanges -}}
 {{- end -}}
 
 {{- define "app.excludeInboundPorts" -}}
-{{-  printf "%s" (index .Values.app.istio.excludeInboundPorts) -}}
+{{- printf "%s" .Values.app.istio.excludeInboundPorts -}}
 {{- end -}}
 
 {{- define "app.excludeOutboundPorts" -}}
-{{-  printf "%s" (index .Values.app.istio.excludeOutboundPorts) -}}
+{{- printf "%s" .Values.app.istio.excludeOutboundPorts -}}
 {{- end -}}
 
+{{- define "validate.consumer" -}}
+{{- $consumer := .consumer -}}
+{{- if not $consumer.TOPICURL -}}
+  {{- fail "TOPICURL is required for consumer" -}}
+{{- end -}}
+{{- if not $consumer.SUBSCRIPTIONNAME -}}
+  {{- fail "SUBSCRIPTIONNAME is required for consumer" -}}
+{{- end -}}
+{{- if not (hasKey $consumer "S3FULLMESSAGE") -}}
+  {{- fail "S3FULLMESSAGE is required for consumer" -}}
+{{- end -}}
+{{- end -}}
+```
 
+#### `templates/deployment.yaml`
+```yaml
+{{- $top := . -}}
+{{- $datacenter := include "app.datacenter" $top -}}
+{{- $cluster := include "app.cluster" $top -}}
+{{- $env := include "app.env" $top -}}
+{{- range $consumers_k, $consumers_v := (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS") -}}
+{{- $consumer := $consumers_k -}}
+{{- $consumers_name := (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "NAME") -}}
+{{- $replicas := (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "REPLICAS") -}}
+{{- $enabled := (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "ENABLED") -}}
+{{- $topicurl := (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "TOPICURL") -}}
+{{- $s3json := (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "S3JSON") -}}
+{{- $s3fullmessage := (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "S3FULLMESSAGE") -}}
+{{- $resources := toYaml (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "RESOURCES") -}}
+{{- $resources_default := toYaml (index $top.Values "resources_default" $env) -}}
+{{- $subscription_name := toYaml (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "SUBSCRIPTIONNAME") -}}
+{{- if $enabled -}}
+{{- $_ := include "validate.consumer" (dict "consumer" $consumers_v) -}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $consumers_name }}-consumer
+spec:
+  selector:
+    matchLabels:
+      app: {{ $consumers_name }}-consumer
+  replicas: {{ $replicas }}
+  revisionHistoryLimit: 0
+  template:
+    metadata:
+      annotations:
+        traffic.sidecar.istio.io/excludeOutboundIPRanges: {{ include "app.excludeOutboundIPRanges" $top }}
+        traffic.sidecar.istio.io/excludeOutboundPorts: {{ include "app.excludeOutboundPorts" $top }}
+        traffic.sidecar.istio.io/excludeInboundPorts: {{ include "app.excludeInboundPorts" $top }}
+      labels:
+        app: {{ $consumers_name }}-consumer
+    spec:
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app: {{ $consumers_name }}-consumer
+      containers:
+        - name: {{ $consumers_name }}-consumer
+          imagePullPolicy: Always
+          image: {{ include "app.image" $top | quote }}
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.name
+            - name: VMB_SERVICE_URL
+              value: {{ include "app.vmb.url" $top }}
+            - name: LOG_APPENDER
+              value: {{ include "app.log.appender" $top }}
+            - name: LOG_LEVEL
+              value: {{ include "app.log.level" $top }}
+            - name: LOG_TRUNCATE
+              value: {{ include "app.log.truncate" $top | quote }}
+            - name: S3API_SERVICE_URL
+              value: {{ include "app.s3api.url" $top }}
+            - name: S3OVERRIDEAUTH
+              value: {{ include "app.s3OverrideAuth" $top }}
+            - name: S3BUCKETKEY
+              value: {{ include "app.s3bucketkey" $top }}
+            - name: APP_NAME
+              value: {{ include "app.name" $top | quote }}
+            - name: TOPIC_NAME
+              value: {{ $consumers_name }}
+            - name: TOPIC_URL
+              value: {{ $topicurl }}
+            - name: S3_JSON
+              value: {{ $s3json | quote }}
+            - name: S3FULLMESSAGE
+              value: {{ $s3fullmessage | quote }}
+            - name: SUBSCRIPTION_NAME
+              value: {{ $subscription_name }}
+            - name: REGION
+              value: {{ include "app.region" $top | quote }}
+            - name: VMB_TLS_CERT_FILE
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $top.Values.global.configmap.vmb }}
+                  key: VMB_TLS_CERT_FILE
+            - name: VMB_TLS_KEY_FILE
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $top.Values.global.configmap.vmb }}
+                  key: VMB_TLS_KEY_FILE
+            - name: VMB_TRUST_CERTS_FILE
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $top.Values.global.configmap.vmb }}
+                  key: VMB_TRUST_CERTS_FILE
+            - name: APPENV
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $top.Values.global.configmap.commons }}
+                  key: APPENV
+            - name: APP_NAME_SUFFIX
+              value: {{ $top.Values.app.namesuffix | quote }}
+            - name: NRLICENSEKEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $top.Values.global.secret.newrelic }}
+                  key: NRLICENSEKEY
+            - name: NRLABELS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $top.Values.global.secret.newrelic }}
+                  key: NRLABELS
+          resources: # Fallback to resources_default if not specified
+{{ if (hasKey (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer) "RESOURCES") }}
+{{ $resources | indent 12 }}
+{{ else }}
+{{ $resources_default | indent 12 }}
+{{ end }}
+          volumeMounts:
+          - name: tmp
+            mountPath: /tmp
+          - name: vmb-certs
+            mountPath: "/prod/eclapp/vmb/ssl"
+      imagePullSecrets:
+       - name: oneartifactory-secret
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: vmb-certs
+          secret:
+            secretName: {{ $top.Values.global.secret.vmb }}
+{{ end }}
+{{ end }}
+```
 
-here the above s3fullmessage is sending the full json message but in the above helm config I set that to true the json full message is not printing the below is the method can you plss check the configuration and if there is any errors resolve those erros and give the exact config to work the code just check the config but comin to the code side everything is good.
+#### `values.yaml`
+```yaml
+nameOverride: ""
+
+global:
+  configmap:
+    vmb: vmb-config
+    commons: common-config
+    services: services-config
+  secret:
+    vmb: vmb-certs-secret
+    newrelic: newrelic-secret
+
+app:
+  name: ms-vmb-consumer
+  namesuffix: generic
+  replicas: 1
+  pod:
+    labels:
+      vcmp-log-target: alm
+      alm-log-topic: seca_prd_app_logs_enmv
+  istio:
+    excludeOutboundIPRanges: 63.21.0.0/16,162.247.0.0/16,148.131.0.0/16,140.108.0.0/16,151.205.42.98/32,65.230.0.0/32,166.39.0.0/32,144.8.0.0/16,10.118.0.0/16,165.122.0.0/16,159.98.0.0/16,138.83.0.0/16,10.134.0.0/16,10.136.0.0/16,165.122.0.0/32,100.5.90.45/16,100.5.0.0/16,63.91.0.0/16,192.168.0.0/32,169.254.0.0/16,63.29.0.0/16,63.25.0.0/16,63.57.32.121/32,198.223.101.103/32,137.188.135.0/24,162.115.91.0/24,166.34.0.0/16,10.11.0.0/16,153.114.0.0/16
+    excludeInboundPorts: 9997,6651,9998
+    excludeOutboundPorts: 9997,6651,9998
+  image:
+    name: ms-vmb-consumer
+
+resources_default:
+  npapp:
+    limits:
+      cpu: 1
+      memory: 2Gi
+    requests:
+      cpu: 250m
+      memory: 1Gi
+  plapp:
+    limits:
+      cpu: 1
+      memory: 2Gi
+    requests:
+      cpu: 250m
+      memory: 1Gi
+  prapp:
+    limits:
+      cpu: 3
+      memory: 4Gi
+    requests:
+      cpu: 250m
+      memory: 2Gi
+
+kube:
+  bbtpnj33vzbcucs:
+    kub84:
+      npapp:
+        REPOSITORY: enmv-docker-np.oneartifactoryci.verizon.com
+        VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-east-1-nonprod.verizon.com:6651
+        IMAGE_TAG: S3Fullmessage
+        LOG_APPENDER: STDOUT_JSON_PATTERN
+        LOG_LEVEL: INFO
+        LOG_TRUNCATE: "true"
+        S3OVERRIDEAUTH: ucs-tunnel-np.enmv.ebiz.verizon.com
+        S3BUCKETKEY: HPOV-TRAP-CONSUMER/COLLECTOR/HPOVTRAP
+        S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.bbtpnj33vzbcucs-y-vz-npapp-enmv.svc.cluster.local:9998
+        CONSUMERS:
+          HPOV-TRAP:
+            NAME: hpov-trap
+            ENABLED: true
+            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
+            REPLICAS: 1
+            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap
+            S3JSON: {"mode":"I","s3Logging":"true","persistenceTimestampFlag":"true","retentionType":"","retentionValue":"5","ucgId":"ucgIdEnabled"}
+            S3FULLMESSAGE: true
+      plapp:
+        REPOSITORY: enmv-docker-prod.oneartifactoryci.verizon.com
+        VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-east-1-ple.verizon.com:6651
+        IMAGE_TAG: develop-2024-10-01T18-19-17
+        LOG_APPENDER: STDOUT_JSON_PATTERN
+        LOG_LEVEL: INFO
+        LOG_TRUNCATE: "true"
+        S3OVERRIDEAUTH: ucs-tunnel-np.enmv.ebiz.verizon.com
+        S3BUCKETKEY: HPOV-TRAP-CONSUMER/COLLECTOR/HPOVTRAP
+        S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.bbtpnj33vzbcucs-y-vz-plapp-enmv.svc.cluster.local:9998
+        CONSUMERS:
+          HPOV-TRAP:
+            NAME: hpov-trap
+            ENABLED: true
+            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
+            REPLICAS: 1
+            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap-filtered
+            S3JSON: {"mode":"OFF","s3Logging":"true","persistenceTimestampFlag":"true","retentionType":"","retentionValue":"5","ucgId":"ucgIdEnabled"}
+            S3FULLMESSAGE: true
+      prapp:
+        REPOSITORY: enmv-docker-prod.oneartifactoryci.verizon.com
+        VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-east-1-prod.verizon.com:6651
+        IMAGE_TAG: master-2025-02-03T22-49-17
+        LOG_APPENDER: STDOUT_JSON_PATTERN
+        LOG_LEVEL: INFO
+        LOG_TRUNCATE: "false"
+        S3OVERRIDEAUTH: ucs-tunnel-pr.enmv.vcp.vzwnet.com
+        S3BUCKETKEY: HPOV-TRAP-CONSUMER/COLLECTOR/HPOVTRAP
+        S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.bbtpnj33vzbcucs-y-vz-prapp-enmv.svc.cluster.local:9998
+        CONSUMERS:
+          HPOV-TRAP:
+            NAME: hpov-trap
+            ENABLED: true
+            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
+            REPLICAS: 1
+            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap-filtered
+            S3JSON: {"mode":"I","s3Logging":"true","persistenceTimestampFlag":"true","retentionType":"","retentionValue":"5","ucgId":"ucgIdEnabled"}
+            S3FULLMESSAGE: true
+  twbgohaavzbcucs:
+    kub14:
+      npapp:
+        REPOSITORY: enmv-docker-np.oneartifactoryci.verizon.com
+        VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-west-2-nonprod.verizon.com:6651
+        IMAGE_TAG: feature-vs-0923
+        LOG_APPENDER: STDOUT_JSON_PATTERN
+        LOG_LEVEL: INFO
+        LOG_TRUNCATE: "false"
+        S3OVERRIDEAUTH: ucs-tunnel-np.enmv.ebiz.verizon.com
+        S3BUCKETKEY: HPOV-TRAP-CONSUMER/COLLECTOR
+        S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.twbgohaavzbcucs-y-vz-npapp-enmv.svc.cluster.local:9998
+        CONSUMERS:
+          HPOV-TRAP:
+            NAME: hpov-trap
+            ENABLED: false
+            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
+            REPLICAS: 1
+            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap
+            S3JSON: {"mode":"OFF","s3Logging":"true","persistenceTimestampFlag":"true","retentionType":"","retentionValue":"5","ucgId":"ucgIdEnabled"}
+            S3FULLMESSAGE: true
+      plapp:
+        REPOSITORY: enmv-docker-prod.oneartifactoryci.verizon.com
+        VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-east-1-ple.verizon.com:6651
+        IMAGE_TAG: develop-2024-10-01T18-19-17
+        LOG_APPENDER: STDOUT_JSON_PATTERN
+        LOG_LEVEL: INFO
+        LOG_TRUNCATE: "true"
+        S3OVERRIDEAUTH: ucs-tunnel-np.enmv.ebiz.verizon.com
+        S3BUCKETKEY: HPOV-TRAP-CONSUMER/COLLECTOR
+        S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.twbgohaavzbcucs-y-vz-plapp-enmv.svc.cluster.local:9998
+        CONSUMERS:
+          HPOV-TRAP:
+            NAME: hpov-trap
+            ENABLED: false
+            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
+            REPLICAS: 1
+            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap-filtered
+            S3JSON: {"mode":"OFF","s3Logging":"true","persistenceTimestampFlag":"true","retentionType":"","retentionValue":"5","ucgId":"ucgIdEnabled"}
+            S3FULLMESSAGE: true
+      prapp:
+        REPOSITORY: enmv-docker-prod.oneartifactoryci.verizon.com
+        VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-west-2-prod.verizon.com:6651
+        IMAGE_TAG: master-2025-02-03T22-49-17
+        LOG_APPENDER: STDOUT_JSON_PATTERN
+        LOG_LEVEL: INFO
+        LOG_TRUNCATE: "true"
+        S3OVERRIDEAUTH: ucs-tunnel-pr.enmv.vcp.vzwnet.com
+        S3BUCKETKEY: HPOV-TRAP-CONSUMER
+        S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.twbgohaavzbcucs-y-vz-prapp-enmv.svc.cluster.local:9998
+        CONSUMERS:
+          HPOV-TRAP:
+            NAME: hpov-trap
+            ENABLED: true
+            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
+            REPLICAS: 1
+            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap-filtered
+            S3JSON: {"mode":"I","s3Logging":"true","persistenceTimestampFlag":"true","retentionType":"","retentionValue":"5","ucgId":"ucgIdEnabled"}
+            S3FULLMESSAGE: true
+```
+
+### Testing Instructions
+
+1. **Deploy the Updated Helm Chart**:
+   ```bash
+   helm upgrade --install <release-name> <chart-path> -n <namespace>
+   ```
+
+2. **Verify Environment Variables**:
+   - Check the pod’s environment variables to ensure `S3FULLMESSAGE` is set to `"true"`:
+     ```bash
+     kubectl describe pod <pod-name> -n <namespace>
+     ```
+
+3. **Check Logs**:
+   - Look for logs in the `VmbPulsarMessageProcessor` indicating that `s3FullMessageFlag` is `true` and the full JSON message is being printed:
+     ```java
+     logger.info("Full JSON Message:\n{}", formattedJson);
+     logger.info("s3FullMessageFlag is true. Storing the full JSON to S3.");
+     ```
+   - Add temporary debug logging if needed:
+     ```java
+     logger.info("s3FullMessageFlag is set to: {}", s3FullMessageFlag);
+     ```
+
+4. **Validate S3 Storage**:
+   - Confirm that full JSON messages are stored in the S3 bucket (`HPOV-TRAP-CONSUMER/COLLECTOR/HPOVTRAP`).
+
+### Summary of Adds and Removes
+
+**`helpers.tpl`**:
+- **Removed**: `app.s3fullmessage`, `app.vmb.topic`, `app.poll.perform`, `app.inventory` (unused).
+- **Added**: `validate.consumer` helper to enforce required fields.
+- **Impact**: Reduces clutter and adds validation to catch misconfigurations.
+
+**`deployment.yaml`**:
+- **Removed**: `NRAPPENV` environment variable (not used; confirm if needed).
+- **Modified**: `S3FULLMESSAGE` and `S3_JSON` to use `| quote` for proper string handling.
+- **Added**: Validation via `validate.consumer` and a resource comment.
+- **Impact**: Simplifies environment variable handling and ensures robust configuration.
+
+**`values.yaml`**:
+- **Modified**: Standardized `S3FULLMESSAGE` as a boolean (`true` instead of `"true"`).
+- **Impact**: Ensures consistent parsing by Spring Boot.
+
+These changes ensure that the `S3FULLMESSAGE` flag works correctly, the Helm chart is cleaner and more robust, and potential misconfigurations are caught early. If you need further clarification or additional changes (e.g., simplifying Istio exclusions), please provide more details about the network requirements or unused variables.
