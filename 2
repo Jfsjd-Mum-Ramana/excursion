@@ -1,190 +1,434 @@
-Got it! I'll modify the implementation to ensure that all configurable values, such as database credentials, are read from a YAML file instead of being hardcoded.
-
-
+{{- $top := . -}}
+{{- $datacenter := include "app.datacenter" $top -}}
+{{- $cluster := include "app.cluster" $top -}}
+{{- $env := include "app.env" $top -}}
+{{- range $consumers_k, $consumers_v := (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS") -}}
+{{- $consumer :=   $consumers_k -}}
+{{- $consumers_name := (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "NAME") -}}
+{{- $replicas := (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "REPLICAS") -}}
+{{- $enabled := (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "ENABLED") -}}
+{{- $topicurl := (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "TOPICURL") -}}
+{{- $s3json := (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "S3JSON") -}}
+{{- $resources:= toYaml (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "RESOURCES") -}}
+{{- $resources_default:= toYaml (index $top.Values "resources_default"  $env) -}}
+{{- $subscription_name:= toYaml (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "SUBSCRIPTIONNAME") -}}
+{{- if $enabled -}}
 ---
 
-Step 1: Update PostgreSQL Function
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $consumers_name }}-consumer
+spec:
+  selector:
+    matchLabels:
+      app: {{ $consumers_name }}-consumer
+  replicas: {{ $replicas }}
+  revisionHistoryLimit: 0
+  template:
+    metadata:
+      annotations:
+        traffic.sidecar.istio.io/excludeOutboundIPRanges: {{ include "app.excludeOutboundIPRanges" $top }}
+        traffic.sidecar.istio.io/excludeOutboundPorts: {{ include "app.excludeOutboundPorts" $top }}
+        traffic.sidecar.istio.io/excludeInboundPorts: {{ include "app.excludeInboundPorts" $top }}
+      labels:
+        app: {{ $consumers_name }}-consumer
+    spec:
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app: {{ $consumers_name }}-consumer
+      containers:
+        - name: {{ $consumers_name }}-consumer
+          imagePullPolicy: Always
+          image: {{ include "app.image" $top | quote }}
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.name
+            - name: VMB_SERVICE_URL 
+              value: {{ include "app.vmb.url" $top }}             
+            - name: LOG_APPENDER
+              value: {{ include "app.log.appender" $top }}
+            - name: LOG_LEVEL
+              value: {{ include "app.log.level" $top }} 
+            - name: LOG_TRUNCATE
+              value: {{ include "app.log.truncate" $top | quote }}
+            - name: S3API_SERVICE_URL
+              value: {{ include "app.s3api.url" $top }}
+            - name: S3OVERRIDEAUTH
+              value: {{ include "app.s3OverrideAuth" $top }}
+            - name: S3BUCKETKEY
+              value: {{ include "app.s3bucketkey" $top}}
+            - name: APP_NAME
+              value: {{ include "app.name" $top | quote }}
+            - name: TOPIC_NAME
+              value: {{ $consumers_name }}   
+            - name: TOPIC_URL
+              value: {{ $topicurl }}
+            - name: S3_JSON
+              value: {{ $s3json | toJson | quote }}
+            - name: SUBSCRIPTION_NAME
+              value: {{ $subscription_name }}
+            - name: REGION
+              value: {{ include "app.region" $top | quote }}
+            - name: VMB_TLS_CERT_FILE
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $top.Values.global.configmap.vmb }}
+                  key: VMB_TLS_CERT_FILE
+            - name: VMB_TLS_KEY_FILE
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $top.Values.global.configmap.vmb }}
+                  key: VMB_TLS_KEY_FILE
+            - name: VMB_TRUST_CERTS_FILE
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $top.Values.global.configmap.vmb }}
+                  key: VMB_TRUST_CERTS_FILE
+            - name: APPENV
+              valueFrom:
+                configMapKeyRef:
+                    name: {{ $top.Values.global.configmap.commons }}
+                    key: APPENV
+            - name: APP_NAME_SUFFIX
+              value: {{ $top.Values.app.namesuffix | quote }}
+            - name: NRAPPENV
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $top.Values.global.configmap.commons }}
+                  key: NRAPPENV
+            - name: NRLICENSEKEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $top.Values.global.secret.newrelic }}
+                  key: NRLICENSEKEY
+            - name: NRLABELS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $top.Values.global.secret.newrelic }}
+                  key: NRLABELS
+  
+          resources:
+{{ if (hasKey (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer) "RESOURCES")}}
+{{ $resources | indent 12 }}
+{{ else }}
+{{ $resources_default | indent 12 }}
+{{ end }}
+          volumeMounts:
+          - name: tmp
+            mountPath: /tmp
+          - name: vmb-certs
+            mountPath: "/prod/eclapp/vmb/ssl"
+      imagePullSecrets:
+       - name: oneartifactory-secret  
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: vmb-certs
+          secret:
+            secretName: {{ $top.Values.global.secret.vmb }}
 
-Ensure that the function is correctly created in your eclipse schema.
-
-CREATE OR REPLACE FUNCTION eclipse.delete_hpov_s2im_transactions()
-RETURNS json
-LANGUAGE plpgsql
-AS $$
-DECLARE
-    transactions_deleted_count INT;
-    devices_audit_deleted_count INT;
-    err_context TEXT;
-BEGIN
-    -- Delete old records from hpov_s2im_transactions
-    DELETE FROM hpov_s2im_transactions WHERE collected_time < NOW() - INTERVAL '7 days';
-    GET DIAGNOSTICS transactions_deleted_count = ROW_COUNT;
-
-    -- Delete old records from hpov_s2im_devices_audit
-    DELETE FROM hpov_s2im_devices_audit WHERE update_timestamp < NOW() - INTERVAL '7 days';
-    GET DIAGNOSTICS devices_audit_deleted_count = ROW_COUNT;
-
-    -- Return deletion summary
-    RETURN json_build_object(
-        'status', 'Transactions Deleted Successfully',
-        'transactions_deleted_count', transactions_deleted_count,
-        'devices_audit_deleted_count', devices_audit_deleted_count
-    );
-EXCEPTION
-    WHEN OTHERS THEN
-        -- Capture exception details
-        GET STACKED DIAGNOSTICS err_context = PG_EXCEPTION_CONTEXT;
-        RETURN json_build_object(
-            'status', 'Transactions Failed to Delete',
-            'error', SQLERRM,
-            'context', err_context
-        );
-END;
-$$;
-
-
----
-
-Step 2: Store Configurable Values in application.yaml
-
-Since you don't want hardcoded values, I'll store database configurations inside a YAML file.
-
-src/main/resources/application.yaml
-
-spring:
-  datasource:
-    url: jdbc:postgresql://your-db-host:5432/your_database
-    username: your_db_user
-    password: your_db_password
-    driver-class-name: org.postgresql.Driver
-
-scheduler:
-  interval: 86400000 # Runs every 24 hours (in milliseconds)
-
-
----
-
-Step 3: Implement the Java Scheduler Using YAML Configurations
-
-package com.example.scheduler;
-
-import org.json.JSONObject;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.stereotype.Service;
-
-import java.util.Map;
-
-@Service
-public class DatabaseCleanupScheduler {
-
-    private final JdbcTemplate jdbcTemplate;
-
-    // Injecting the scheduler interval from YAML file
-    @Value("${scheduler.interval}")
-    private long schedulerInterval;
-
-    public DatabaseCleanupScheduler(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = jdbcTemplate;
-    }
-
-    @Scheduled(fixedRateString = "${scheduler.interval}") // Runs as per YAML config
-    public void executeCleanup() {
-        System.out.println("Starting cleanup process...");
-
-        String sql = "SELECT eclipse.delete_hpov_s2im_transactions()::text";
-
-        try {
-            // Call PostgreSQL function and get JSON response
-            String jsonResponse = jdbcTemplate.queryForObject(sql, String.class);
-            JSONObject response = new JSONObject(jsonResponse);
-            System.out.println("Cleanup Response: " + response.toString(4));
-        } catch (Exception e) {
-            System.err.println("Error during cleanup execution: " + e.getMessage());
-        }
-    }
-}
-
-
----
-
-Step 4: Enable Scheduling in Spring Boot
-
-Modify the main application file to ensure scheduling is enabled.
-
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.scheduling.annotation.EnableScheduling;
-
-@SpringBootApplication
-@EnableScheduling
-public class SchedulerApplication {
-    public static void main(String[] args) {
-        SpringApplication.run(SchedulerApplication.class, args);
-    }
-}
-
-
----
-
-Step 5: Add PostgreSQL JDBC Dependencies
-
-If you're using Maven, ensure you have the PostgreSQL driver:
-
-<dependency>
-    <groupId>org.postgresql</groupId>
-    <artifactId>postgresql</artifactId>
-    <version>42.5.4</version>
-</dependency>
+{{ end }}
+{{ end }}
 
 
----
+{{- /* vim: set filetype=mustache: */}}
+{{- /*
+Expand the name of the chart.
+*/}}
+{{- define "app.name" -}}
+{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
 
-Step 6: Run the Application
+{{- define "app.env" -}}
+{{ (split "-" .Release.Namespace)._3 }}
+{{- end -}}
 
-Now, when you start the Spring Boot application, the function will execute every 24 hours (as configured in application.yaml).
+{{- define "app.datacenter" -}}
+{{ (split "-" .Release.Namespace)._0 }}
+{{- end -}}
 
-✔ No Hardcoded Values – Everything is in application.yaml.
-✔ Dynamic Scheduling – Uses @Scheduled(fixedRateString = "${scheduler.interval}".
-✔ PostgreSQL Integration – Uses Spring JdbcTemplate to execute the function.
+{{- define "app.cluster" -}}
+{{ (split "-" .Release.Name)._0 }}
+{{- end -}}
+
+{{- define "app.region" -}}
+{{ printf "%s-%s"  (split "-" .Release.Name)._0 (split "-" .Release.Name)._1 -}}
+{{- end -}}
+
+{{- define "app.vmb.topic" -}}
+{{- $datacenter := include "app.datacenter" . }}
+{{- $cluster := include "app.cluster" . }}
+{{- $env := include "app.env" . }}
+{{-  printf "%s" (index .Values "kube" $datacenter $cluster $env "VMB_TOPIC")  -}}
+{{- end -}}
+
+{{- define "app.vmb.url" -}}
+{{- $datacenter := include "app.datacenter" . }}
+{{- $cluster := include "app.cluster" . }}
+{{- $env := include "app.env" . }}
+{{-  printf "%s" (index .Values "kube" $datacenter $cluster $env "VMB_SERVICE_URL")  -}}
+{{- end -}}
+
+{{- define "app.image" -}}
+{{- $datacenter := include "app.datacenter" . }}
+{{- $cluster := include "app.cluster" . }}
+{{- $env := include "app.env" . }}
+{{- $repository := printf "%s" (index .Values "kube" $datacenter $cluster $env "REPOSITORY")  -}}
+{{- $tag := printf "%s" (index .Values "kube" $datacenter $cluster $env "IMAGE_TAG")  -}}
+{{- printf "%s%s%s%s%s" $repository "/" .Values.app.image.name ":" $tag   -}}
+{{- end -}}
+
+{{- define "app.poll.perform" -}}
+{{- $datacenter := include "app.datacenter" . }}
+{{- $cluster := include "app.cluster" . }}
+{{- $env := include "app.env" . }}
+{{-  printf "%s" (index .Values "kube" $datacenter $cluster $env "PERFORM_POLL")  -}}
+{{- end -}}
+
+{{- define "app.inventory" -}}
+{{- $datacenter := include "app.datacenter" . }}
+{{- $cluster := include "app.cluster" . }}
+{{- $env := include "app.env" . }}
+{{-  printf "%s" (index .Values "kube" $datacenter $cluster $env "INVENTORY_TYPE")  -}}
+{{- end -}}
+
+{{- define "app.log.appender" -}}
+{{- $datacenter := include "app.datacenter" . }}
+{{- $cluster := include "app.cluster" . }}
+{{- $env := include "app.env" . }}
+{{-  printf "%s" (index .Values "kube" $datacenter $cluster $env "LOG_APPENDER")  -}}
+{{- end -}}
+
+{{- define "app.log.level" -}}
+{{- $datacenter := include "app.datacenter" . }}
+{{- $cluster := include "app.cluster" . }}
+{{- $env := include "app.env" . }}
+{{-  printf "%s" (index .Values "kube" $datacenter $cluster $env "LOG_LEVEL")  -}}
+{{- end -}}
+
+{{- define "app.log.truncate" -}}
+{{- $datacenter := include "app.datacenter" . }}
+{{- $cluster := include "app.cluster" . }}
+{{- $env := include "app.env" . }}
+{{-  printf "%s" (index .Values "kube" $datacenter $cluster $env "LOG_TRUNCATE")  -}}
+{{- end -}}
+
+#S3API service url
+{{- define "app.s3api.url" -}}
+{{- $datacenter := include "app.datacenter" . }}
+{{- $cluster := include "app.cluster" . }}
+{{- $env := include "app.env" . }}
+{{-  printf "%s" (index .Values "kube" $datacenter $cluster $env "S3API_SERVICE_URL")  -}}
+{{- end -}}
+
+#S3API s3OverrideAuth
+{{- define "app.s3OverrideAuth" -}}
+{{- $datacenter := include "app.datacenter" . }}
+{{- $cluster := include "app.cluster" . }}
+{{- $env := include "app.env" . }}
+{{-  printf "%s" (index .Values "kube" $datacenter $cluster $env "S3OVERRIDEAUTH")  -}}
+{{- end -}}
+
+# s3bucketkey
+{{- define "app.s3bucketkey" -}}
+{{- $datacenter := include "app.datacenter" . }}
+{{- $cluster := include "app.cluster" . }}
+{{- $env := include "app.env" . }}
+{{-  printf "%s" (index .Values "kube" $datacenter $cluster $env "S3BUCKETKEY")  -}}
+{{- end -}}
+
+{{- define "app.excludeOutboundIPRanges" -}}
+{{-  printf "%s" (index .Values.app.istio.excludeOutboundIPRanges) -}}
+{{- end -}}
+
+{{- define "app.excludeInboundPorts" -}}
+{{-  printf "%s" (index .Values.app.istio.excludeInboundPorts) -}}
+{{- end -}}
+
+{{- define "app.excludeOutboundPorts" -}}
+{{-  printf "%s" (index .Values.app.istio.excludeOutboundPorts) -}}
+{{- end -}}
 
 
----
+nameOverride: ""
 
-Expected Output in Console
+global:  
+  configmap:
+    vmb: vmb-config
+    commons: common-config
+    services: services-config
+  secret:
+    vmb: vmb-certs-secret
+    newrelic: newrelic-secret
+app:
+  name: ms-vmb-consumer
+  namesuffix: generic
+  replicas: 1
+  pod:
+    labels:
+      vcmp-log-target: alm
+      alm-log-topic: seca_prd_app_logs_enmv
+  istio:
+    excludeOutboundIPRanges:  63.21.0.0/16,162.247.0.0/16,148.131.0.0/16,140.108.0.0/16,151.205.42.98/32,65.230.0.0/32,166.39.0.0/32,144.8.0.0/16,10.118.0.0/16,165.122.0.0/16,159.98.0.0/16,138.83.0.0/16,10.134.0.0/16,10.136.0.0/16,165.122.0.0/32,100.5.90.45/16,100.5.0.0/16,63.91.0.0/16,192.168.0.0/32,169.254.0.0/16,63.29.0.0/16,63.25.0.0/16,63.57.32.121/32,198.223.101.103/32,137.188.135.0/24,162.115.91.0/24,166.34.0.0/16,10.11.0.0/16,153.114.0.0/16
+    excludeInboundPorts: 9997,6651,9998
+    excludeOutboundPorts: 9997,6651,9998
 
-✅ If deletion is successful:
+  image:
+    name: ms-vmb-consumer
 
-Cleanup Response: {
-    "status": "Transactions Deleted Successfully",
-    "transactions_deleted_count": 3,
-    "devices_audit_deleted_count": 5
-}
+resources_default:
+  npapp:
+    limits:
+      cpu: 1
+      memory: 2Gi
+    requests:
+      cpu: 250m
+      memory: 1Gi
+  plapp:
+    limits:
+      cpu: 1
+      memory: 2Gi
+    requests:
+      cpu: 250m
+      memory: 1Gi
+  prapp:
+    limits:
+      cpu: 3
+      memory: 4Gi
+    requests:
+      cpu: 250m
+      memory: 2Gi
 
-❌ If an error occurs:
+kube:
+  twbgohaavzbcucs: 
+    kub14: 
+      npapp:
+        REPOSITORY: enmv-docker-np.oneartifactoryci.verizon.com
+        VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-west-2-nonprod.verizon.com:6651
+        IMAGE_TAG: feature-vs-0923
+        LOG_APPENDER: STDOUT_JSON_PATTERN
+        LOG_LEVEL: INFO
+        LOG_TRUNCATE: "false"
+        S3OVERRIDEAUTH: ucs-tunnel-np.enmv.ebiz.verizon.com
+        S3BUCKETKEY: HPOV-TRAP-CONSUMER
+        S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.twbgohaavzbcucs-y-vz-npapp-enmv.svc.cluster.local:9998
+        CONSUMERS:
+          HPOV-TRAP:
+            NAME: hpov-trap
+            ENABLED: false
+            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
+            REPLICAS: 1
+            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap
+            S3JSON: { "mode": "OFF","s3Logging": "true","persistenceTimestampFlag": "true","retentionType": "","retentionValue": "5","ucgId": "ucgIdEnabled"}
+      plapp: 
+       REPOSITORY: enmv-docker-prod.oneartifactoryci.verizon.com
+       VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-east-1-ple.verizon.com:6651
+       IMAGE_TAG: develop-2024-10-01T18-19-17
+       LOG_APPENDER: STDOUT_JSON_PATTERN
+       LOG_LEVEL: INFO
+       LOG_TRUNCATE: "true"
+       S3OVERRIDEAUTH: ucs-tunnel-np.enmv.ebiz.verizon.com
+       S3BUCKETKEY: HPOV-TRAP-CONSUMER
+       S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.twbgohaavzbcucs-y-vz-plapp-enmv.svc.cluster.local:9998
+       CONSUMERS:
+          HPOV-TRAP:
+            NAME: hpov-trap
+            ENABLED: false
+            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
+            REPLICAS: 1
+            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap-filtered
+            S3JSON: { "mode": "OFF","s3Logging": "true","persistenceTimestampFlag": "true","retentionType": "","retentionValue": "5","ucgId": "ucgIdEnabled"}
 
-Cleanup Response: {
-    "status": "Transactions Failed to Delete",
-    "error": "some_error_message",
-    "context": "SQL error context details"
-}
+      prapp: 
+       REPOSITORY: enmv-docker-prod.oneartifactoryci.verizon.com
+       VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-west-2-prod.verizon.com:6651
+       IMAGE_TAG: master-2025-02-03T22-49-17
+       LOG_APPENDER: STDOUT_JSON_PATTERN
+       LOG_LEVEL: INFO
+       LOG_TRUNCATE: "true"
+       S3OVERRIDEAUTH: ucs-tunnel-pr.enmv.vcp.vzwnet.com
+       S3BUCKETKEY: HPOV-TRAP-CONSUMER
+       S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.twbgohaavzbcucs-y-vz-prapp-enmv.svc.cluster.local:9998
+       CONSUMERS:
+        HPOV-TRAP:
+            NAME: hpov-trap
+            ENABLED: true
+            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
+            REPLICAS: 1
+            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap-filtered
+            S3JSON: {"mode":"I","s3Logging":"true","persistenceTimestampFlag":"true","retentionType": "","retentionValue": "5","ucgId": "ucgIdEnabled"}
+
+  bbtpnj33vzbcucs:
+    kub84: 
+      npapp:
+        REPOSITORY: enmv-docker-np.oneartifactoryci.verizon.com
+        VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-east-1-nonprod.verizon.com:6651
+        IMAGE_TAG: s3-update-with-ucgid
+        LOG_APPENDER: STDOUT_JSON_PATTERN
+        LOG_LEVEL: INFO
+        LOG_TRUNCATE: "true"
+        S3OVERRIDEAUTH: ucs-tunnel-np.enmv.ebiz.verizon.com
+        S3BUCKETKEY: HPOV-TRAP-CONSUMER
+        S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.bbtpnj33vzbcucs-y-vz-npapp-enmv.svc.cluster.local:9998
+        CONSUMERS:
+          HPOV-TRAP:
+            NAME: hpov-trap
+            ENABLED: true
+            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
+            REPLICAS: 1
+            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap
+            S3JSON: {"mode":"I","s3Logging":"true","persistenceTimestampFlag":"true","retentionType": "","retentionValue": "5","ucgId": "ucgIdEnabled"}
 
 
----
+      plapp: 
+        REPOSITORY: enmv-docker-prod.oneartifactoryci.verizon.com
+        VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-east-1-ple.verizon.com:6651
+        IMAGE_TAG: develop-2024-10-01T18-19-17
+        LOG_APPENDER: STDOUT_JSON_PATTERN
+        LOG_LEVEL: INFO
+        LOG_TRUNCATE: "true"
+        S3OVERRIDEAUTH: ucs-tunnel-np.enmv.ebiz.verizon.com
+        S3BUCKETKEY: HPOV-TRAP-CONSUMER
+        S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.bbtpnj33vzbcucs-y-vz-plapp-enmv.svc.cluster.local:9998
+        CONSUMERS:
+          HPOV-TRAP:
+            NAME: hpov-trap
+            ENABLED: false
+            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
+            REPLICAS: 1
+            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap-filtered
+            S3JSON: {"mode":"OFF","s3Logging":"true","persistenceTimestampFlag":"true","retentionType": "","retentionValue": "5","ucgId": "ucgIdEnabled"}
 
-Final Summary
+      prapp: 
+        REPOSITORY: enmv-docker-prod.oneartifactoryci.verizon.com
+        VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-east-1-prod.verizon.com:6651
+        IMAGE_TAG: master-2025-02-03T22-49-17
+        LOG_APPENDER: STDOUT_JSON_PATTERN
+        LOG_LEVEL: INFO
+        LOG_TRUNCATE: "false"
+        S3OVERRIDEAUTH: ucs-tunnel-pr.enmv.vcp.vzwnet.com
+        S3BUCKETKEY: HPOV-TRAP-CONSUMER
+        S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.bbtpnj33vzbcucs-y-vz-prapp-enmv.svc.cluster.local:9998
+        CONSUMERS:
+          HPOV-TRAP:
+            NAME: hpov-trap
+            ENABLED: true
+            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
+            REPLICAS: 1
+            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap-filtered
+            S3JSON: {"mode":"I","s3Logging":"true","persistenceTimestampFlag":"true","retentionType": "","retentionValue": "5","ucgId": "ucgIdEnabled"}
 
-PostgreSQL Function ✅
-
-Java Scheduler ✅
-
-Database Credentials from YAML ✅
-
-Dynamic Scheduling (No Hardcoded Values) ✅
-
-Logging of Cleanup Responses ✅
-
-
-This solution ensures automated and configurable database cleanup without any hardcoded values. Let me know if you need modifications!
-
+These are the without added s3 full message just add only including s3 full message configurations for this files
