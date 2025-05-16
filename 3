@@ -1,291 +1,48 @@
-The error message `"publishToS3 failed"` in the `S3MessageService` class indicates that the `publishToS3` method is encountering an issue when attempting to save the JSON message to S3 via the gRPC client. This error is logged in the `catch` block of the `publishToS3` method:
+spring:
+  application:
+    name: ${APP_NAME:ms-vmb-consumer}
 
-```java
-catch (Throwable t) {
-    logger.error("publishToS3 failed", t);
-}
-```
+logging:
+  vsad: ${VSAD_ID:ENMV}
+  level.root: ${LOG_LEVEL:INFO}
+  appenderref: ${LOG_APPENDER:STDOUT_JSON_PATTERN}
+  logtruncate: ${LOG_TRUNCATE:false}
 
-Given that your previous issue was about the full JSON message not being stored, and now you're seeing this specific error, the problem likely lies in the interaction between the `VmbPulsarMessageProcessor` (which calls `s3MessageService.saveMsgToS3`) and the `S3MessageService`'s communication with the S3 gRPC service. The Helm configuration appears to be correctly setting `S3FULLMESSAGE` (since the code reaches the `publishToS3` call), but the S3 save operation is failing. I'll analyze the provided `S3MessageService` code, the context from `VmbPulsarMessageProcessor`, and the Helm configuration to identify the root cause and provide a solution.
+vmb:
+  serviceUrl: ${VMB_SERVICE_URL:pulsar+ssl://vmb-aws-us-east-1-nonprod.verizon.com:6651}
+  partitionCount: ${VMB_PARTITION_COUNT:3}
+  topicName: ${TOPIC_NAME:NA}
+  topicUrl: ${TOPIC_URL:persistent://enmv/gnmi-perf-ciena/grpc-proto-ut-ts}
+  ucgSource: ${VMB_SOURCE:vcp-vmb-consumer}
+  tlsCertFile: ${VMB_TLS_CERT_FILE:/Users/illasu/ucs/vmb/enmv.cert.pem}
+  tlsKeyFile: ${VMB_TLS_KEY_FILE:/Users/illasu/ucs/vmb/enmv.key-pk8.pem}
+  tlsTrustCertsFile: ${VMB_TRUST_CERTS_FILE:/Users/illasu/ucs/vmb/ca.cert.pem}
+  topicspercontainer: ${TOPICSPERCONTAINER:1}
+  subscriptionName: ${SUBSCRIPTION_NAME:SILLA-TEST-0}
+  loggingRequired: ${LOGGING_REQUIRED:Y}
+  appName: ${APP_NAME:ms-vmb-consumer}
+  nrEnvStr: ${APPENV:NP}
+  regionStr: ${REGION:kub84-np}
+  podNamespace: ${POD_NAMESPACE:bbtpnj33vzbcucs-y-vz-npapp-enmv}
+  podName: ${POD_NAME:NA}
+  appNameSuffix: ${APP_NAME_SUFFIX:NA}
+  s3Json: ${S3_JSON:{"mode":"I","s3Logging":"false","persistenceTimestampFlag":"true","batchProcessing":"true"}}
+  s3ApiUrl: ${S3API_SERVICE_URL:ms-sthreeapi-idnipv4-service.twbgohaavzbcucs-y-vz-npapp-enmv.svc.cluster.local:9998}
+  s3OverrideAuth: ${S3OVERRIDEAUTH:ucs-tunnel-np.enmv.ebiz.verizon.com}
+  s3BucketKey: ${S3BUCKETKEY:BACNET-POLLER-CONSUMER}
+  s3fullmessage: ${S3FULLMESSAGE:true}
+  isGrpcPCSR: ${IS_GRPC_PCSR:FALSE}
+  topicType: ${TOPIC_TYPE:NA}
+  grpcDialType: ${DIAL_TYPE:NA}
+  grpcStreamType: ${STREAMING_TYPE:NA}
+  grpcUcgType: ${UCG_TYPE:NA}
+  grpcNrAppName: ${NRAPPNAME:NA}
 
-### Analysis of the Error
+server:
+  port: -1
+  shutdown: graceful
 
-#### 1. Error Context
-- **Error Log**: `logger.error("publishToS3 failed", t)` in the `publishToS3` method.
-- **Method Flow**:
-  - `VmbPulsarMessageProcessor` calls `s3MessageService.saveMsgToS3(jsonObject)` when `s3FullMessageFlag` is `true`.
-  - `saveMsgToS3(JSONObject)` in `S3MessageService` calls `publishToS3(s3RequestPayload, vmbProperties.getS3BucketKey())`.
-  - `publishToS3` constructs a `DataWrapperDTO` and sends it to the S3 gRPC service using `s3GrpcClient.getStub().saveToS3(dataWrapperDTO)`.
-  - The error occurs during or after the gRPC call, caught by the `catch (Throwable t)` block.
-- **Possible Causes**:
-  - **gRPC Service Failure**: The S3 gRPC service (`ms-sthreeapi-idnipv4-service`) is unreachable, misconfigured, or returning an error.
-  - **Invalid Payload**: The `DataWrapperDTO` or `s3reqObject` contains invalid data (e.g., malformed JSON, incorrect `S3_BUCKET_KEY`).
-  - **Configuration Issue**: The `vmbProperties.getS3BucketKey()` or `S3API_SERVICE_URL` from the Helm configuration is incorrect.
-  - **Network/Access Issues**: Network policies, Istio sidecar settings, or S3 permissions are blocking the gRPC call.
-  - **Serialization Error**: The `dataObject.toString()` or `s3reqObject.toString()` produces invalid JSON that the gRPC service rejects.
 
-#### 2. Relevant Code
-- **publishToS3**:
-  ```java
-  public void publishToS3(JSONObject dataObject, String s3BucketKey) {
-      try {
-          logger.debug("publishToS3 s3BucketKey === {}", s3BucketKey);
-          logger.debug("publishToS3 dataObject.toJSONString() {}", dataObject.toString());
-          JSONObject s3reqObject = new JSONObject();
-          s3reqObject.put(Constants.S3_BUCKET_KEY, s3BucketKey);
-          s3reqObject.put(Constants.PAYLOAD, dataObject.toString());
-          DataWrapperDTO dataWrapperDTO = DataWrapperDTO.newBuilder().setPayload(s3reqObject.toString()).build();
-          Iterator<LoadToS3ApiResponse> s3Response = s3GrpcClient.getStub().saveToS3(dataWrapperDTO);
-          while (s3Response.hasNext()) {
-              LoadToS3ApiResponse response = s3Response.next();
-              logger.debug("Response: " + response.getResMessage());
-          }
-      } catch (Throwable t) {
-          logger.error("publishToS3 failed", t);
-      }
-  }
-  ```
-- **saveMsgToS3 (called by VmbPulsarMessageProcessor)**:
-  ```java
-  public void saveMsgToS3(JSONObject s3RequestPayload) {
-      try {
-          logger.debug("saveMsgToS3 with ucgId: " + s3RequestPayload.toJSONString());
-          logger.debug("saveMsgToS3 with vmbProperties.getS3BucketKey() : " + vmbProperties.getS3BucketKey());
-          publishToS3(s3RequestPayload, vmbProperties.getS3BucketKey());
-      } catch (Exception ex) {
-          logger.error("Exception while calling s3 api. Error: " + ex.getMessage());
-          ex.printStackTrace();
-      }
-  }
-  ```
-- **VmbPulsarMessageProcessor** (relevant part):
-  ```java
-  if (s3FullMessageFlag) {
-      try {
-          String formattedJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(jsonNode);
-          logger.info("Full JSON Message:\n{}", formattedJson);
-          logger.info("s3FullMessageFlag is true. Storing the full JSON to S3.");
-          JSONObject jsonObject = (JSONObject) parser.parse(formattedJson);
-          logger.debug("Saving to S3 with jsonObject: {}", jsonObject);
-          s3MessageService.saveMsgToS3(jsonObject);
-          logger.info("Successfully saved to S3");
-      } catch (ParseException e) {
-          logger.error("Error parsing formatted JSON to JSONObject: {}", e.getMessage());
-      }
-  }
-  ```
-
-#### 3. Helm Configuration Context
-- **Environment Variables** (from `deployment.yaml`):
-  ```yaml
-  - name: S3API_SERVICE_URL
-    value: {{ include "app.s3api.url" $top }}
-  - name: S3BUCKETKEY
-    value: {{ include "app.s3bucketkey" $top }}
-  - name: S3FULLMESSAGE
-    value: {{ $s3fullmessage | quote }}
-  ```
-- **Values** (from `values.yaml`, e.g., `bbtpnj33vzbcucs.kub84.npapp`):
-  ```yaml
-  S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.bbtpnj33vzbcucs-y-vz-npapp-enmv.svc.cluster.local:9998
-  S3BUCKETKEY: HPOV-TRAP-CONSUMER
-  CONSUMERS:
-    HPOV-TRAP:
-      S3FULLMESSAGE: true
-  ```
-- **Istio Settings**:
-  - Excludes specific ports and IP ranges, which might affect gRPC communication:
-    ```yaml
-    excludeOutboundPorts: 9997,6651,9998
-    excludeOutboundIPRanges: 63.21.0.0/16,...
-    ```
-
-#### 4. Potential Causes of "publishToS3 failed"
-Based on the code and Helm configuration, here are the likely reasons for the error:
-
-- **gRPC Service Unreachable**:
-  - The `S3API_SERVICE_URL` (`ms-sthreeapi-idnipv4-service.<namespace>.svc.cluster.local:9998`) might be incorrect, or the service is down.
-  - Istio sidecar settings might block port `9998` (listed in `excludeOutboundPorts`), causing connectivity issues.
-  - Network policies or DNS resolution failures could prevent the gRPC client from reaching the service.
-- **Invalid `S3BUCKETKEY`**:
-  - The `S3BUCKETKEY` (`HPOV-TRAP-CONSUMER`) might not exist or be misconfigured in the S3 gRPC service.
-  - The gRPC service might reject the bucket key, causing an error.
-- **Malformed JSON Payload**:
-  - The `dataObject.toString()` or `s3reqObject.toString()` might produce invalid JSON, causing the gRPC service to fail.
-  - The `JSONObject` from `VmbPulsarMessageProcessor` might contain unexpected data (e.g., non-serializable fields).
-- **gRPC Client Misconfiguration**:
-  - The `S3GrpcClient` might be misconfigured (e.g., wrong endpoint, authentication issues).
-  - The gRPC stub (`s3GrpcClient.getStub()`) might throw an exception due to timeouts, SSL issues, or invalid credentials.
-- **S3 Permissions**:
-  - The application might lack permissions to write to the S3 bucket, causing the gRPC service to return an error.
-- **Error Swallowing**:
-  - The `catch (Throwable t)` block in `publishToS3` logs the error but doesn’t propagate it, so `VmbPulsarMessageProcessor` logs `"Successfully saved to S3"` even if `publishToS3` fails, masking the issue.
-
-#### 5. Debugging Steps
-
-To resolve the `"publishToS3 failed"` error, follow these steps to pinpoint the root cause:
-
-##### Step 1: Enhance Logging in `S3MessageService`
-- **Action**: Modify `publishToS3` to log the full stack trace and specific error details.
-- **Change**:
-  ```java
-  public void publishToS3(JSONObject dataObject, String s3BucketKey) {
-      try {
-          logger.debug("publishToS3 s3BucketKey === {}", s3BucketKey);
-          logger.debug("publishToS3 dataObject.toJSONString() {}", dataObject.toString());
-          JSONObject s3reqObject = new JSONObject();
-          s3reqObject.put(Constants.S3_BUCKET_KEY, s3BucketKey);
-          s3reqObject.put(Constants.PAYLOAD, dataObject.toString());
-          logger.debug("DataWrapperDTO payload: {}", s3reqObject.toString());
-          DataWrapperDTO dataWrapperDTO = DataWrapperDTO.newBuilder().setPayload(s3reqObject.toString()).build();
-          Iterator<LoadToS3ApiResponse> s3Response = s3GrpcClient.getStub().saveToS3(dataWrapperDTO);
-          while (s3Response.hasNext()) {
-              LoadToS3ApiResponse response = s3Response.next();
-              logger.debug("Response: {}", response.getResMessage());
-              if (!response.getResMessage().contains("success")) {
-                  logger.error("S3 save failed with response: {}", response.getResMessage());
-              }
-          }
-      } catch (Throwable t) {
-          logger.error("publishToS3 failed with error: {}", t.getMessage(), t);
-          throw new S3SaveException("publishToS3 failed", t); // Propagate error
-      }
-  }
-  ```
-- **Why**: Logs the exact error message and stack trace. Propagating the exception ensures `VmbPulsarMessageProcessor` doesn’t log `"Successfully saved to S3"` incorrectly.
-
-##### Step 2: Check Logs
-- **Action**: Retrieve pod logs for an enabled consumer (e.g., `hpov-trap-consumer` in `npapp`).
-  ```bash
-  kubectl logs -n <namespace> <pod-name>
-  ```
-- **Look For**:
-  - From `VmbPulsarMessageProcessor`:
-    ```
-    INFO: s3FullMessageFlag is true. Storing the full JSON to S3.
-    DEBUG: Saving to S3 with jsonObject: {...}
-    ```
-  - From `S3MessageService`:
-    ```
-    DEBUG: publishToS3 s3BucketKey === HPOV-TRAP-CONSUMER
-    DEBUG: DataWrapperDTO payload: {...}
-    ERROR: publishToS3 failed with error: <specific-error>
-    ```
-  - Specific gRPC errors (e.g., `UNAVAILABLE`, `DEADLINE_EXCEEDED`, `PERMISSION_DENIED`).
-- **If No S3 Logs**:
-  - The `saveMsgToS3` call isn’t being reached, indicating an issue in `VmbPulsarMessageProcessor` (e.g., `ParseException`).
-  - Check for:
-    ```
-    ERROR: Error parsing formatted JSON to JSONObject: ...
-    ```
-
-##### Step 3: Verify gRPC Service Connectivity
-- **Action**: Test connectivity to the S3 gRPC service.
-  - Exec into the pod:
-    ```bash
-    kubectl exec -n <namespace> -it <pod-name> -- /bin/sh
-    ```
-  - Ping the service:
-    ```bash
-    curl ms-sthreeapi-idnipv4-service.<namespace>.svc.cluster.local:9998
-    ```
-    Or use `nc`:
-    ```bash
-    nc -zv ms-sthreeapi-idnipv4-service.<namespace>.svc.cluster.local 9998
-    ```
-- **Expected**: Connection successful or gRPC-specific response.
-- **If Fails**:
-  - Check if the service exists:
-    ```bash
-    kubectl get svc -n <namespace> ms-sthreeapi-idnipv4-service
-    ```
-  - Verify `S3API_SERVICE_URL` in `values.yaml` (e.g., `ms-sthreeapi-idnipv4-service.bbtpnj33vzbcucs-y-vz-npapp-enmv.svc.cluster.local:9998`).
-  - Check Istio settings in `values.yaml`:
-    ```yaml
-    excludeOutboundPorts: 9997,6651,9998
-    ```
-    Port `9998` is excluded, which might block gRPC traffic. Remove `9998` from `excludeOutboundPorts`:
-    ```yaml
-    excludeOutboundPorts: 9997,6651
-    ```
-  - Redeploy:
-    ```bash
-    helm upgrade --install <release-name> <chart-path> -n <namespace>
-    ```
-
-##### Step 4: Validate `S3BUCKETKEY`
-- **Action**: Ensure `S3BUCKETKEY` is correct.
-  - Check pod environment:
-    ```bash
-    kubectl exec -n <namespace> <pod-name> -- printenv | grep S3BUCKETKEY
-    ```
-    Expected: `S3BUCKETKEY=HPOV-TRAP-CONSUMER`
-  - Verify the bucket exists and is accessible via the gRPC service (consult your S3 admin or documentation).
-- **Fix**:
-  - If incorrect, update `values.yaml`:
-    ```yaml
-    S3BUCKETKEY: HPOV-TRAP-CONSUMER
-    ```
-  - Redeploy.
-
-##### Step 5: Check JSON Payload
-- **Action**: Inspect the JSON payload sent to the gRPC service.
-  - The updated `publishToS3` logs:
-    ```
-    DEBUG: DataWrapperDTO payload: {...}
-    ```
-  - Check logs for the payload content. Ensure it’s valid JSON with `S3_BUCKET_KEY` and `PAYLOAD`.
-- **Fix**:
-  - If invalid, add validation in `publishToS3`:
-    ```java
-    JSONObject s3reqObject = new JSONObject();
-    s3reqObject.put(Constants.S3_BUCKET_KEY, s3BucketKey);
-    String payload = dataObject.toString();
-    try {
-        objectMapper.readTree(payload); // Validate JSON
-    } catch (Exception e) {
-        logger.error("Invalid JSON payload: {}", payload, e);
-        throw new S3SaveException("Invalid JSON payload", e);
-    }
-    s3reqObject.put(Constants.PAYLOAD, payload);
-    ```
-
-##### Step 6: Verify gRPC Client Configuration
-- **Action**: Check `S3GrpcClient` configuration (not provided, but assumed to be a Spring bean).
-  - Ensure it uses `S3API_SERVICE_URL` correctly.
-  - Add logging in `S3GrpcClient` to debug the stub creation and gRPC call:
-    ```java
-    public ManagedChannel getChannel() {
-        logger.info("Creating gRPC channel to: {}", s3ApiServiceUrl);
-        return ManagedChannelBuilder.forTarget(s3ApiServiceUrl).usePlaintext().build();
-    }
-    ```
-- **Fix**:
-  - If misconfigured, update the `S3GrpcClient` to use the correct endpoint (from `S3API_SERVICE_URL`).
-
-##### Step 7: Check S3 Permissions
-- **Action**: Verify the application has permissions to write to the S3 bucket.
-  - If the gRPC service logs indicate a permission error (e.g., `PERMISSION_DENIED`), check the IAM role or credentials used by the gRPC service.
-  - Inspect `S3OVERRIDEAUTH` in `values.yaml` (e.g., `ucs-tunnel-np.enmv.ebiz.verizon.com`).
-- **Fix**:
-  - Update `S3OVERRIDEAUTH` if incorrect or coordinate with your S3 admin to grant permissions.
-
-##### Step 8: Validate Helm Deployment
-- **Action**: Ensure the Helm release applied the latest configuration (web result mentions upgrade failures).
-  ```bash
-  helm status <release-name> -n <namespace>
-  ```
-- **Fix**:
-  - If failed, try:
-    ```bash
-    helm upgrade --install --take-ownership <release-name> <chart-path> -n <namespace>
-    ```
-
-### Updated `S3MessageService` Code
-
-Here’s the updated `S3MessageService` with enhanced logging, error propagation, and JSON validation to resolve the `"publishToS3 failed"` error:
-
-```java
 package com.verizon.ucs.vmbc.service.s3;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -316,7 +73,8 @@ import java.util.List;
 @Scope("prototype")
 public class S3MessageService {
 
-    private static final Logger logger = LoggerFactory.getLogger(S3MessageService.class);
+    private static Logger logger = LoggerFactory.getLogger(S3MessageService.class);
+
 
     private final String newRelicEvents = "enmvVCPVMBConsumer:events";
 
@@ -329,33 +87,47 @@ public class S3MessageService {
     @Autowired
     private ObjectMapper objectMapper;
 
-    public void saveMessagesToS3(final Messages<byte[]> messages, final boolean persistenceTimestampFlag) {
+
+    public void saveMessagesToS3(final Messages<byte[]> messages,
+                                 final boolean persistenceTimestampFlag) {
+
         if (messages != null) {
+
             try {
                 logger.debug("saveMessagesToS3 - Messages list size {}", messages.size());
-                messages.forEach(message -> saveMsgToS3(message, persistenceTimestampFlag));
+                messages.forEach(message -> {
+                    saveMsgToS3(message, persistenceTimestampFlag);
+                });
             } catch (Exception e) {
-                logger.error("saveMessagesToS3 failed: {}", e.getMessage(), e);
-                throw new S3SaveException("saveMessagesToS3 failed", e);
+                logger.error("saveMessagesToS3 failed:", e);
             }
+
         }
+
     }
 
     public void saveMessagesListToS3(final List<Message<byte[]>> messages, final boolean persistenceTimestampFlag) {
+
         if (CollectionUtils.isNotEmpty(messages)) {
+
             try {
                 logger.debug("saveMessagesListToS3 - Messages list size {}", messages.size());
-                messages.forEach(message -> saveMsgToS3(message, persistenceTimestampFlag));
+                messages.forEach(message -> {
+                    saveMsgToS3(message, persistenceTimestampFlag);
+                });
             } catch (Exception e) {
-                logger.error("saveMessagesListToS3 failed: {}", e.getMessage(), e);
-                throw new S3SaveException("saveMessagesListToS3 failed", e);
+                logger.error("saveMessagesListToS3 failed:", e);
             }
+
         }
+
     }
 
-    public void saveMsgToS3(final Message<byte[]> message, final boolean persistenceTimestampFlag) {
+    public void saveMsgToS3(final Message<byte[]> message,
+                            final boolean persistenceTimestampFlag) {
+
         try {
-            logger.debug("saveMsgToS3 - Message");
+        	logger.debug("saveMsgToS3 - Message");
             String json = new String(message.getValue());
             JSONObject s3RequestPayload = objectMapper.readValue(json, JSONObject.class);
             logger.debug("publishToS3 s3RequestPayload === {}", s3RequestPayload.toString());
@@ -364,16 +136,17 @@ public class S3MessageService {
                 s3RequestPayload.put("persistenceTimestamp", getUtcTimeStamp());
                 logger.debug("publishToS3 persistenceTimestamp set is {}", s3RequestPayload.get("persistenceTimestamp"));
             }
-            logger.debug("Save vmb-consumer message to s3 initiated");
+            logger.debug("Save vmb-consumer message to s3 initiated ");
             if (s3RequestPayload != null) {
                 publishToS3(s3RequestPayload, vmbProperties.getS3BucketKey());
-                logger.debug("Save vmb-consumer message to s3 success");
+                logger.debug("Save vmb-consumer message to s3 success ");
             }
+
         } catch (Exception e) {
-            logger.error("saveMsgToS3 failed: {}", e.getMessage(), e);
             throw new S3SaveException("saveMsgToS3 failed", e);
         }
     }
+
 
     public void publishToS3(JSONObject dataObject, String s3BucketKey) {
         try {
@@ -381,170 +154,913 @@ public class S3MessageService {
             logger.debug("publishToS3 dataObject.toJSONString() {}", dataObject.toString());
             JSONObject s3reqObject = new JSONObject();
             s3reqObject.put(Constants.S3_BUCKET_KEY, s3BucketKey);
-            String payload = dataObject.toString();
-            try {
-                objectMapper.readTree(payload); // Validate JSON
-            } catch (Exception e) {
-                logger.error("Invalid JSON payload: {}", payload, e);
-                throw new S3SaveException("Invalid JSON payload", e);
-            }
-            s3reqObject.put(Constants.PAYLOAD, payload);
-            logger.debug("DataWrapperDTO payload: {}", s3reqObject.toString());
+            s3reqObject.put(Constants.PAYLOAD, dataObject.toString());
             DataWrapperDTO dataWrapperDTO = DataWrapperDTO.newBuilder().setPayload(s3reqObject.toString()).build();
             Iterator<LoadToS3ApiResponse> s3Response = s3GrpcClient.getStub().saveToS3(dataWrapperDTO);
-            boolean success = false;
             while (s3Response.hasNext()) {
                 LoadToS3ApiResponse response = s3Response.next();
-                logger.debug("Response: {}", response.getResMessage());
-                if (response.getResMessage().contains("success")) {
-                    success = true;
-                } else {
-                    logger.error("S3 save failed with response: {}", response.getResMessage());
-                }
-            }
-            if (!success) {
-                throw new S3SaveException("S3 save failed: no success response");
+                logger.debug("Response: " + response.getResMessage());
             }
         } catch (Throwable t) {
-            logger.error("publishToS3 failed with error: {}", t.getMessage(), t);
-            throw new S3SaveException("publishToS3 failed", t);
+            logger.error("publishToS3 failed", t);
         }
     }
 
+
+    /**
+     * Setting 24 hour utc timestamp
+     */
     private String getUtcTimeStamp() {
         ZonedDateTime now = ZonedDateTime.now(ZoneId.of("UTC"));
-        DateTimeFormatter dateTimeFormatter = new DateTimeFormatterBuilder()
-                .appendPattern("yyyy-MM-dd'T'HH:mm:ss.SSS")
-                .appendOffset("+HH:MM", "+00:00")
-                .toFormatter();
+        DateTimeFormatter dateTimeFormatter = new DateTimeFormatterBuilder().appendPattern("yyyy-MM-dd'T'HH:mm:ss.SSS").appendOffset("+HH:MM", "+00:00").toFormatter();
         return now.format(dateTimeFormatter);
     }
 
     public void saveMsgToS3(JSONObject s3RequestPayload) {
-        try {
-            logger.debug("saveMsgToS3 with ucgId: {}", s3RequestPayload.toJSONString());
-            logger.debug("saveMsgToS3 with vmbProperties.getS3BucketKey(): {}", vmbProperties.getS3BucketKey());
-            publishToS3(s3RequestPayload, vmbProperties.getS3BucketKey());
-            logger.info("Successfully saved to S3");
-        } catch (Exception ex) {
-            logger.error("Exception while calling S3 API. Error: {}", ex.getMessage(), ex);
-            throw new S3SaveException("saveMsgToS3 failed", ex);
-        }
+    	try{
+    		logger.debug("saveMsgToS3 with ucgId: " + s3RequestPayload.toJSONString());
+    		logger.debug("saveMsgToS3 with vmbProperties.getS3BucketKey() : " + vmbProperties.getS3BucketKey());
+    		publishToS3(s3RequestPayload,vmbProperties.getS3BucketKey());
+    	}
+    	catch (Exception ex){
+    		logger.error("Exception while calling s3 api. Error: " + ex.getMessage());
+    		ex.printStackTrace();
+    	}
     }
+
 }
-```
 
-### Changes Made
-- **Enhanced Logging**:
-  - Added detailed error messages with stack traces in all methods.
-  - Log the `DataWrapperDTO` payload before the gRPC call.
-  - Log gRPC response messages and check for success.
-- **JSON Validation**:
-  - Validate the `dataObject` JSON using `objectMapper.readTree`.
-- **Error Propagation**:
-  - Throw `S3SaveException` in `publishToS3` to ensure errors are propagated to `VmbPulsarMessageProcessor`.
-  - Updated all methods to throw `S3SaveException` with detailed messages.
-- **Success Check**:
-  - Check gRPC response for "success" and throw an exception if not found.
 
-### Update to `VmbPulsarMessageProcessor`
-To handle the propagated exceptions and align with the updated `S3MessageService`, modify the `processMessage` method in `VmbPulsarMessageProcessor`:
+package com.verizon.ucs.vmbc.pulsar;
 
-```java
-private void processMessage(Message<byte[]> message) {
-    try {
-        String messageData = new String(message.getData());
-        com.fasterxml.jackson.databind.JsonNode jsonNode = objectMapper.readTree(messageData);
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonMappingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.newrelic.api.agent.NewRelic;
+import com.verizon.ucs.vmbc.ordertest.*;
+import com.verizon.ucs.vmbc.service.s3.S3MessageService;
+import com.verizon.ucs.vmbc.yaml.VMBProperties;
+import org.apache.commons.lang.StringUtils;
+import org.apache.pulsar.client.api.*;
+import org.apache.pulsar.client.impl.MessageImpl;
+import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
+import org.json.simple.parser.ParseException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
-        if (isLoggingRequired) {
-            logger.info("Received message for topic {}: {}", topicNameFromDB, messageData);
-        }
+import java.io.IOException;
+import java.time.Instant;
+import java.util.*;
 
-        if (s3FullMessageFlag) {
-            try {
-                String formattedJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(jsonNode);
-                logger.info("Full JSON Message:\n{}", formattedJson);
-                logger.info("s3FullMessageFlag is true. Storing the full JSON to S3.");
-                JSONObject jsonObject = (JSONObject) parser.parse(formattedJson);
-                logger.debug("Saving to S3 with jsonObject: {}", jsonObject);
-                s3MessageService.saveMsgToS3(jsonObject);
-                logger.info("Successfully saved to S3");
-            } catch (ParseException e) {
-                logger.error("Error parsing formatted JSON to JSONObject: {}", e.getMessage(), e);
-            } catch (S3SaveException e) {
-                logger.error("Failed to save full JSON to S3: {}", e.getMessage(), e);
-            }
-        } else {
-            logger.debug("s3FullMessageFlag is false. Skipping full JSON storage.");
-            processPartialMessage(jsonNode);
-        }
-    } catch (Exception e) {
-        logger.error("Error processing message: {}", e.getMessage(), e);
-    }
+class VmbPulsarMessageProcessor implements Runnable {
+
+	private final Logger logger = LoggerFactory.getLogger(VmbPulsarMessageProcessor.class);
+	JSONParser parser = new JSONParser();
+
+	private String serviceURL;
+	private String topicURL;
+	private String subscriptionName;
+	private Long countMessages = 0L;
+	private Long countDBMessages = 0L;
+	private boolean isConsumerRunning=false;
+	private boolean isShutdown=false;
+
+	private PulsarClient client ;
+	private Consumer<byte[]> consumer =null;
+	private long startTime = System.currentTimeMillis();
+	private Map<String, Object> basicAttributes = new HashMap<>();
+	private boolean isLoggingRequired;
+	private VMBCiscogrpctest vmbTest;
+	private VMBCalixgrpctest calixTest;
+	private VMBJgrpcordertest jgrParse;
+	private VMBEPNMCCSParser parse;
+	private VMBVnftrapordertest vnftrap;
+	private VMBPonnmsordertest ponnms;
+	private VMBMcpordertest mcptest;
+	private VMBs4vzbtrapordertest s4vzbtrap;
+	private VMBensetrapordertest ensetrap;
+	private VMBTL1AOrdertest tl1Alarms;
+	private S3MessageService s3MessageService;
+	private final ObjectMapper mapper = new ObjectMapper();
+	private String s3Flag;
+	private String topicNameFromDB;
+	private boolean s3LoggingRequired = false;
+	private boolean persistenceTimestampFlag = false;
+	private boolean dailyTableFlag = false;
+	private boolean batchProcessing = false;
+	private List<Message<byte[]>> messagesList = new ArrayList<Message<byte[]>>();
+	private String collectionTimeString = "yyyyMMdd";
+	private String retentionType = "";
+	private int retentionValue = 0;
+	private int consumerReceiverQueueSize = 0;
+	private int s3BatchSize = 1000;
+	private boolean orderTestingRequired = true;
+	private boolean consumerLogging = false;
+	String newRelicEvents = "enmvVMBConsumer:events";
+	private VMBProperties vmbProperties;
+	@Value("${vmb.s3fullmessage:true}")
+	private boolean s3FullMessageFlag;
+
+	private static ObjectMapper objectMapper = new ObjectMapper(); // Initialize ObjectMapper
+
+	VmbPulsarMessageProcessor(VMBProperties vmbProperties, String topicURL, String subscriptionName, PulsarClient client,
+			boolean isLoggingRequired, S3MessageService s3MessageService,
+			String topicNameFromDB, ThreadPoolTaskExecutor s3ThreadPoolTaskExecutor) {
+		this.serviceURL = vmbProperties.getServiceUrl();
+		this.topicURL = topicURL;
+		this.subscriptionName = subscriptionName;
+		this.client = client;
+		this.isLoggingRequired = isLoggingRequired;
+		String region = vmbProperties.getRegionStr();
+		this.vmbTest = new VMBCiscogrpctest(region);
+		this.calixTest = new VMBCalixgrpctest(region);
+		this.parse = new VMBEPNMCCSParser(region);
+		this.jgrParse = new VMBJgrpcordertest(region);
+		this.vnftrap = new VMBVnftrapordertest(region);
+		this.ponnms = new VMBPonnmsordertest(region);
+		this.mcptest=new VMBMcpordertest(region);
+		this.s4vzbtrap=new VMBs4vzbtrapordertest(region);
+		this.ensetrap=new VMBensetrapordertest(region);
+		this.tl1Alarms=new VMBTL1AOrdertest(region);
+		this.s3MessageService = s3MessageService;
+		this.s3Flag = vmbProperties.s3Json;
+		this.topicNameFromDB = topicNameFromDB;
+		this.vmbProperties = vmbProperties;
+
+
+		//Check if s3 flag contains json or not
+		//if json set s3LoggingRequired,persistenceTimestampFlag,dailyTableFlag
+		logger.debug("s3Flag Value {}", s3Flag);
+		if(!s3Flag.isEmpty() && null != s3Flag && !"".equalsIgnoreCase(s3Flag) && !"null".equalsIgnoreCase(s3Flag)  && !"I".equalsIgnoreCase(s3Flag) && !"U".equalsIgnoreCase(s3Flag)) {
+			String jsonString = s3Flag;
+			JSONParser parser = new JSONParser();
+			JSONObject jsonObj;
+			try {
+
+
+				jsonObj = (JSONObject) parser.parse(jsonString);
+				int corePoolSize = Integer.parseInt(jsonObj.get("corePoolSize") !=null ? (String) jsonObj.get("corePoolSize") :"0" );
+				int maxPoolSize = Integer.parseInt(jsonObj.get("maxPoolSize") !=null ? (String) jsonObj.get("maxPoolSize") :"0" );
+				s3LoggingRequired =  Boolean.parseBoolean((String) jsonObj.get("s3Logging"));
+				dailyTableFlag =  Boolean.parseBoolean((String) jsonObj.get("dailyTable"));
+				persistenceTimestampFlag =  Boolean.parseBoolean((String) jsonObj.get("persistenceTimestampFlag"));
+				batchProcessing  =Boolean.parseBoolean(jsonObj.get("batchProcessing")!= null ? (String)jsonObj.get("batchProcessing"):"true");
+
+				retentionType = (String) jsonObj.get("retentionType");
+
+				if(retentionType != null || retentionType != "") {
+					if("DAILY".equalsIgnoreCase(retentionType)) {
+						collectionTimeString = "yyyyMMdd";
+					}
+
+					if("HOURLY".equalsIgnoreCase(retentionType)) {
+						collectionTimeString = "yyyyMMdd-HH";
+					}
+
+					if("MINUTELY".equalsIgnoreCase(retentionType)) {
+						collectionTimeString = "yyyyMMdd-HHmm";
+					}
+				}
+
+				retentionValue = Integer.parseInt(jsonObj.get("retentionValue") !=null ? (String) jsonObj.get("retentionValue") :"0" );
+
+		        if(corePoolSize !=0)
+		        	s3ThreadPoolTaskExecutor.setCorePoolSize(corePoolSize);
+		        if(maxPoolSize !=0)
+		        s3ThreadPoolTaskExecutor.setMaxPoolSize(maxPoolSize);
+		        consumerReceiverQueueSize = Integer.parseInt(jsonObj.get("consumerReceiverQueueSize") !=null ? (String) jsonObj.get("consumerReceiverQueueSize") :"0" );
+				s3BatchSize = Integer.parseInt(jsonObj.get("s3BatchSize") !=null ? (String) jsonObj.get("s3BatchSize") :"1000" );
+				orderTestingRequired =  Boolean.parseBoolean(jsonObj.get("orderTestingRequired")!= null ? (String)jsonObj.get("orderTestingRequired"):"true");
+				consumerLogging =  Boolean.parseBoolean(jsonObj.get("consumerLogging")!= null ? (String)jsonObj.get("consumerLogging"):"false");
+
+			} catch (ParseException e) {
+				logger.error("Error occurred while parsing json data from S3 flag inside ConsumerThread constructor",topicURL,subscriptionName,e);
+			}
+		}
+	}
+
+	/**
+	 * Shutdown both consumer and client .
+	 */
+	void shutdown(boolean isFromShutDown) {
+		try {
+			if(Objects.nonNull(consumer)) {
+
+				//called unsubscribe method to avoid "Exclusive consumer is already connected"
+				//consumer.unsubscribe();
+				consumer.close();
+
+				logger.info("Consumer closed for topic : {} and subscription name : {}",topicURL,subscriptionName);
+			}
+		}catch(Exception e) {
+			logger.error("Error occurred while closing Consumer for topic : {} and subscription name : {}",topicURL,subscriptionName);
+		}
+		try {
+			if(Objects.nonNull(client)) {
+				client.shutdown();
+				logger.info("Pulsar Client closed for topic : {} and subscription name : {}",topicURL,subscriptionName);
+			}
+		}catch(Exception e) {
+			logger.error("Error occurred while closing Pulsar Client for topic : {} and subscription name : {}",topicURL,subscriptionName,e);
+		}
+		consumer=null;
+		client=null;
+		if(isFromShutDown)
+			isShutdown=true;
+		isConsumerRunning=false;
+	}
+
+	/**
+	 * Healthcheck
+	 */
+	void healthCheck() {
+		if(!isConsumerRunning) {
+			init();
+		}
+	}
+
+	/**
+	 * This method is used to create client and consumer.
+	 *
+	 * @throws PulsarClientException
+	 */
+	private void init()  {
+		try {
+			//Setting the thread priority to the highest as consumer should not be impacted
+			Thread.currentThread().setPriority(10);
+			if(client != null){
+				logger.info("client obj is :{}",client);
+
+				//Added below if condition to close any existing subscription. Other wise will encounter 'Exclusive consumer already exists'
+				if(consumer != null) {
+					consumer.close();
+				}
+				https://medium.com/@ankushkhanna1988/apache-pulsar-key-shared-mode-sticky-consistent-hashing-a4ee7133930a
+
+				//TODO: Paratameterize receiverqueue in CFT or Read from DB
+
+				if(consumerReceiverQueueSize >0) {
+					logger.info("Consumer Queue size from DB:"+consumerReceiverQueueSize);
+					consumer = client.newConsumer()
+							.topic(topicURL)
+							.subscriptionName(subscriptionName)
+							.subscriptionType(SubscriptionType.Key_Shared)
+							.keySharedPolicy(KeySharedPolicy.autoSplitHashRange())
+							.receiverQueueSize(consumerReceiverQueueSize)
+							/*
+							 * .batchReceivePolicy(BatchReceivePolicy.builder() .maxNumMessages(1000)
+							 * .maxNumBytes(10*1024*1024) .timeout(500, TimeUnit.MILLISECONDS) .build() )
+							 */.subscribe();
+				}else {
+					//Default Consumer Settings
+					consumer = client.newConsumer()
+							.topic(topicURL)
+							.subscriptionName(subscriptionName)
+							.subscriptionType(SubscriptionType.Key_Shared)
+							.keySharedPolicy(KeySharedPolicy.autoSplitHashRange())
+							//.receiverQueueSize(consumerReceiverQueueSize)
+							/*
+							 * .batchReceivePolicy(BatchReceivePolicy.builder() .maxNumMessages(1000)
+							 * .maxNumBytes(10*1024*1024) .timeout(500, TimeUnit.MILLISECONDS) .build() )
+							 */.subscribe();
+				}
+
+				isConsumerRunning=true;
+			}
+		} catch (PulsarClientException e) {
+			isConsumerRunning=false;
+			logger.error("Error in init for topic : {} and subscription name : {}",topicURL,subscriptionName,e);
+
+		}
+	}
+
+	//@Trace(dispatcher=true)
+	@SuppressWarnings("unchecked")
+	@Override
+	public void run() {
+		Map<String, Object> attributes = new HashMap<>();
+		basicAttributes.put("clusterID", System.getenv("POD_NAMESPACE"));
+		basicAttributes.put("containerID", System.getenv("POD_NAME"));
+
+		boolean isGrpcPCSR = false;
+
+		if (this.vmbProperties != null) {
+
+			String grpcpcsr = this.vmbProperties.getIsGrpcPCSR();
+
+			if (grpcpcsr != null && !grpcpcsr.isEmpty()) {
+				isGrpcPCSR = Boolean.parseBoolean(grpcpcsr);
+			}
+
+			if (isGrpcPCSR)
+
+			{
+
+				String topicType = this.vmbProperties.getTopicType();
+				String dialType = this.vmbProperties.getGrpcDialType();
+				String streamType = this.vmbProperties.getGrpcStreamType();
+				String ucgType = this.vmbProperties.getGrpcUcgType();
+				String nrAppName = this.vmbProperties.getGrpcNrAppName();
+
+				basicAttributes.put("topicType", topicType);
+				basicAttributes.put("dialType", dialType);
+				basicAttributes.put("streamType", streamType);
+				basicAttributes.put("ucgType", ucgType);
+				basicAttributes.put("pcsrClientName", nrAppName);
+			}
+
+			logger.info("is gRPC pcsr :{}  ", isGrpcPCSR);
+
+		}
+
+		try {
+			if(!isConsumerRunning) {
+				init();
+				logger.info("CONSUME FROM PULSAR - Start consuming from Service URL: {} , Topic Name: {}", serviceURL, topicURL);
+			}
+		} catch(Exception e) {
+			logger.error("Exception while initializing consumer thread {}",e.getMessage());
+		}
+		while (true) {
+			long threadStartTime = System.currentTimeMillis();
+			long asyncTimerStart = 0;
+			long asyncTimerEnd = 0;
+			try {
+
+				logger.debug("ConsumerThread inside run method, isShutdown:: {}", isShutdown);
+				if (isShutdown)
+					break;
+				logger.debug("isConsumerRunning Inside ConsumerThread:: {}  {}", isConsumerRunning,Thread.currentThread().getName());
+				if (consumer!=null && isConsumerRunning) {
+					logger.debug("ConsumerThread inside run method, countMessages outside 30secs check:: {}", countMessages);
+
+					if(batchProcessing) {
+						//TODO: Implement batch processing
+						logger.debug("isLoggingRequired batchProcessing true");
+						Messages<byte[]> messages = consumer.batchReceive();
+
+						logger.debug("isLoggingRequired Inside ConsumerThread:: {}", isLoggingRequired);
+						logger.debug("isLoggingRequired Inside s3Flag:: {}", s3Flag);
+						//logger.debug("isLoggingRequired - Messages list size {}", messages.size());
+
+						if(StringUtils.contains(s3Flag, "I"))	{
+							//Added this module to take care of the ucgId pushing to S3
+							if(StringUtils.contains(s3Flag, "ucgIdEnabled")) {
+								asyncTimerStart = System.currentTimeMillis();
+								logger.debug("isLoggingRequired - ucgIdEnabled");
+								try {
+									logger.debug("isLoggingRequired Inside messages.size :: {}", messages.size());
+									if(messages != null && messages.size() > 0) {
+
+										messages.forEach(message -> {
+											logger.debug("isLoggingRequired - Messages message {}", message);
+											String json = new String(message.getValue());
+											logger.debug("isLoggingRequired - Messages json {}", json);
+
+											JSONObject s3RequestPayload = null;
+											try {
+												logger.debug("Parsing JSON: {}", json);
+												if (json != null && !json.trim().isEmpty()) {
+													JsonNode jsonNode = objectMapper.readTree(json);
+
+													if (s3FullMessageFlag) {
+														// Store the full JSON message
+														try {
+															String formattedJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(jsonNode);
+															logger.info("Full JSON Message:\n{}", formattedJson);
+															logger.info("s3FullMessageFlag is true. Storing the full JSON to S3.");
+
+															// Convert the formatted JSON string to a JSONObject
+															JSONObject jsonObject = (JSONObject) parser.parse(formattedJson);
+
+															// Pass the JSONObject to saveMsgToS3
+															s3MessageService.saveMsgToS3(jsonObject);
+														} catch (ParseException e) {
+															logger.error("Error parsing formatted JSON to JSONObject: {}", e.getMessage());
+														}
+													} else {
+														// Existing logic for extracting and storing specific fields
+														if (jsonNode.has("ucgId")) {
+															String ucgId = jsonNode.get("ucgId").asText();
+															logger.debug("Extracted ucgId: {}", ucgId);
+															JSONObject s3JsonData = new JSONObject();
+															s3JsonData.put("ucgId", ucgId);
+															s3MessageService.saveMsgToS3(s3JsonData);
+														} else {
+															logger.debug("ucgId not found in JSON - checking for SNMP LOV or PERF");
+															if (jsonNode.has("ucgTopic")) {
+																String ucgTopic = jsonNode.get("ucgTopic").asText();
+																logger.debug("Extracted ucgTopic: {}", ucgTopic);
+																//Handling LOV-ALARM
+																if (ucgTopic.contains("hpov-snmp-alarm")) {
+																	String ucgSource = jsonNode.get("ucgSource").asText();
+																	String ucgType = jsonNode.get("ucgType").asText();
+																	String ucgDeviceName = jsonNode.get("ucgDeviceName").asText();
+																	String ucgTimestamp = jsonNode.get("ucgTimestamp").asText();
+																	String ucgId = ucgSource+"-"+ucgType+"-"+ucgDeviceName+"-"+ucgTimestamp;
+																	logger.debug("Extracted hpov-snmp-alarm-ucgId: {}", ucgId);
+																	JSONObject s3JsonData = new JSONObject();
+																	s3JsonData.put("ucgId", ucgId);
+																	s3MessageService.saveMsgToS3(s3JsonData);
+																}
+																//Handling LOV
+																if (ucgTopic.contains("hpov-lov")) {
+																	String ucgSource = jsonNode.get("ucgSource").asText();
+																	String ucgType = jsonNode.get("ucgType").asText();
+																	String ucgDeviceName = jsonNode.get("ucgDeviceName").asText();
+																	String ucgTimestamp = jsonNode.get("ucgTimestamp").asText();
+																	String ucgId = ucgSource+"-"+ucgType+"-"+ucgDeviceName+"-"+ucgTimestamp;
+																	logger.debug("Extracted hpov-lov-ucgId: {}", ucgId);
+																	JSONObject s3JsonData = new JSONObject();
+																	s3JsonData.put("ucgId", ucgId);
+																	s3MessageService.saveMsgToS3(s3JsonData);
+																}
+															}
+															//Handling PERF
+															if (jsonNode.has("internalTopic")) {
+																String internalTopic = jsonNode.get("internalTopic").asText();
+																logger.debug("Extracted internalTopic: {}", internalTopic);
+																if (internalTopic.contains("ENMV.HPOV.IP")) {
+																	String deviceName = jsonNode.get("deviceName").asText();
+																	String ifDescr = jsonNode.get("ifDescr").asText();
+																	String loopback = jsonNode.get("loopback").asText();
+																	String ifAlias = jsonNode.get("ifAlias").asText();
+																	String dataType = jsonNode.get("dataType").asText();
+																	String pollingInterval = jsonNode.get("pollingInterval").asText();
+																	String intervalTime = jsonNode.get("intervalTime").asText();
+
+																	if (ifDescr == null || ifDescr.isEmpty()) {
+																		ifDescr = "ifDescr";
+																	}
+																	if (ifAlias == null || ifAlias.isEmpty()) {
+																		ifDescr = "ifAlias";
+																	}
+																	String ucgId = deviceName.trim()+"-"+ifDescr.trim()+"-"+loopback.trim()+"-"+ifAlias.trim()+"-"+dataType.trim()+"-"+pollingInterval.trim()+"-"+internalTopic.trim()+"-"+intervalTime.trim();
+																	logger.debug("Extracted ENMV.HPOV.IP-ucgId: {}", ucgId);
+																	JSONObject s3JsonData = new JSONObject();
+																	s3JsonData.put("ucgId", ucgId);
+																	s3MessageService.saveMsgToS3(s3JsonData);
+																}
+															}
+														}
+													}
+												} else {
+													logger.error("JSON string is null or empty");
+												}
+											} catch (JsonMappingException e) {
+												logger.error("Error in 1 {} ", e);
+												e.printStackTrace();
+											} catch (JsonProcessingException e) {
+												logger.error("Error in 2 {} ", e);
+												e.printStackTrace();
+											}
+
+										});
+									}
+								}catch (Exception e) {
+									logger.error("Error from consumer thread while pushing ucgId to s3 service: "+e.getMessage());
+
+									//TODO: POST error to New Relic
+									attributes.put("mngMsgsRejected", messages.size());
+									NewRelic.getAgent().getInsights().recordCustomEvent(newRelicEvents, attributes);
+									NewRelic.addCustomParameter("VMBConsumer", topicURL);
+									NewRelic.noticeError(e, attributes);
+								}
+								asyncTimerEnd = System.currentTimeMillis();
+
+							} else {
+								asyncTimerStart = System.currentTimeMillis();
+								logger.debug("info - persist messages batch");
+								//@Aysnc - Asynchronously hand over messages to thread pool for s3 persistence
+								try {
+									if(messages != null && messages.size() > 0) {
+										logger.debug("debug - persist messages batch 1");
+										s3MessageService.saveMessagesToS3(messages, persistenceTimestampFlag);
+									}
+
+								}catch (Exception e) {
+									logger.error("Error from consumer thread while pushing to s3 service"+e.getMessage());
+									//TODO: POST error to New Relic
+									attributes.put("mngMsgsRejected", messages.size());
+									NewRelic.getAgent().getInsights().recordCustomEvent(newRelicEvents, attributes);
+									NewRelic.addCustomParameter("VMBConsumer", topicURL);
+									NewRelic.noticeError(e, attributes);
+								}
+								asyncTimerEnd = System.currentTimeMillis();
+							}
+						}
+
+						if (messages != null) {
+							countMessages = countMessages + (long) messages.size();
+							if (isLoggingRequired) {
+								messages.forEach(message -> {
+									if (message.getValue().length > 0) {
+										String json = new String(message.getValue());
+										logger.debug(new Date() + "," + json + "," + message.getKey() + "," + topicURL);
+									}
+								});
+							}
+
+							//TODO: Parameterize Order testing based on a flag in DB
+							if(orderTestingRequired) {
+								orderTesting(messages,null);
+							}
+
+						}
+
+						// publish VMB consumer Data to NewRelic to analyze the data. topic has all data every 30 seconds.
+						if (System.currentTimeMillis() - startTime >= 60000) {
+							logger.debug("Received  {}  messages to VMB consumer.", countMessages);
+							basicAttributes.forEach((k, v) -> attributes.put(k, v));
+							attributes.put("messagesReceived", countMessages);
+							attributes.put("eventName", "receive");
+							attributes.put("topic", topicURL);
+						    //TODO Comment below for running in local
+							//attributes.put("awsRegion", "us-east-1");
+
+						//	attributes.put("awsRegion", Regions.getCurrentRegion().getName());
+							//String newRelicEvents = "enmvVCPVMBConsumer:events";
+							NewRelic.getAgent().getInsights().recordCustomEvent(newRelicEvents, attributes);
+							NewRelic.addCustomParameter("VMBConsumer", topicURL);
+							countMessages = 0L;
+							startTime = System.currentTimeMillis();
+						}
+						if (messages != null && consumer != null)
+							consumer.acknowledge(messages);
+
+						Thread.sleep(10);
+
+
+					}else {
+
+						logger.info("isLoggingRequired batchProcessing false");
+
+					Message<byte[]> message =  consumer.receive();
+//					applicationConfig.totalMsgCountAtomicInteger.incrementAndGet();
+
+						logger.debug("isLoggingRequired Inside ConsumerThread:: {}", isLoggingRequired);
+						if (message != null) {
+
+							countMessages = countMessages + 1;
+							if (isLoggingRequired) {
+								if (message.getValue().length > 0) {
+									String json = new String(message.getValue());
+									logger.debug("Consumer:"+json);
+								}
+							}
+//							s3Flag = "I";
+							if(StringUtils.contains(s3Flag, "I"))	{
+								asyncTimerStart = System.currentTimeMillis();
+								messagesList.add(message);
+								//TODO: Parameterize Batch size in DB entry
+								if(messagesList.size() > s3BatchSize || System.currentTimeMillis() - startTime >= 30000) {
+
+									//@Aysnc - Asynchronously hand over messages to thread pool for s3 persistence
+									try {
+										s3MessageService.saveMessagesListToS3(messagesList, persistenceTimestampFlag);
+									}catch (Exception e) {
+										logger.error("Error from consumer thread while pushing to s3 service"+e.getMessage());
+										//TODO: POST error to New Relic
+									}
+									countDBMessages = countDBMessages + messagesList.size();
+									messagesList = new ArrayList<Message<byte[]>>();
+								}
+								asyncTimerEnd = System.currentTimeMillis();
+							}
+
+							/*
+							(StringUtils.contains(s3Flag, "I"))	{
+
+								//Add messages to a list for batching to 3
+
+
+								//TODO: Parameterize Batch size in DB entry
+
+
+									//@Aysnc - Asynchronously hand over messages to thread pool for s3 persistence
+									try {
+									s3MessageService.saveMessagesToS3((Messages<byte[]>) message, persistenceTimestampFlag);
+									}catch (Exception e) {
+										logger.error("Error from consumer thread while pushing to s3 service"+e.getMessage());
+										//TODO: POST error to New Relic
+									}
+
+									countDBMessages = countDBMessages + 1;
+
+								}
+							}*/
+
+
+
+						}
+
+						//TODO: Parameterize Order testing based on a flag in DB
+						if(orderTestingRequired) {
+							orderTesting(null,message);
+						}
+
+
+						if (System.currentTimeMillis() - startTime >= 30000) {
+
+
+							ConsumerStats cStats = consumer.getStats();
+
+							/*
+							logger.info("MsgNumInReceiverQueue:"+cStats.getMsgNumInReceiverQueue());
+							logger.info("getRateBytesReceived:"+cStats.getRateBytesReceived());
+							logger.info("getNumReceiveFailed:"+cStats.getNumReceiveFailed());
+							logger.info("getNumMsgsReceived:"+cStats.getNumMsgsReceived());
+							logger.info("getRateMsgsReceived:"+cStats.getRateMsgsReceived());
+							logger.info("getTotalMsgsReceived:"+cStats.getTotalMsgsReceived());
+							logger.info("getMsgNumInSubReceiverQueue:"+cStats.getMsgNumInSubReceiverQueue());
+
+							*/
+
+							basicAttributes.forEach((k, v) -> attributes.put(k, v));
+							logger.debug("Received  {}  messages to VMB consumer.", countMessages);
+							logger.debug("Sent  {}  messages to s3.", countDBMessages);
+							//Consumer Stats
+
+							attributes.put("MsgNumInReceiverQueue",cStats.getMsgNumInReceiverQueue());
+							attributes.put("getRateBytesReceived",cStats.getRateBytesReceived());
+							attributes.put("getNumReceiveFailed",cStats.getNumReceiveFailed());
+							attributes.put("getNumMsgsReceived",cStats.getNumMsgsReceived());
+							attributes.put("getRateMsgsReceived",cStats.getRateMsgsReceived());
+							attributes.put("getTotalMsgsReceived",cStats.getTotalMsgsReceived());
+							attributes.put("getMsgNumInSubReceiverQueue",cStats.getMsgNumInSubReceiverQueue());
+
+
+
+							attributes.put("messagesReceived", countMessages);
+							attributes.put("eventName", "receive");
+							attributes.put("topic", topicURL);
+							if (!isGrpcPCSR) {
+							attributes.put("pcsrClientName", topicNameFromDB);
+							}
+						    //TODO Comment below for running in local
+							//attributes.put("awsRegion", "us-east-1");
+
+
+							//attributes.put("awsRegion", Regions.getCurrentRegion().getName());
+//							attributes.put("awsRegion", ApplicationConfig.awsRegionString);
+
+							NewRelic.getAgent().getInsights().recordCustomEvent(newRelicEvents, attributes);
+							NewRelic.addCustomParameter("VMBConsumer", topicURL);
+							countMessages = 0L;
+							countDBMessages = 0L;
+							startTime = System.currentTimeMillis();
+
+						}
+						if (message != null && consumer != null)
+							consumer.acknowledge(message);
+
+				}
+				}
+			} catch (NullPointerException npe) {
+				logger.error("Null Pointer exception while consuming from VMB pulsar", npe);
+				//below is missing originally and is needed to re initialized during VMBConsumer.consumerHealthCheck()
+				isConsumerRunning = false;
+				throw npe;
+			} catch (Exception ex) {
+				isConsumerRunning = false;
+				NewRelic.noticeError(ex, attributes);
+				logger.error("exception while consuming from VMB pulsar", ex);
+				ex.printStackTrace();
+			}
+
+			//TODO: Parameterize logger based on a flag in DB
+			if(consumerLogging) {
+				long threadEndTime = System.currentTimeMillis();
+				long threadTimeElapsed = threadEndTime - threadStartTime;
+				if(threadTimeElapsed>10) {
+					logger.debug("Consumer processing time :{}",threadTimeElapsed);
+//					applicationConfig.totalLargeMsgCountAtomicInteger.incrementAndGet();
+
+
+					logger.debug("Async processing time :{}",asyncTimerEnd-asyncTimerStart);
+				}
+
+			}
+		}
+		logger.debug("ConsumerThread run method end");
+	}
+
+
+
+
+
+    /*
+     * Modified Ordertesting method to support both batch processing and single message processing
+     */
+	private void orderTesting(Messages<byte[]> messages, Message<byte[]> singleMessage){
+		JSONParser parser = new JSONParser();
+		if (messages != null) {
+			messages.forEach(message -> {
+				validateOrdering(message);
+			});
+		}else if(singleMessage  != null) {
+			validateOrdering(singleMessage);
+		}
+	}
+
+	private void validateOrdering(Message<byte[]> message) {
+		try {
+
+//			logger.info("validateOrdering - meesage : {}", message.getValue());
+			JSONObject jsonObject = (JSONObject) parser.parse(new String(message.getValue()));
+			String ucgSource = getKeyFromJsonObject(jsonObject, "ucgSource");
+			String ucgType = getKeyFromJsonObject(jsonObject, "ucgType");
+			String metaData = getKeyFromJsonObject(jsonObject, "metaData");
+			String json = new String(message.getValue());
+
+			logger.debug("jsonObject for order test is" + jsonObject);
+			if (topicURL.contains("epnmccs-yang")&& ucgType.contentEquals("LIVE")) {
+				logger.debug("Checking for CCS Difference");
+				parse.setVmbTopic(topicURL);
+				parse.checkDiff(json);
+			}
+
+			if (ucgSource.contentEquals("MCPDATA") && topicURL.contains("Eclipse-MCP-ALARM") && ucgType.contentEquals("LIVE")) {
+				logger.debug("Checking for MCPDATA Difference");
+				mcptest.setVmbTopic(topicURL);
+				mcptest.checkDiff(json);
+
+			}
+			if (ucgSource.contentEquals("CAGRPC2") && topicURL.contains("yangjson") && ucgType.contentEquals("LIVE")) {
+				logger.debug("Checking for CAGRPC2 Difference");
+				vmbTest.setVmbTopic(topicURL);
+				vmbTest.parseJson(json);
+			}
+
+			if(StringUtils.isNotBlank(metaData)) {
+				JSONObject metadatJson = (JSONObject) parser.parse(metaData);
+				String ucgSrc = getKeyFromJsonObject(metadatJson, "ucgSource");
+				String ucgTyp = getKeyFromJsonObject(metadatJson, "ucgType");
+				if (ucgSrc.contentEquals("CLGRPC")  && ucgTyp.contentEquals("PERF")) {
+					logger.debug("Checking for CLGRPC Difference");
+					calixTest.setVmbTopic(topicURL);
+					calixTest.parseJson(json);
+				}
+			}
+
+			if (ucgSource.contentEquals("JAGRPC2") && topicURL.contains("yangjson") && ucgType.contentEquals("LIVE")) {
+				logger.debug("Checking for JAGRPC2 Difference");
+				jgrParse.setVmbTopic(topicURL);
+				jgrParse.parseJson(json);
+			}
+
+			if (ucgSource.contentEquals("VNFTRAP") && topicURL.contains("Eclipse-vcp-traps-alarm") && ucgType.contentEquals("LIVE")) {
+				logger.debug("Checking for VNFTRAP Difference");
+				vnftrap.setVmbTopic(topicURL);
+				vnftrap.parseJson(json);
+			}
+
+			if (ucgSource.contentEquals("PONNMS") && topicURL.contains("PON-NMS-ALARM") && ucgType.contentEquals("LIVE")) {
+				logger.debug("Checking for PONNMS Difference");
+				ponnms.setVmbTopic(topicURL);
+				ponnms.parseJson(json);
+			}
+
+			if (ucgSource.contentEquals("S4VZBTRAP") && topicURL.contains("s4vzb-snmp-trap") && ucgType.contentEquals("LIVE")) {
+				logger.debug("Checking for S4VZBTRAP Difference");
+				s4vzbtrap.setVmbTopic(topicURL);
+				s4vzbtrap.parseJson(json);
+			}
+			if (ucgSource.contentEquals("") && topicURL.contains("eNSE-snmp-trap") && ucgType.contentEquals("LIVE")) {
+				logger.debug("Checking for ENSETRAP Difference");
+				ensetrap.setVmbTopic(topicURL);
+				ensetrap.parseJson(json);
+			}
+			if (ucgSource.contentEquals("TL1A") && ucgType.contentEquals("LIVE")) {
+				logger.debug("Checking for TL1A Difference");
+				tl1Alarms.setVmbTopic(topicURL);
+				tl1Alarms.parseJson(json);
+			}
+		} catch (ParseException | IOException e) {
+			logger.error(e.getMessage());
+			//e.printStackTrace();
+		}
+
+	}
+
+	public void setLoggingRequired(boolean loggingRequired) {
+		isLoggingRequired = loggingRequired;
+	}
+
+	public void setS3Flag(String s3Flag) {
+		this.s3Flag = s3Flag;
+	}
+
+	public void setS3LoggingRequired(boolean s3LoggingRequired) {
+		this.s3LoggingRequired = s3LoggingRequired;
+	}
+
+	public void setPersistenceTimestampFlag(boolean persistenceTimestampFlag) {
+		this.persistenceTimestampFlag = persistenceTimestampFlag;
+	}
+
+	public void setDailyTableFlag(boolean dailyTableFlag) {
+		this.dailyTableFlag = dailyTableFlag;
+	}
+
+	public boolean isBatchProcessing() {
+		return batchProcessing;
+	}
+
+	public void setBatchProcessing(boolean batchProcessing) {
+		this.batchProcessing = batchProcessing;
+	}
+
+	public boolean isConsumerRunning() {
+		return isConsumerRunning;
+	}
+
+	public String getKeyFromJsonObject(JSONObject jsonObj, String pattern) {
+		String datakey = "";
+		for (Object key : jsonObj.keySet()) {
+			try {
+				Object keyJsonObj = jsonObj.get(key.toString());
+				if (key.toString().contains(pattern)) {
+					datakey = keyJsonObj.toString();
+					break;
+				} else if (keyJsonObj instanceof JSONObject) {
+					datakey = getKeyFromJsonObject((JSONObject) keyJsonObj, pattern);
+				} else if (keyJsonObj instanceof String && keyJsonObj.toString().contains("{")) {
+					JSONParser jp = new JSONParser();
+					JSONObject json = (JSONObject) jp.parse(keyJsonObj.toString());
+					datakey = getKeyFromJsonObject(json, pattern);
+				}
+			} catch (Exception e) {
+				// e.printStackTrace();
+			}
+		}
+		return datakey;
+	}
+
+	public String getRetentionType() {
+		return retentionType;
+	}
+
+	public void setRetentionType(String retentionType) {
+		this.retentionType = retentionType;
+	}
+
+	public int getRetentionValue() {
+		return retentionValue;
+	}
+
+	public void setRetentionValue(int retentionValue) {
+		this.retentionValue = retentionValue;
+
+		if("DAILY".equalsIgnoreCase(retentionType)) {
+			collectionTimeString = "yyyyMMdd";
+		}
+
+		if("HOURLY".equalsIgnoreCase(retentionType)) {
+			collectionTimeString = "yyyyMMdd-HH";
+		}
+
+		if("MINUTELY".equalsIgnoreCase(retentionType)) {
+			collectionTimeString = "yyyyMMdd-HHmm";
+		}
+	}
+
+	public int getConsumerReceiverQueueSize() {
+		return consumerReceiverQueueSize;
+	}
+
+	public void setConsumerReceiverQueueSize(int consumerReceiverQueueSize) {
+		this.consumerReceiverQueueSize = consumerReceiverQueueSize;
+	}
+
+	public int getS3BatchSize() {
+		return s3BatchSize;
+	}
+
+	public void setS3BatchSize(int s3BatchSize) {
+		this.s3BatchSize = s3BatchSize;
+	}
+
+	public boolean isOrderTestingRequired() {
+		return orderTestingRequired;
+	}
+
+	public void setOrderTestingRequired(boolean orderTestingRequired) {
+		this.orderTestingRequired = orderTestingRequired;
+	}
+
+	public boolean isConsumerLogging() {
+		return consumerLogging;
+	}
+
+	public void setConsumerLogging(boolean consumerLogging) {
+		this.consumerLogging = consumerLogging;
+	}
+
 }
-```
-
-### Changes
-- Added `catch (S3SaveException e)` to handle exceptions from `saveMsgToS3`.
-- Log S3-specific errors separately to distinguish them from parsing issues.
-
-### Next Steps
-1. **Apply Code Changes**:
-   - Update `S3MessageService.java` and `VmbPulsarMessageProcessor.java` with the provided code.
-   - Rebuild and redeploy the application.
-
-2. **Update Helm Configuration**:
-   - Remove port `9998` from `excludeOutboundPorts` in `values.yaml`:
-     ```yaml
-     app:
-       istio:
-         excludeOutboundPorts: 9997,6651
-     ```
-   - Redeploy:
-     ```bash
-     helm upgrade --install <release-name> <chart-path> -n <namespace>
-     ```
-
-3. **Check Logs**:
-   - Look for:
-     ```
-     DEBUG: DataWrapperDTO payload: {...}
-     ERROR: publishToS3 failed with error: <specific-error>
-     ```
-     or:
-     ```
-     ERROR: S3 save failed with response: <gRPC-response>
-     ```
-   - If JSON is invalid:
-     ```
-     ERROR: Invalid JSON payload: ...
-     ```
-
-4. **Verify gRPC Service**:
-   - Ensure `ms-sthreeapi-idnipv4-service` is running and accessible on port `9998`.
-   - Check service logs:
-     ```bash
-     kubectl logs -n <namespace> <s3-service-pod>
-     ```
-
-5. **Validate S3 Bucket**:
-   - Confirm `HPOV-TRAP-CONSUMER` exists and is accessible.
-   - Test with AWS CLI:
-     ```bash
-     aws s3 ls s3://HPOV-TRAP-CONSUMER/
-     ```
-
-6. **If Issue Persists**:
-   - Share the full stack trace from the `"publishToS3 failed"` log.
-   - Provide the gRPC service logs or `S3GrpcClient` configuration.
-   - Confirm the `S3API_SERVICE_URL` and `S3BUCKETKEY` values in the pod.
-
-### Summary
-- **Root Cause**: The `"publishToS3 failed"` error is likely due to gRPC service connectivity (e.g., Istio blocking port `9998`), invalid `S3BUCKETKEY`, or malformed JSON payload.
-- **Fixes**:
-  - Updated `S3MessageService` with detailed logging, JSON validation, and error propagation.
-  - Modified `VmbPulsarMessageProcessor` to handle `S3SaveException`.
-  - Adjusted Helm configuration to allow gRPC traffic on port `9998`.
-- **Debugging**: Enhanced logs will reveal the specific gRPC error (e.g., connectivity, permissions, payload issues).
-
-Apply these changes and follow the debugging steps. If you provide the stack trace or additional logs, I can narrow down the issue further. Let me know!
+For the above it is set the values to publish the full message to JSOn but here unable to see the JSOn full message which is defined as s3jsonflag can you please resolve the issue and it will print the value when it is set to true or otherwise it will print extracted ucgId value give me the full classes updated with each and every step included
