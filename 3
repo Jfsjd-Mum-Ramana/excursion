@@ -1,3 +1,291 @@
+The error message `"publishToS3 failed"` in the `S3MessageService` class indicates that the `publishToS3` method is encountering an issue when attempting to save the JSON message to S3 via the gRPC client. This error is logged in the `catch` block of the `publishToS3` method:
+
+```java
+catch (Throwable t) {
+    logger.error("publishToS3 failed", t);
+}
+```
+
+Given that your previous issue was about the full JSON message not being stored, and now you're seeing this specific error, the problem likely lies in the interaction between the `VmbPulsarMessageProcessor` (which calls `s3MessageService.saveMsgToS3`) and the `S3MessageService`'s communication with the S3 gRPC service. The Helm configuration appears to be correctly setting `S3FULLMESSAGE` (since the code reaches the `publishToS3` call), but the S3 save operation is failing. I'll analyze the provided `S3MessageService` code, the context from `VmbPulsarMessageProcessor`, and the Helm configuration to identify the root cause and provide a solution.
+
+### Analysis of the Error
+
+#### 1. Error Context
+- **Error Log**: `logger.error("publishToS3 failed", t)` in the `publishToS3` method.
+- **Method Flow**:
+  - `VmbPulsarMessageProcessor` calls `s3MessageService.saveMsgToS3(jsonObject)` when `s3FullMessageFlag` is `true`.
+  - `saveMsgToS3(JSONObject)` in `S3MessageService` calls `publishToS3(s3RequestPayload, vmbProperties.getS3BucketKey())`.
+  - `publishToS3` constructs a `DataWrapperDTO` and sends it to the S3 gRPC service using `s3GrpcClient.getStub().saveToS3(dataWrapperDTO)`.
+  - The error occurs during or after the gRPC call, caught by the `catch (Throwable t)` block.
+- **Possible Causes**:
+  - **gRPC Service Failure**: The S3 gRPC service (`ms-sthreeapi-idnipv4-service`) is unreachable, misconfigured, or returning an error.
+  - **Invalid Payload**: The `DataWrapperDTO` or `s3reqObject` contains invalid data (e.g., malformed JSON, incorrect `S3_BUCKET_KEY`).
+  - **Configuration Issue**: The `vmbProperties.getS3BucketKey()` or `S3API_SERVICE_URL` from the Helm configuration is incorrect.
+  - **Network/Access Issues**: Network policies, Istio sidecar settings, or S3 permissions are blocking the gRPC call.
+  - **Serialization Error**: The `dataObject.toString()` or `s3reqObject.toString()` produces invalid JSON that the gRPC service rejects.
+
+#### 2. Relevant Code
+- **publishToS3**:
+  ```java
+  public void publishToS3(JSONObject dataObject, String s3BucketKey) {
+      try {
+          logger.debug("publishToS3 s3BucketKey === {}", s3BucketKey);
+          logger.debug("publishToS3 dataObject.toJSONString() {}", dataObject.toString());
+          JSONObject s3reqObject = new JSONObject();
+          s3reqObject.put(Constants.S3_BUCKET_KEY, s3BucketKey);
+          s3reqObject.put(Constants.PAYLOAD, dataObject.toString());
+          DataWrapperDTO dataWrapperDTO = DataWrapperDTO.newBuilder().setPayload(s3reqObject.toString()).build();
+          Iterator<LoadToS3ApiResponse> s3Response = s3GrpcClient.getStub().saveToS3(dataWrapperDTO);
+          while (s3Response.hasNext()) {
+              LoadToS3ApiResponse response = s3Response.next();
+              logger.debug("Response: " + response.getResMessage());
+          }
+      } catch (Throwable t) {
+          logger.error("publishToS3 failed", t);
+      }
+  }
+  ```
+- **saveMsgToS3 (called by VmbPulsarMessageProcessor)**:
+  ```java
+  public void saveMsgToS3(JSONObject s3RequestPayload) {
+      try {
+          logger.debug("saveMsgToS3 with ucgId: " + s3RequestPayload.toJSONString());
+          logger.debug("saveMsgToS3 with vmbProperties.getS3BucketKey() : " + vmbProperties.getS3BucketKey());
+          publishToS3(s3RequestPayload, vmbProperties.getS3BucketKey());
+      } catch (Exception ex) {
+          logger.error("Exception while calling s3 api. Error: " + ex.getMessage());
+          ex.printStackTrace();
+      }
+  }
+  ```
+- **VmbPulsarMessageProcessor** (relevant part):
+  ```java
+  if (s3FullMessageFlag) {
+      try {
+          String formattedJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(jsonNode);
+          logger.info("Full JSON Message:\n{}", formattedJson);
+          logger.info("s3FullMessageFlag is true. Storing the full JSON to S3.");
+          JSONObject jsonObject = (JSONObject) parser.parse(formattedJson);
+          logger.debug("Saving to S3 with jsonObject: {}", jsonObject);
+          s3MessageService.saveMsgToS3(jsonObject);
+          logger.info("Successfully saved to S3");
+      } catch (ParseException e) {
+          logger.error("Error parsing formatted JSON to JSONObject: {}", e.getMessage());
+      }
+  }
+  ```
+
+#### 3. Helm Configuration Context
+- **Environment Variables** (from `deployment.yaml`):
+  ```yaml
+  - name: S3API_SERVICE_URL
+    value: {{ include "app.s3api.url" $top }}
+  - name: S3BUCKETKEY
+    value: {{ include "app.s3bucketkey" $top }}
+  - name: S3FULLMESSAGE
+    value: {{ $s3fullmessage | quote }}
+  ```
+- **Values** (from `values.yaml`, e.g., `bbtpnj33vzbcucs.kub84.npapp`):
+  ```yaml
+  S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.bbtpnj33vzbcucs-y-vz-npapp-enmv.svc.cluster.local:9998
+  S3BUCKETKEY: HPOV-TRAP-CONSUMER
+  CONSUMERS:
+    HPOV-TRAP:
+      S3FULLMESSAGE: true
+  ```
+- **Istio Settings**:
+  - Excludes specific ports and IP ranges, which might affect gRPC communication:
+    ```yaml
+    excludeOutboundPorts: 9997,6651,9998
+    excludeOutboundIPRanges: 63.21.0.0/16,...
+    ```
+
+#### 4. Potential Causes of "publishToS3 failed"
+Based on the code and Helm configuration, here are the likely reasons for the error:
+
+- **gRPC Service Unreachable**:
+  - The `S3API_SERVICE_URL` (`ms-sthreeapi-idnipv4-service.<namespace>.svc.cluster.local:9998`) might be incorrect, or the service is down.
+  - Istio sidecar settings might block port `9998` (listed in `excludeOutboundPorts`), causing connectivity issues.
+  - Network policies or DNS resolution failures could prevent the gRPC client from reaching the service.
+- **Invalid `S3BUCKETKEY`**:
+  - The `S3BUCKETKEY` (`HPOV-TRAP-CONSUMER`) might not exist or be misconfigured in the S3 gRPC service.
+  - The gRPC service might reject the bucket key, causing an error.
+- **Malformed JSON Payload**:
+  - The `dataObject.toString()` or `s3reqObject.toString()` might produce invalid JSON, causing the gRPC service to fail.
+  - The `JSONObject` from `VmbPulsarMessageProcessor` might contain unexpected data (e.g., non-serializable fields).
+- **gRPC Client Misconfiguration**:
+  - The `S3GrpcClient` might be misconfigured (e.g., wrong endpoint, authentication issues).
+  - The gRPC stub (`s3GrpcClient.getStub()`) might throw an exception due to timeouts, SSL issues, or invalid credentials.
+- **S3 Permissions**:
+  - The application might lack permissions to write to the S3 bucket, causing the gRPC service to return an error.
+- **Error Swallowing**:
+  - The `catch (Throwable t)` block in `publishToS3` logs the error but doesn’t propagate it, so `VmbPulsarMessageProcessor` logs `"Successfully saved to S3"` even if `publishToS3` fails, masking the issue.
+
+#### 5. Debugging Steps
+
+To resolve the `"publishToS3 failed"` error, follow these steps to pinpoint the root cause:
+
+##### Step 1: Enhance Logging in `S3MessageService`
+- **Action**: Modify `publishToS3` to log the full stack trace and specific error details.
+- **Change**:
+  ```java
+  public void publishToS3(JSONObject dataObject, String s3BucketKey) {
+      try {
+          logger.debug("publishToS3 s3BucketKey === {}", s3BucketKey);
+          logger.debug("publishToS3 dataObject.toJSONString() {}", dataObject.toString());
+          JSONObject s3reqObject = new JSONObject();
+          s3reqObject.put(Constants.S3_BUCKET_KEY, s3BucketKey);
+          s3reqObject.put(Constants.PAYLOAD, dataObject.toString());
+          logger.debug("DataWrapperDTO payload: {}", s3reqObject.toString());
+          DataWrapperDTO dataWrapperDTO = DataWrapperDTO.newBuilder().setPayload(s3reqObject.toString()).build();
+          Iterator<LoadToS3ApiResponse> s3Response = s3GrpcClient.getStub().saveToS3(dataWrapperDTO);
+          while (s3Response.hasNext()) {
+              LoadToS3ApiResponse response = s3Response.next();
+              logger.debug("Response: {}", response.getResMessage());
+              if (!response.getResMessage().contains("success")) {
+                  logger.error("S3 save failed with response: {}", response.getResMessage());
+              }
+          }
+      } catch (Throwable t) {
+          logger.error("publishToS3 failed with error: {}", t.getMessage(), t);
+          throw new S3SaveException("publishToS3 failed", t); // Propagate error
+      }
+  }
+  ```
+- **Why**: Logs the exact error message and stack trace. Propagating the exception ensures `VmbPulsarMessageProcessor` doesn’t log `"Successfully saved to S3"` incorrectly.
+
+##### Step 2: Check Logs
+- **Action**: Retrieve pod logs for an enabled consumer (e.g., `hpov-trap-consumer` in `npapp`).
+  ```bash
+  kubectl logs -n <namespace> <pod-name>
+  ```
+- **Look For**:
+  - From `VmbPulsarMessageProcessor`:
+    ```
+    INFO: s3FullMessageFlag is true. Storing the full JSON to S3.
+    DEBUG: Saving to S3 with jsonObject: {...}
+    ```
+  - From `S3MessageService`:
+    ```
+    DEBUG: publishToS3 s3BucketKey === HPOV-TRAP-CONSUMER
+    DEBUG: DataWrapperDTO payload: {...}
+    ERROR: publishToS3 failed with error: <specific-error>
+    ```
+  - Specific gRPC errors (e.g., `UNAVAILABLE`, `DEADLINE_EXCEEDED`, `PERMISSION_DENIED`).
+- **If No S3 Logs**:
+  - The `saveMsgToS3` call isn’t being reached, indicating an issue in `VmbPulsarMessageProcessor` (e.g., `ParseException`).
+  - Check for:
+    ```
+    ERROR: Error parsing formatted JSON to JSONObject: ...
+    ```
+
+##### Step 3: Verify gRPC Service Connectivity
+- **Action**: Test connectivity to the S3 gRPC service.
+  - Exec into the pod:
+    ```bash
+    kubectl exec -n <namespace> -it <pod-name> -- /bin/sh
+    ```
+  - Ping the service:
+    ```bash
+    curl ms-sthreeapi-idnipv4-service.<namespace>.svc.cluster.local:9998
+    ```
+    Or use `nc`:
+    ```bash
+    nc -zv ms-sthreeapi-idnipv4-service.<namespace>.svc.cluster.local 9998
+    ```
+- **Expected**: Connection successful or gRPC-specific response.
+- **If Fails**:
+  - Check if the service exists:
+    ```bash
+    kubectl get svc -n <namespace> ms-sthreeapi-idnipv4-service
+    ```
+  - Verify `S3API_SERVICE_URL` in `values.yaml` (e.g., `ms-sthreeapi-idnipv4-service.bbtpnj33vzbcucs-y-vz-npapp-enmv.svc.cluster.local:9998`).
+  - Check Istio settings in `values.yaml`:
+    ```yaml
+    excludeOutboundPorts: 9997,6651,9998
+    ```
+    Port `9998` is excluded, which might block gRPC traffic. Remove `9998` from `excludeOutboundPorts`:
+    ```yaml
+    excludeOutboundPorts: 9997,6651
+    ```
+  - Redeploy:
+    ```bash
+    helm upgrade --install <release-name> <chart-path> -n <namespace>
+    ```
+
+##### Step 4: Validate `S3BUCKETKEY`
+- **Action**: Ensure `S3BUCKETKEY` is correct.
+  - Check pod environment:
+    ```bash
+    kubectl exec -n <namespace> <pod-name> -- printenv | grep S3BUCKETKEY
+    ```
+    Expected: `S3BUCKETKEY=HPOV-TRAP-CONSUMER`
+  - Verify the bucket exists and is accessible via the gRPC service (consult your S3 admin or documentation).
+- **Fix**:
+  - If incorrect, update `values.yaml`:
+    ```yaml
+    S3BUCKETKEY: HPOV-TRAP-CONSUMER
+    ```
+  - Redeploy.
+
+##### Step 5: Check JSON Payload
+- **Action**: Inspect the JSON payload sent to the gRPC service.
+  - The updated `publishToS3` logs:
+    ```
+    DEBUG: DataWrapperDTO payload: {...}
+    ```
+  - Check logs for the payload content. Ensure it’s valid JSON with `S3_BUCKET_KEY` and `PAYLOAD`.
+- **Fix**:
+  - If invalid, add validation in `publishToS3`:
+    ```java
+    JSONObject s3reqObject = new JSONObject();
+    s3reqObject.put(Constants.S3_BUCKET_KEY, s3BucketKey);
+    String payload = dataObject.toString();
+    try {
+        objectMapper.readTree(payload); // Validate JSON
+    } catch (Exception e) {
+        logger.error("Invalid JSON payload: {}", payload, e);
+        throw new S3SaveException("Invalid JSON payload", e);
+    }
+    s3reqObject.put(Constants.PAYLOAD, payload);
+    ```
+
+##### Step 6: Verify gRPC Client Configuration
+- **Action**: Check `S3GrpcClient` configuration (not provided, but assumed to be a Spring bean).
+  - Ensure it uses `S3API_SERVICE_URL` correctly.
+  - Add logging in `S3GrpcClient` to debug the stub creation and gRPC call:
+    ```java
+    public ManagedChannel getChannel() {
+        logger.info("Creating gRPC channel to: {}", s3ApiServiceUrl);
+        return ManagedChannelBuilder.forTarget(s3ApiServiceUrl).usePlaintext().build();
+    }
+    ```
+- **Fix**:
+  - If misconfigured, update the `S3GrpcClient` to use the correct endpoint (from `S3API_SERVICE_URL`).
+
+##### Step 7: Check S3 Permissions
+- **Action**: Verify the application has permissions to write to the S3 bucket.
+  - If the gRPC service logs indicate a permission error (e.g., `PERMISSION_DENIED`), check the IAM role or credentials used by the gRPC service.
+  - Inspect `S3OVERRIDEAUTH` in `values.yaml` (e.g., `ucs-tunnel-np.enmv.ebiz.verizon.com`).
+- **Fix**:
+  - Update `S3OVERRIDEAUTH` if incorrect or coordinate with your S3 admin to grant permissions.
+
+##### Step 8: Validate Helm Deployment
+- **Action**: Ensure the Helm release applied the latest configuration (web result mentions upgrade failures).
+  ```bash
+  helm status <release-name> -n <namespace>
+  ```
+- **Fix**:
+  - If failed, try:
+    ```bash
+    helm upgrade --install --take-ownership <release-name> <chart-path> -n <namespace>
+    ```
+
+### Updated `S3MessageService` Code
+
+Here’s the updated `S3MessageService` with enhanced logging, error propagation, and JSON validation to resolve the `"publishToS3 failed"` error:
+
+```java
 package com.verizon.ucs.vmbc.service.s3;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -28,8 +316,7 @@ import java.util.List;
 @Scope("prototype")
 public class S3MessageService {
 
-    private static Logger logger = LoggerFactory.getLogger(S3MessageService.class);
-
+    private static final Logger logger = LoggerFactory.getLogger(S3MessageService.class);
 
     private final String newRelicEvents = "enmvVCPVMBConsumer:events";
 
@@ -42,47 +329,33 @@ public class S3MessageService {
     @Autowired
     private ObjectMapper objectMapper;
 
-
-    public void saveMessagesToS3(final Messages<byte[]> messages,
-                                 final boolean persistenceTimestampFlag) {
-
+    public void saveMessagesToS3(final Messages<byte[]> messages, final boolean persistenceTimestampFlag) {
         if (messages != null) {
-
             try {
                 logger.debug("saveMessagesToS3 - Messages list size {}", messages.size());
-                messages.forEach(message -> {
-                    saveMsgToS3(message, persistenceTimestampFlag);
-                });
+                messages.forEach(message -> saveMsgToS3(message, persistenceTimestampFlag));
             } catch (Exception e) {
-                logger.error("saveMessagesToS3 failed:", e);
+                logger.error("saveMessagesToS3 failed: {}", e.getMessage(), e);
+                throw new S3SaveException("saveMessagesToS3 failed", e);
             }
-
         }
-
     }
 
     public void saveMessagesListToS3(final List<Message<byte[]>> messages, final boolean persistenceTimestampFlag) {
-
         if (CollectionUtils.isNotEmpty(messages)) {
-
             try {
                 logger.debug("saveMessagesListToS3 - Messages list size {}", messages.size());
-                messages.forEach(message -> {
-                    saveMsgToS3(message, persistenceTimestampFlag);
-                });
+                messages.forEach(message -> saveMsgToS3(message, persistenceTimestampFlag));
             } catch (Exception e) {
-                logger.error("saveMessagesListToS3 failed:", e);
+                logger.error("saveMessagesListToS3 failed: {}", e.getMessage(), e);
+                throw new S3SaveException("saveMessagesListToS3 failed", e);
             }
-
         }
-
     }
 
-    public void saveMsgToS3(final Message<byte[]> message,
-                            final boolean persistenceTimestampFlag) {
-
+    public void saveMsgToS3(final Message<byte[]> message, final boolean persistenceTimestampFlag) {
         try {
-        	logger.debug("saveMsgToS3 - Message");
+            logger.debug("saveMsgToS3 - Message");
             String json = new String(message.getValue());
             JSONObject s3RequestPayload = objectMapper.readValue(json, JSONObject.class);
             logger.debug("publishToS3 s3RequestPayload === {}", s3RequestPayload.toString());
@@ -91,17 +364,16 @@ public class S3MessageService {
                 s3RequestPayload.put("persistenceTimestamp", getUtcTimeStamp());
                 logger.debug("publishToS3 persistenceTimestamp set is {}", s3RequestPayload.get("persistenceTimestamp"));
             }
-            logger.debug("Save vmb-consumer message to s3 initiated ");
+            logger.debug("Save vmb-consumer message to s3 initiated");
             if (s3RequestPayload != null) {
                 publishToS3(s3RequestPayload, vmbProperties.getS3BucketKey());
-                logger.debug("Save vmb-consumer message to s3 success ");
+                logger.debug("Save vmb-consumer message to s3 success");
             }
-
         } catch (Exception e) {
+            logger.error("saveMsgToS3 failed: {}", e.getMessage(), e);
             throw new S3SaveException("saveMsgToS3 failed", e);
         }
     }
-
 
     public void publishToS3(JSONObject dataObject, String s3BucketKey) {
         try {
@@ -109,41 +381,170 @@ public class S3MessageService {
             logger.debug("publishToS3 dataObject.toJSONString() {}", dataObject.toString());
             JSONObject s3reqObject = new JSONObject();
             s3reqObject.put(Constants.S3_BUCKET_KEY, s3BucketKey);
-            s3reqObject.put(Constants.PAYLOAD, dataObject.toString());
+            String payload = dataObject.toString();
+            try {
+                objectMapper.readTree(payload); // Validate JSON
+            } catch (Exception e) {
+                logger.error("Invalid JSON payload: {}", payload, e);
+                throw new S3SaveException("Invalid JSON payload", e);
+            }
+            s3reqObject.put(Constants.PAYLOAD, payload);
+            logger.debug("DataWrapperDTO payload: {}", s3reqObject.toString());
             DataWrapperDTO dataWrapperDTO = DataWrapperDTO.newBuilder().setPayload(s3reqObject.toString()).build();
             Iterator<LoadToS3ApiResponse> s3Response = s3GrpcClient.getStub().saveToS3(dataWrapperDTO);
+            boolean success = false;
             while (s3Response.hasNext()) {
                 LoadToS3ApiResponse response = s3Response.next();
-                logger.debug("Response: " + response.getResMessage());
+                logger.debug("Response: {}", response.getResMessage());
+                if (response.getResMessage().contains("success")) {
+                    success = true;
+                } else {
+                    logger.error("S3 save failed with response: {}", response.getResMessage());
+                }
+            }
+            if (!success) {
+                throw new S3SaveException("S3 save failed: no success response");
             }
         } catch (Throwable t) {
-            logger.error("publishToS3 failed", t);
+            logger.error("publishToS3 failed with error: {}", t.getMessage(), t);
+            throw new S3SaveException("publishToS3 failed", t);
         }
     }
 
-
-    /**
-     * Setting 24 hour utc timestamp
-     */
     private String getUtcTimeStamp() {
         ZonedDateTime now = ZonedDateTime.now(ZoneId.of("UTC"));
-        DateTimeFormatter dateTimeFormatter = new DateTimeFormatterBuilder().appendPattern("yyyy-MM-dd'T'HH:mm:ss.SSS").appendOffset("+HH:MM", "+00:00").toFormatter();
+        DateTimeFormatter dateTimeFormatter = new DateTimeFormatterBuilder()
+                .appendPattern("yyyy-MM-dd'T'HH:mm:ss.SSS")
+                .appendOffset("+HH:MM", "+00:00")
+                .toFormatter();
         return now.format(dateTimeFormatter);
     }
 
     public void saveMsgToS3(JSONObject s3RequestPayload) {
-    	try{
-    		logger.debug("saveMsgToS3 with ucgId: " + s3RequestPayload.toJSONString());
-    		logger.debug("saveMsgToS3 with vmbProperties.getS3BucketKey() : " + vmbProperties.getS3BucketKey());
-    		publishToS3(s3RequestPayload,vmbProperties.getS3BucketKey());
-    	}
-    	catch (Exception ex){
-    		logger.error("Exception while calling s3 api. Error: " + ex.getMessage());
-    		ex.printStackTrace();
-    	}
+        try {
+            logger.debug("saveMsgToS3 with ucgId: {}", s3RequestPayload.toJSONString());
+            logger.debug("saveMsgToS3 with vmbProperties.getS3BucketKey(): {}", vmbProperties.getS3BucketKey());
+            publishToS3(s3RequestPayload, vmbProperties.getS3BucketKey());
+            logger.info("Successfully saved to S3");
+        } catch (Exception ex) {
+            logger.error("Exception while calling S3 API. Error: {}", ex.getMessage(), ex);
+            throw new S3SaveException("saveMsgToS3 failed", ex);
+        }
     }
-
 }
+```
 
+### Changes Made
+- **Enhanced Logging**:
+  - Added detailed error messages with stack traces in all methods.
+  - Log the `DataWrapperDTO` payload before the gRPC call.
+  - Log gRPC response messages and check for success.
+- **JSON Validation**:
+  - Validate the `dataObject` JSON using `objectMapper.readTree`.
+- **Error Propagation**:
+  - Throw `S3SaveException` in `publishToS3` to ensure errors are propagated to `VmbPulsarMessageProcessor`.
+  - Updated all methods to throw `S3SaveException` with detailed messages.
+- **Success Check**:
+  - Check gRPC response for "success" and throw an exception if not found.
 
-Getting the error as publishing to s3 failed please resolve
+### Update to `VmbPulsarMessageProcessor`
+To handle the propagated exceptions and align with the updated `S3MessageService`, modify the `processMessage` method in `VmbPulsarMessageProcessor`:
+
+```java
+private void processMessage(Message<byte[]> message) {
+    try {
+        String messageData = new String(message.getData());
+        com.fasterxml.jackson.databind.JsonNode jsonNode = objectMapper.readTree(messageData);
+
+        if (isLoggingRequired) {
+            logger.info("Received message for topic {}: {}", topicNameFromDB, messageData);
+        }
+
+        if (s3FullMessageFlag) {
+            try {
+                String formattedJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(jsonNode);
+                logger.info("Full JSON Message:\n{}", formattedJson);
+                logger.info("s3FullMessageFlag is true. Storing the full JSON to S3.");
+                JSONObject jsonObject = (JSONObject) parser.parse(formattedJson);
+                logger.debug("Saving to S3 with jsonObject: {}", jsonObject);
+                s3MessageService.saveMsgToS3(jsonObject);
+                logger.info("Successfully saved to S3");
+            } catch (ParseException e) {
+                logger.error("Error parsing formatted JSON to JSONObject: {}", e.getMessage(), e);
+            } catch (S3SaveException e) {
+                logger.error("Failed to save full JSON to S3: {}", e.getMessage(), e);
+            }
+        } else {
+            logger.debug("s3FullMessageFlag is false. Skipping full JSON storage.");
+            processPartialMessage(jsonNode);
+        }
+    } catch (Exception e) {
+        logger.error("Error processing message: {}", e.getMessage(), e);
+    }
+}
+```
+
+### Changes
+- Added `catch (S3SaveException e)` to handle exceptions from `saveMsgToS3`.
+- Log S3-specific errors separately to distinguish them from parsing issues.
+
+### Next Steps
+1. **Apply Code Changes**:
+   - Update `S3MessageService.java` and `VmbPulsarMessageProcessor.java` with the provided code.
+   - Rebuild and redeploy the application.
+
+2. **Update Helm Configuration**:
+   - Remove port `9998` from `excludeOutboundPorts` in `values.yaml`:
+     ```yaml
+     app:
+       istio:
+         excludeOutboundPorts: 9997,6651
+     ```
+   - Redeploy:
+     ```bash
+     helm upgrade --install <release-name> <chart-path> -n <namespace>
+     ```
+
+3. **Check Logs**:
+   - Look for:
+     ```
+     DEBUG: DataWrapperDTO payload: {...}
+     ERROR: publishToS3 failed with error: <specific-error>
+     ```
+     or:
+     ```
+     ERROR: S3 save failed with response: <gRPC-response>
+     ```
+   - If JSON is invalid:
+     ```
+     ERROR: Invalid JSON payload: ...
+     ```
+
+4. **Verify gRPC Service**:
+   - Ensure `ms-sthreeapi-idnipv4-service` is running and accessible on port `9998`.
+   - Check service logs:
+     ```bash
+     kubectl logs -n <namespace> <s3-service-pod>
+     ```
+
+5. **Validate S3 Bucket**:
+   - Confirm `HPOV-TRAP-CONSUMER` exists and is accessible.
+   - Test with AWS CLI:
+     ```bash
+     aws s3 ls s3://HPOV-TRAP-CONSUMER/
+     ```
+
+6. **If Issue Persists**:
+   - Share the full stack trace from the `"publishToS3 failed"` log.
+   - Provide the gRPC service logs or `S3GrpcClient` configuration.
+   - Confirm the `S3API_SERVICE_URL` and `S3BUCKETKEY` values in the pod.
+
+### Summary
+- **Root Cause**: The `"publishToS3 failed"` error is likely due to gRPC service connectivity (e.g., Istio blocking port `9998`), invalid `S3BUCKETKEY`, or malformed JSON payload.
+- **Fixes**:
+  - Updated `S3MessageService` with detailed logging, JSON validation, and error propagation.
+  - Modified `VmbPulsarMessageProcessor` to handle `S3SaveException`.
+  - Adjusted Helm configuration to allow gRPC traffic on port `9998`.
+- **Debugging**: Enhanced logs will reveal the specific gRPC error (e.g., connectivity, permissions, payload issues).
+
+Apply these changes and follow the debugging steps. If you provide the stack trace or additional logs, I can narrow down the issue further. Let me know!
