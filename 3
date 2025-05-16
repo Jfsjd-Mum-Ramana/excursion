@@ -1,65 +1,583 @@
-package com.verizon.ucs.properties;
+Based on your request, you want to add only the `S3FULLMESSAGE` configuration to the provided Helm files (`deployment.yaml`, `helpers.tpl`, and `values.yaml`) without incorporating other changes (e.g., validation helpers, removal of unused variables, or other modifications suggested previously). The `S3FULLMESSAGE` environment variable needs to be added to the deployment template and configured in the `values.yaml` for the relevant consumers, ensuring it works with the `VmbPulsarMessageProcessor` class to enable storing full JSON messages. The `helpers.tpl` does not require changes since no new helper is needed for `S3FULLMESSAGE`. Below, I’ll outline the minimal changes to add `S3FULLMESSAGE` and provide the updated files.
 
-import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.context.annotation.Configuration;
+### Analysis
 
-import lombok.Data;
+1. **Objective**:
+   - Add `S3FULLMESSAGE` to the `deployment.yaml` template to pass it as an environment variable to the consumer pods.
+   - Update `values.yaml` to include `S3FULLMESSAGE` for each consumer, setting it to `true` where appropriate (based on your previous context, `HPOV-TRAP` consumers need it enabled).
+   - Ensure `S3FULLMESSAGE` is handled correctly to set `s3FullMessageFlag` in the Java code (`@Value("${vmb.s3fullmessage}")`).
 
-@Configuration
-@Data
-@ConfigurationProperties(prefix = "dbconfig")
-public class DbProperties {
-	private String dbUpdateUrl;
-	private String dbCallUrl;
-	private String serverStpName;
-	private String transactionStpName;
-	private String deviceStpName;
-	private String transactionDeleteStpName;
+2. **Current State**:
+   - The provided `deployment.yaml` does not include `S3FULLMESSAGE` in the `env` section.
+   - The `values.yaml` does not define `S3FULLMESSAGE` for any consumers.
+   - The `application.yml` (assumed from prior context) maps `S3FULLMESSAGE` to `vmb.s3fullmessage`:
+     ```yaml
+     vmb:
+       s3fullmessage: ${S3FULLMESSAGE:true}
+     ```
+   - The `helpers.tpl` already contains necessary helpers (e.g., `app.name`, `app.env`) and doesn’t need changes for `S3FULLMESSAGE`.
 
-	public String getDbUpdateUrl() {
-		return dbUpdateUrl;
-	}
+3. **Changes Needed**:
+   - **Deployment Template**: Add `S3FULLMESSAGE` to the `env` section, retrieving its value from the consumer configuration in `values.yaml`.
+   - **Values File**: Add `S3FULLMESSAGE: true` to the `HPOV-TRAP` consumer configurations in all environments where it’s enabled (`ENABLED: true`), aligning with your previous context. For disabled consumers, set `S3FULLMESSAGE: false` or omit it if not required.
+   - **Helpers**: No changes needed, as `S3FULLMESSAGE` is directly accessed from the consumer configuration.
 
-	public void setDbUpdateUrl(String dbUpdateUrl) {
-		this.dbUpdateUrl = dbUpdateUrl;
-	}
+4. **Considerations**:
+   - Use `| quote` for `S3FULLMESSAGE` in the deployment template to pass it as a string (`"true"` or `"false"`) to ensure Spring Boot parses it correctly as a boolean.
+   - Set `S3FULLMESSAGE: true` for enabled consumers (`npapp`, `prapp` in `bbtpnj33vzbcucs.kub84`; `prapp` in `twbgohaavzbcucs.kub14`) to match the requirement for storing full JSON messages.
+   - For disabled consumers (`plapp` in `bbtpnj33vzbcucs.kub84`; `npapp`, `plapp` in `twbgohaavzbcucs.kub14`), set `S3FULLMESSAGE: false` to avoid unnecessary processing.
 
-	public String getDbCallUrl() {
-		return dbCallUrl;
-	}
+### Proposed Changes
 
-	public void setDbCallUrl(String dbCallUrl) {
-		this.dbCallUrl = dbCallUrl;
-	}
+#### 1. Changes to `deployment.yaml`
 
-	public String getServerStpName() {
-		return serverStpName;
-	}
+**Additions**:
+- Add `S3FULLMESSAGE` to the `env` section of the container spec, retrieving its value from the consumer configuration.
+- Define the `$s3fullmessage` variable at the top of the template to access the `S3FULLMESSAGE` field.
 
-	public void setServerStpName(String serverStpName) {
-		this.serverStpName = serverStpName;
-	}
+**Modified Section**:
+- Update the variables section to include `$s3fullmessage`:
+  ```yaml
+  {{- $s3fullmessage := (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "S3FULLMESSAGE") -}}
+  ```
+- Add to the `env` section:
+  ```yaml
+  - name: S3FULLMESSAGE
+    value: {{ $s3fullmessage | quote }}
+  ```
 
-	public String getTransactionStpName() {
-		return transactionStpName;
-	}
+#### 2. Changes to `values.yaml`
 
-	public void setTransactionStpName(String transactionStpName) {
-		this.transactionStpName = transactionStpName;
-	}
+**Additions**:
+- Add `S3FULLMESSAGE` to the `HPOV-TRAP` consumer in each environment:
+  - Set `S3FULLMESSAGE: true` for enabled consumers (`npapp`, `prapp` in `bbtpnj33vzbcucs.kub84`; `prapp` in `twbgohaavzbcucs.kub14`).
+  - Set `S3FULLMESSAGE: false` for disabled consumers (`plapp` in `bbtpnj33vzbcucs.kub84`; `npapp`, `plapp` in `twbgohaavzbcucs.kub14`) to be explicit.
 
-	public String getDeviceStpName() {
-		return deviceStpName;
-	}
+**Modified Sections**:
+- For `bbtpnj33vzbcucs.kub84.npapp`:
+  ```yaml
+  S3FULLMESSAGE: true
+  ```
+- For `bbtpnj33vzbcucs.kub84.plapp`:
+  ```yaml
+  S3FULLMESSAGE: false
+  ```
+- For `bbtpnj33vzbcucs.kub84.prapp`:
+  ```yaml
+  S3FULLMESSAGE: true
+  ```
+- For `twbgohaavzbcucs.kub14.npapp`:
+  ```yaml
+  S3FULLMESSAGE: false
+  ```
+- For `twbgohaavzbcucs.kub14.plapp`:
+  ```yaml
+  S3FULLMESSAGE: false
+  ```
+- For `twbgohaavzbcucs.kub14.prapp`:
+  ```yaml
+  S3FULLMESSAGE: true
+  ```
 
-	public void setDeviceStpName(String deviceStpName) {
-		this.deviceStpName = deviceStpName;
+#### 3. Changes to `helpers.tpl`
 
-	}
-	public String getTransactionDeleteStpName() {
-		return transactionDeleteStpName;
-	}
-	public void setTransactionDeleteStpName(String transactionDeleteStpName) {
-		this.transactionDeleteStpName = transactionDeleteStpName;
-	}
-}
+**No Changes**:
+- The `helpers.tpl` already contains all necessary helpers, and `S3FULLMESSAGE` is accessed directly from the consumer configuration, so no new helper is needed.
+
+### Updated Helm Configuration Files
+
+Below are the updated files with only the `S3FULLMESSAGE` additions.
+
+#### `templates/deployment.yaml`
+```yaml
+{{- $top := . -}}
+{{- $datacenter := include "app.datacenter" $top -}}
+{{- $cluster := include "app.cluster" $top -}}
+{{- $env := include "app.env" $top -}}
+{{- range $consumers_k, $consumers_v := (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS") -}}
+{{- $consumer := $consumers_k -}}
+{{- $consumers_name := (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "NAME") -}}
+{{- $replicas := (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "REPLICAS") -}}
+{{- $enabled := (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "ENABLED") -}}
+{{- $topicurl := (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "TOPICURL") -}}
+{{- $s3json := (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "S3JSON") -}}
+{{- $s3fullmessage := (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "S3FULLMESSAGE") -}}
+{{- $resources := toYaml (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "RESOURCES") -}}
+{{- $resources_default := toYaml (index $top.Values "resources_default" $env) -}}
+{{- $subscription_name := toYaml (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "SUBSCRIPTIONNAME") -}}
+{{- if $enabled -}}
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $consumers_name }}-consumer
+spec:
+  selector:
+    matchLabels:
+      app: {{ $consumers_name }}-consumer
+  replicas: {{ $replicas }}
+  revisionHistoryLimit: 0
+  template:
+    metadata:
+      annotations:
+        traffic.sidecar.istio.io/excludeOutboundIPRanges: {{ include "app.excludeOutboundIPRanges" $top }}
+        traffic.sidecar.istio.io/excludeOutboundPorts: {{ include "app.excludeOutboundPorts" $top }}
+        traffic.sidecar.istio.io/excludeInboundPorts: {{ include "app.excludeInboundPorts" $top }}
+      labels:
+        app: {{ $consumers_name }}-consumer
+    spec:
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app: {{ $consumers_name }}-consumer
+      containers:
+        - name: {{ $consumers_name }}-consumer
+          imagePullPolicy: Always
+          image: {{ include "app.image" $top | quote }}
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.name
+            - name: VMB_SERVICE_URL
+              value: {{ include "app.vmb.url" $top }}
+            - name: LOG_APPENDER
+              value: {{ include "app.log.appender" $top }}
+            - name: LOG_LEVEL
+              value: {{ include "app.log.level" $top }}
+            - name: LOG_TRUNCATE
+              value: {{ include "app.log.truncate" $top | quote }}
+            - name: S3API_SERVICE_URL
+              value: {{ include "app.s3api.url" $top }}
+            - name: S3OVERRIDEAUTH
+              value: {{ include "app.s3OverrideAuth" $top }}
+            - name: S3BUCKETKEY
+              value: {{ include "app.s3bucketkey" $top }}
+            - name: APP_NAME
+              value: {{ include "app.name" $top | quote }}
+            - name: TOPIC_NAME
+              value: {{ $consumers_name }}
+            - name: TOPIC_URL
+              value: {{ $topicurl }}
+            - name: S3_JSON
+              value: {{ $s3json | toJson | quote }}
+            - name: S3FULLMESSAGE
+              value: {{ $s3fullmessage | quote }}
+            - name: SUBSCRIPTION_NAME
+              value: {{ $subscription_name }}
+            - name: REGION
+              value: {{ include "app.region" $top | quote }}
+            - name: VMB_TLS_CERT_FILE
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $top.Values.global.configmap.vmb }}
+                  key: VMB_TLS_CERT_FILE
+            - name: VMB_TLS_KEY_FILE
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $top.Values.global.configmap.vmb }}
+                  key: VMB_TLS_KEY_FILE
+            - name: VMB_TRUST_CERTS_FILE
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $top.Values.global.configmap.vmb }}
+                  key: VMB_TRUST_CERTS_FILE
+            - name: APPENV
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $top.Values.global.configmap.commons }}
+                  key: APPENV
+            - name: APP_NAME_SUFFIX
+              value: {{ $top.Values.app.namesuffix | quote }}
+            - name: NRAPPENV
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $top.Values.global.configmap.commons }}
+                  key: NRAPPENV
+            - name: NRLICENSEKEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $top.Values.global.secret.newrelic }}
+                  key: NRLICENSEKEY
+            - name: NRLABELS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $top.Values.global.secret.newrelic }}
+                  key: NRLABELS
+          resources:
+{{ if (hasKey (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer) "RESOURCES") }}
+{{ $resources | indent 12 }}
+{{ else }}
+{{ $resources_default | indent 12 }}
+{{ end }}
+          volumeMounts:
+          - name: tmp
+            mountPath: /tmp
+          - name: vmb-certs
+            mountPath: "/prod/eclapp/vmb/ssl"
+      imagePullSecrets:
+       - name: oneartifactory-secret
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: vmb-certs
+          secret:
+            secretName: {{ $top.Values.global.secret.vmb }}
+{{ end }}
+{{ end }}
+```
+
+**Changes**:
+- Added `$s3fullmessage` variable definition.
+- Added `S3FULLMESSAGE` to the `env` section with `| quote` to ensure proper string formatting.
+
+#### `templates/helpers.tpl`
+```yaml
+{{- /* vim: set filetype=mustache: */}}
+{{- /*
+Expand the name of the chart.
+*/}}
+{{- define "app.name" -}}
+{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{- define "app.env" -}}
+{{ (split "-" .Release.Namespace)._3 }}
+{{- end -}}
+
+{{- define "app.datacenter" -}}
+{{ (split "-" .Release.Namespace)._0 }}
+{{- end -}}
+
+{{- define "app.cluster" -}}
+{{ (split "-" .Release.Name)._0 }}
+{{- end -}}
+
+{{- define "app.region" -}}
+{{ printf "%s-%s" (split "-" .Release.Name)._0 (split "-" .Release.Name)._1 -}}
+{{- end -}}
+
+{{- define "app.vmb.topic" -}}
+{{- $datacenter := include "app.datacenter" . }}
+{{- $cluster := include "app.cluster" . }}
+{{- $env := include "app.env" . }}
+{{- printf "%s" (index .Values "kube" $datacenter $cluster $env "VMB_TOPIC") -}}
+{{- end -}}
+
+{{- define "app.vmb.url" -}}
+{{- $datacenter := include "app.datacenter" . }}
+{{- $cluster := include "app.cluster" . }}
+{{- $env := include "app.env" . }}
+{{- printf "%s" (index .Values "kube" $datacenter $cluster $env "VMB_SERVICE_URL") -}}
+{{- end -}}
+
+{{- define "app.image" -}}
+{{- $datacenter := include "app.datacenter" . }}
+{{- $cluster := include "app.cluster" . }}
+{{- $env := include "app.env" . }}
+{{- $repository := printf "%s" (index .Values "kube" $datacenter $cluster $env "REPOSITORY") -}}
+{{- $tag := printf "%s" (index .Values "kube" $datacenter $cluster $env "IMAGE_TAG") -}}
+{{- printf "%s%s%s%s%s" $repository "/" .Values.app.image.name ":" $tag -}}
+{{- end -}}
+
+{{- define "app.poll.perform" -}}
+{{- $datacenter := include "app.datacenter" . }}
+{{- $cluster := include "app.cluster" . }}
+{{- $env := include "app.env" . }}
+{{- printf "%s" (index .Values "kube" $datacenter $cluster $env "PERFORM_POLL") -}}
+{{- end -}}
+
+{{- define "app.inventory" -}}
+{{- $datacenter := include "app.datacenter" . }}
+{{- $cluster := include "app.cluster" . }}
+{{- $env := include "app.env" . }}
+{{- printf "%s" (index .Values "kube" $datacenter $cluster $env "INVENTORY_TYPE") -}}
+{{- end -}}
+
+{{- define "app.log.appender" -}}
+{{- $datacenter := include "app.datacenter" . }}
+{{- $cluster := include "app.cluster" . }}
+{{- $env := include "app.env" . }}
+{{- printf "%s" (index .Values "kube" $datacenter $cluster $env "LOG_APPENDER") -}}
+{{- end -}}
+
+{{- define "app.log.level" -}}
+{{- $datacenter := include "app.datacenter" . }}
+{{- $cluster := include "app.cluster" . }}
+{{- $env := include "app.env" . }}
+{{- printf "%s" (index .Values "kube" $datacenter $cluster $env "LOG_LEVEL") -}}
+{{- end -}}
+
+{{- define "app.log.truncate" -}}
+{{- $datacenter := include "app.datacenter" . }}
+{{- $cluster := include "app.cluster" . }}
+{{- $env := include "app.env" . }}
+{{- printf "%s" (index .Values "kube" $datacenter $cluster $env "LOG_TRUNCATE") -}}
+{{- end -}}
+
+#S3API service url
+{{- define "app.s3api.url" -}}
+{{- $datacenter := include "app.datacenter" . }}
+{{- $cluster := include "app.cluster" . }}
+{{- $env := include "app.env" . }}
+{{- printf "%s" (index .Values "kube" $datacenter $cluster $env "S3API_SERVICE_URL") -}}
+{{- end -}}
+
+#S3API s3OverrideAuth
+{{- define "app.s3OverrideAuth" -}}
+{{- $datacenter := include "app.datacenter" . }}
+{{- $cluster := include "app.cluster" . }}
+{{- $env := include "app.env" . }}
+{{- printf "%s" (index .Values "kube" $datacenter $cluster $env "S3OVERRIDEAUTH") -}}
+{{- end -}}
+
+# s3bucketkey
+{{- define "app.s3bucketkey" -}}
+{{- $datacenter := include "app.datacenter" . }}
+{{- $cluster := include "app.cluster" . }}
+{{- $env := include "app.env" . }}
+{{- printf "%s" (index .Values "kube" $datacenter $cluster $env "S3BUCKETKEY") -}}
+{{- end -}}
+
+{{- define "app.excludeOutboundIPRanges" -}}
+{{- printf "%s" (index .Values.app.istio.excludeOutboundIPRanges) -}}
+{{- end -}}
+
+{{- define "app.excludeInboundPorts" -}}
+{{- printf "%s" (index .Values.app.istio.excludeInboundPorts) -}}
+{{- end -}}
+
+{{- define "app.excludeOutboundPorts" -}}
+{{- printf "%s" (index .Values.app.istio.excludeOutboundPorts) -}}
+{{- end -}}
+```
+
+**Changes**:
+- No changes made, as no new helpers are needed for `S3FULLMESSAGE`.
+
+#### `values.yaml`
+```yaml
+nameOverride: ""
+
+global:
+  configmap:
+    vmb: vmb-config
+    commons: common-config
+    services: services-config
+  secret:
+    vmb: vmb-certs-secret
+    newrelic: newrelic-secret
+app:
+  name: ms-vmb-consumer
+  namesuffix: generic
+  replicas: 1
+  pod:
+    labels:
+      vcmp-log-target: alm
+      alm-log-topic: seca_prd_app_logs_enmv
+  istio:
+    excludeOutboundIPRanges: 63.21.0.0/16,162.247.0.0/16,148.131.0.0/16,140.108.0.0/16,151.205.42.98/32,65.230.0.0/32,166.39.0.0/32,144.8.0.0/16,10.118.0.0/16,165.122.0.0/16,159.98.0.0/16,138.83.0.0/16,10.134.0.0/16,10.136.0.0/16,165.122.0.0/32,100.5.90.45/16,100.5.0.0/16,63.91.0.0/16,192.168.0.0/32,169.254.0.0/16,63.29.0.0/16,63.25.0.0/16,63.57.32.121/32,198.223.101.103/32,137.188.135.0/24,162.115.91.0/24,166.34.0.0/16,10.11.0.0/16,153.114.0.0/16
+    excludeInboundPorts: 9997,6651,9998
+    excludeOutboundPorts: 9997,6651,9998
+  image:
+    name: ms-vmb-consumer
+
+resources_default:
+  npapp:
+    limits:
+      cpu: 1
+      memory: 2Gi
+    requests:
+      cpu: 250m
+      memory: 1Gi
+  plapp:
+    limits:
+      cpu: 1
+      memory: 2Gi
+    requests:
+      cpu: 250m
+      memory: 1Gi
+  prapp:
+    limits:
+      cpu: 3
+      memory: 4Gi
+    requests:
+      cpu: 250m
+      memory: 2Gi
+
+kube:
+  twbgohaavzbcucs:
+    kub14:
+      npapp:
+        REPOSITORY: enmv-docker-np.oneartifactoryci.verizon.com
+        VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-west-2-nonprod.verizon.com:6651
+        IMAGE_TAG: feature-vs-0923
+        LOG_APPENDER: STDOUT_JSON_PATTERN
+        LOG_LEVEL: INFO
+        LOG_TRUNCATE: "false"
+        S3OVERRIDEAUTH: ucs-tunnel-np.enmv.ebiz.verizon.com
+        S3BUCKETKEY: HPOV-TRAP-CONSUMER
+        S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.twbgohaavzbcucs-y-vz-npapp-enmv.svc.cluster.local:9998
+        CONSUMERS:
+          HPOV-TRAP:
+            NAME: hpov-trap
+            ENABLED: false
+            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
+            REPLICAS: 1
+            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap
+            S3JSON: {"mode":"OFF","s3Logging":"true","persistenceTimestampFlag":"true","retentionType":"","retentionValue":"5","ucgId":"ucgIdEnabled"}
+            S3FULLMESSAGE: false
+      plapp:
+        REPOSITORY: enmv-docker-prod.oneartifactoryci.verizon.com
+        VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-east-1-ple.verizon.com:6651
+        IMAGE_TAG: develop-2024-10-01T18-19-17
+        LOG_APPENDER: STDOUT_JSON_PATTERN
+        LOG_LEVEL: INFO
+        LOG_TRUNCATE: "true"
+        S3OVERRIDEAUTH: ucs-tunnel-np.enmv.ebiz.verizon.com
+        S3BUCKETKEY: HPOV-TRAP-CONSUMER
+        S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.twbgohaavzbcucs-y-vz-plapp-enmv.svc.cluster.local:9998
+        CONSUMERS:
+          HPOV-TRAP:
+            NAME: hpov-trap
+            ENABLED: false
+            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
+            REPLICAS: 1
+            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap-filtered
+            S3JSON: {"mode":"OFF","s3Logging":"true","persistenceTimestampFlag":"true","retentionType":"","retentionValue":"5","ucgId":"ucgIdEnabled"}
+            S3FULLMESSAGE: false
+      prapp:
+        REPOSITORY: enmv-docker-prod.oneartifactoryci.verizon.com
+        VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-west-2-prod.verizon.com:6651
+        IMAGE_TAG: master-2025-02-03T22-49-17
+        LOG_APPENDER: STDOUT_JSON_PATTERN
+        LOG_LEVEL: INFO
+        LOG_TRUNCATE: "true"
+        S3OVERRIDEAUTH: ucs-tunnel-pr.enmv.vcp.vzwnet.com
+        S3BUCKETKEY: HPOV-TRAP-CONSUMER
+        S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.twbgohaavzbcucs-y-vz-prapp-enmv.svc.cluster.local:9998
+        CONSUMERS:
+          HPOV-TRAP:
+            NAME: hpov-trap
+            ENABLED: true
+            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
+            REPLICAS: 1
+            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap-filtered
+            S3JSON: {"mode":"I","s3Logging":"true","persistenceTimestampFlag":"true","retentionType":"","retentionValue":"5","ucgId":"ucgIdEnabled"}
+            S3FULLMESSAGE: true
+  bbtpnj33vzbcucs:
+    kub84:
+      npapp:
+        REPOSITORY: enmv-docker-np.oneartifactoryci.verizon.com
+        VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-east-1-nonprod.verizon.com:6651
+        IMAGE_TAG: s3-update-with-ucgid
+        LOG_APPENDER: STDOUT_JSON_PATTERN
+        LOG_LEVEL: INFO
+        LOG_TRUNCATE: "true"
+        S3OVERRIDEAUTH: ucs-tunnel-np.enmv.ebiz.verizon.com
+        S3BUCKETKEY: HPOV-TRAP-CONSUMER
+        S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.bbtpnj33vzbcucs-y-vz-npapp-enmv.svc.cluster.local:9998
+        CONSUMERS:
+          HPOV-TRAP:
+            NAME: hpov-trap
+            ENABLED: true
+            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
+            REPLICAS: 1
+            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap
+            S3JSON: {"mode":"I","s3Logging":"true","persistenceTimestampFlag":"true","retentionType":"","retentionValue":"5","ucgId":"ucgIdEnabled"}
+            S3FULLMESSAGE: true
+      plapp:
+        REPOSITORY: enmv-docker-prod.oneartifactoryci.verizon.com
+        VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-east-1-ple.verizon.com:6651
+        IMAGE_TAG: develop-2024-10-01T18-19-17
+        LOG_APPENDER: STDOUT_JSON_PATTERN
+        LOG_LEVEL: INFO
+        LOG_TRUNCATE: "true"
+        S3OVERRIDEAUTH: ucs-tunnel-np.enmv.ebiz.verizon.com
+        S3BUCKETKEY: HPOV-TRAP-CONSUMER
+        S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.bbtpnj33vzbcucs-y-vz-plapp-enmv.svc.cluster.local:9998
+        CONSUMERS:
+          HPOV-TRAP:
+            NAME: hpov-trap
+            ENABLED: false
+            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
+            REPLICAS: 1
+            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap-filtered
+            S3JSON: {"mode":"OFF","s3Logging":"true","persistenceTimestampFlag":"true","retentionType":"","retentionValue":"5","ucgId":"ucgIdEnabled"}
+            S3FULLMESSAGE: false
+      prapp:
+        REPOSITORY: enmv-docker-prod.oneartifactoryci.verizon.com
+        VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-east-1-prod.verizon.com:6651
+        IMAGE_TAG: master-2025-02-03T22-49-17
+        LOG_APPENDER: STDOUT_JSON_PATTERN
+        LOG_LEVEL: INFO
+        LOG_TRUNCATE: "false"
+        S3OVERRIDEAUTH: ucs-tunnel-pr.enmv.vcp.vzwnet.com
+        S3BUCKETKEY: HPOV-TRAP-CONSUMER
+        S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.bbtpnj33vzbcucs-y-vz-prapp-enmv.svc.cluster.local:9998
+        CONSUMERS:
+          HPOV-TRAP:
+            NAME: hpov-trap
+            ENABLED: true
+            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
+            REPLICAS: 1
+            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap-filtered
+            S3JSON: {"mode":"I","s3Logging":"true","persistenceTimestampFlag":"true","retentionType":"","retentionValue":"5","ucgId":"ucgIdEnabled"}
+            S3FULLMESSAGE: true
+```
+
+**Changes**:
+- Added `S3FULLMESSAGE` to each `HPOV-TRAP` consumer, set to `true` for enabled consumers (`npapp`, `prapp` in `bbtpnj33vzbcucs.kub84`; `prapp` in `twbgohaavzbcucs.kub14`) and `false` for disabled consumers (`plapp` in `bbtpnj33vzbcucs.kub84`; `npapp`, `plapp` in `twbgohaavzbcucs.kub14`).
+
+### Testing Instructions
+
+1. **Deploy the Updated Helm Chart**:
+   ```bash
+   helm upgrade --install <release-name> <chart-path> -n <namespace>
+   ```
+
+2. **Verify Environment Variables**:
+   - Check that `S3FULLMESSAGE` is set correctly in the pod:
+     ```bash
+     kubectl describe pod <pod-name> -n <namespace>
+     ```
+   - For enabled consumers (e.g., `hpov-trap-consumer` in `npapp`), expect `S3FULLMESSAGE: "true"`.
+   - For disabled consumers, expect `S3FULLMESSAGE: "false"`.
+
+3. **Check Application Logs**:
+   - Verify that the `VmbPulsarMessageProcessor` logs indicate `s3FullMessageFlag` is `true` for enabled consumers:
+     ```java
+     logger.info("s3FullMessageFlag is true. Storing the full JSON to S3.");
+     ```
+   - Add debug logging if needed:
+     ```java
+     logger.info("s3FullMessageFlag is set to: {}", s3FullMessageFlag);
+     ```
+
+4. **Validate S3 Storage**:
+   - Confirm that full JSON messages are stored in the S3 bucket (`HPOV-TRAP-CONSUMER`) for enabled consumers.
+
+### Summary of Changes
+
+- **Deployment Template**:
+  - **Added**: `$s3fullmessage` variable and `S3FULLMESSAGE` environment variable with `| quote`.
+  - **Impact**: Passes `S3FULLMESSAGE` to the application, enabling `s3FullMessageFlag`.
+
+- **Values File**:
+  - **Added**: `S3FULLMESSAGE` to each `HPOV-TRAP` consumer, set to `true` for enabled consumers and `false` for disabled ones.
+  - **Impact**: Configures full message storage for active consumers.
+
+- **Helpers File**:
+  - **No Changes**: No new helpers needed.
+
+These changes are minimal and focused solely on adding `S3FULLMESSAGE` support, preserving the original structure of your Helm files. If you need further adjustments or encounter issues (e.g., parsing errors), please provide additional details, such as log outputs or specific environments to focus on.
