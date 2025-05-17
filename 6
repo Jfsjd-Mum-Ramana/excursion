@@ -1,280 +1,191 @@
-Here’s your fully updated and optimized code with fixes, logging improvements, better error handling, and code enhancements.
+spring:
+  application:
+    name: ${APP_NAME:ms-vmb-consumer}
+
+logging:
+  vsad: ${VSAD_ID:ENMV}
+  level.root: ${LOG_LEVEL:INFO}
+  appenderref: ${LOG_APPENDER:STDOUT_JSON_PATTERN}
+  logtruncate: ${LOG_TRUNCATE:false}
+
+vmb:
+  serviceUrl: ${VMB_SERVICE_URL:pulsar+ssl://vmb-aws-us-east-1-nonprod.verizon.com:6651}
+  partitionCount: ${VMB_PARTITION_COUNT:3}
+  topicName: ${TOPIC_NAME:NA}
+  topicUrl: ${TOPIC_URL:persistent://enmv/gnmi-perf-ciena/grpc-proto-ut-ts}
+  ucgSource: ${VMB_SOURCE:vcp-vmb-consumer}
+  tlsCertFile: ${VMB_TLS_CERT_FILE:/Users/illasu/ucs/vmb/enmv.cert.pem}
+  tlsKeyFile: ${VMB_TLS_KEY_FILE:/Users/illasu/ucs/vmb/enmv.key-pk8.pem}
+  tlsTrustCertsFile: ${VMB_TRUST_CERTS_FILE:/Users/illasu/ucs/vmb/ca.cert.pem}
+  topicspercontainer: ${TOPICSPERCONTAINER:1}
+  subscriptionName: ${SUBSCRIPTION_NAME:SILLA-TEST-0}
+  loggingRequired: ${LOGGING_REQUIRED:Y}
+  appName: ${APP_NAME:ms-vmb-consumer}
+  nrEnvStr: ${APPENV:NP}
+  regionStr: ${REGION:kub84-np}
+  podNamespace: ${POD_NAMESPACE:bbtpnj33vzbcucs-y-vz-npapp-enmv}
+  podName: ${POD_NAME:NA}
+  appNameSuffix: ${APP_NAME_SUFFIX:NA}
+  s3Json: ${S3_JSON:{"mode":"I","s3Logging":"false","persistenceTimestampFlag":"true","batchProcessing":"true"}}
+  s3ApiUrl: ${S3API_SERVICE_URL:ms-sthreeapi-idnipv4-service.twbgohaavzbcucs-y-vz-npapp-enmv.svc.cluster.local:9998}
+  s3OverrideAuth: ${S3OVERRIDEAUTH:ucs-tunnel-np.enmv.ebiz.verizon.com}
+  s3BucketKey: ${S3BUCKETKEY:BACNET-POLLER-CONSUMER}
+  isGrpcPCSR: ${IS_GRPC_PCSR:FALSE}
+  topicType: ${TOPIC_TYPE:NA}
+  grpcDialType: ${DIAL_TYPE:NA}
+  grpcStreamType: ${STREAMING_TYPE:NA}
+  grpcUcgType: ${UCG_TYPE:NA}
+  grpcNrAppName: ${NRAPPNAME:NA}
+
+server:
+  port: -1
+  shutdown: graceful
 
 
----
 
-1. NormaliseReactorService.java
+package com.verizon.ucs.vmbc.service.s3;
 
-Fixes:
-
-Trimmed spaces from string fields in NexusData.
-
-Improved logging format.
-
-Used deviceIp instead of hardcoded "kk".
-
-Ensured secure data publishing.
-
-
-
-package com.verizon.ucs.service;
-
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.verizon.ucs.config.VMBProperties;
-import com.verizon.ucs.model.NexusData;
-import com.verizon.ucs.service.pulsar.PulsarPublisherService;
+import com.verizon.ucs.vmbc.exception.S3SaveException;
+import com.verizon.ucs.vmbc.s3.grpc.proto.DataWrapperDTO;
+import com.verizon.ucs.vmbc.s3.grpc.proto.LoadToS3ApiResponse;
+import com.verizon.ucs.vmbc.util.Constants;
+import com.verizon.ucs.vmbc.yaml.VMBProperties;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.pulsar.client.api.Message;
+import org.apache.pulsar.client.api.Messages;
+import org.json.simple.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Service;
 
-import java.text.SimpleDateFormat;
-import java.util.Date;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
 import java.util.Iterator;
-import java.util.Map;
+import java.util.List;
 
 @Service
-@EnableConfigurationProperties({VMBProperties.class})
-public class NormaliseReactorService {
+@Scope("prototype")
+public class S3MessageService {
 
-    private static final Logger logger = LoggerFactory.getLogger(NormaliseReactorService.class);
+    private static Logger logger = LoggerFactory.getLogger(S3MessageService.class);
 
-    @Autowired
-    private PulsarPublisherService pulsarPublisherService;
+
+    private final String newRelicEvents = "enmvVCPVMBConsumer:events";
 
     @Autowired
     private VMBProperties vmbProperties;
 
-    public void handleAndPublishData(NexusData data, String deviceIp) throws Exception {
-        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX");
-        String timestamp = dateFormat.format(new Date());
+    @Autowired
+    private S3GrpcClient s3GrpcClient;
 
-        ObjectMapper objectMapper = new ObjectMapper();
-        ObjectNode ucgRawDataNode = (ObjectNode) objectMapper.valueToTree(data);
+    @Autowired
+    private ObjectMapper objectMapper;
 
-        Iterator<Map.Entry<String, JsonNode>> fields = ucgRawDataNode.fields();
-        while (fields.hasNext()) {
-            Map.Entry<String, JsonNode> field = fields.next();
-            if (field.getValue().isTextual()) {
-                ucgRawDataNode.put(field.getKey(), field.getValue().asText().trim());
+
+    public void saveMessagesToS3(final Messages<byte[]> messages,
+                                 final boolean persistenceTimestampFlag) {
+
+        if (messages != null) {
+
+            try {
+                logger.debug("saveMessagesToS3 - Messages list size {}", messages.size());
+                messages.forEach(message -> {
+                    saveMsgToS3(message, persistenceTimestampFlag);
+                });
+            } catch (Exception e) {
+                logger.error("saveMessagesToS3 failed:", e);
             }
+
         }
 
-        String ucgRawData = objectMapper.writeValueAsString(ucgRawDataNode);
-        logger.info("UCGRAW JSON DATA: {}", ucgRawData);
-
-        Map<String, Object> ucgData = Map.of(
-                "ucgTimestamp", timestamp,
-                "ucgSource", deviceIp,
-                "ucgRawData", ucgRawData,
-                "ucgDeviceName", data.getDeviceName().trim(),
-                "ucgType", "LIVE",
-                "ucgTopic", vmbProperties.getTopicName()
-        );
-
-        String ucgDataJsonString = objectMapper.writeValueAsString(ucgData);
-        logger.info("UCG JSON DATA: {}", ucgDataJsonString);
-        pulsarPublisherService.publishMessage(ucgDataJsonString);
     }
-}
 
+    public void saveMessagesListToS3(final List<Message<byte[]>> messages, final boolean persistenceTimestampFlag) {
 
----
+        if (CollectionUtils.isNotEmpty(messages)) {
 
-2. NexusService.java
+            try {
+                logger.debug("saveMessagesListToS3 - Messages list size {}", messages.size());
+                messages.forEach(message -> {
+                    saveMsgToS3(message, persistenceTimestampFlag);
+                });
+            } catch (Exception e) {
+                logger.error("saveMessagesListToS3 failed:", e);
+            }
 
-Fixes:
-
-Removed hardcoded "kk" and replaced it with device.getDeviceIP().
-
-Improved validation before publishing data.
-
-Added proper logging to detect failures.
-
-
-
-package com.verizon.ucs.service;
-
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.util.Map;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.retry.support.RetryTemplate;
-import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
-
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.verizon.ucs.config.Constants;
-import com.verizon.ucs.config.NexusConfig;
-import com.verizon.ucs.model.DeviceInfo;
-import com.verizon.ucs.model.NexusData;
-import com.verizon.ucs.parser.Nexus1250Parser;
-import com.verizon.ucs.parser.Nexus1450Parser;
-import com.verizon.ucs.parser.NexusParser;
-
-@Service
-public class NexusService {
-    private static final Logger logger = LoggerFactory.getLogger(NexusService.class);
-
-    @Autowired
-    private NexusConfig config;
-
-    @Autowired
-    private RestTemplate restTemplate;
-
-    @Autowired
-    private RetryTemplate retryTemplate;
-
-    @Autowired
-    private NormaliseReactorService normaliseReactorService;
-
-    public NexusData getNexusData(DeviceInfo device) throws Exception {
-        String response;
-        String deviceType = device.getModel().replace("Nexus ", "").trim();
-
-        if (config.isUseSampleData()) {
-            response = new String(Files.readAllBytes(Paths.get(config.getSampleDataPaths().get(deviceType))));
-        } else {
-            response = fetchDataFromDevice(deviceType, device.getDeviceIP());
         }
 
-        NexusParser parser = getParser(deviceType);
-        NexusData data = parser.parse(response);
-        validateData(data);
-
-        logger.info("Publishing data for device: {}", device.getDeviceIP());
-        normaliseReactorService.handleAndPublishData(data, device.getDeviceIP());
-        return data;
     }
 
-    public String fetchDataFromDevice(String deviceType, String deviceIP) throws Exception {
-        return retryTemplate.execute(context -> {
-            String url = config.getApiEndpoints().get(deviceType).replace("{siteIP}", deviceIP);
-            logger.info("Fetching data from {} at IP: {}", deviceType, deviceIP);
+    public void saveMsgToS3(final Message<byte[]> message,
+                            final boolean persistenceTimestampFlag) {
 
-            return switch (deviceType) {
-                case "1250", "1500" -> restTemplate.getForObject(url, String.class);
-                case "1450" -> restTemplate.postForObject(url, getHttpEntity(), String.class);
-                default -> throw new IllegalArgumentException("Unsupported device type: " + deviceType);
-            };
-        }, context -> {
-            logger.error("All retry attempts failed for device {}", deviceIP);
-            return "Recovery response";
-        });
-    }
-
-    private HttpEntity<String> getHttpEntity() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        return new HttpEntity<>(createRequestPayload(Constants.REQUEST_BODY_1450), headers);
-    }
-
-    private String createRequestPayload(String[] chans) {
         try {
-            return new ObjectMapper().writeValueAsString(Map.of("chans", chans));
+        	logger.debug("saveMsgToS3 - Message");
+            String json = new String(message.getValue());
+            JSONObject s3RequestPayload = objectMapper.readValue(json, JSONObject.class);
+            logger.debug("publishToS3 s3RequestPayload === {}", s3RequestPayload.toString());
+            s3RequestPayload.put("_pulsarId", message.getMessageId().toString());
+            if (persistenceTimestampFlag) {
+                s3RequestPayload.put("persistenceTimestamp", getUtcTimeStamp());
+                logger.debug("publishToS3 persistenceTimestamp set is {}", s3RequestPayload.get("persistenceTimestamp"));
+            }
+            logger.debug("Save vmb-consumer message to s3 initiated ");
+            if (s3RequestPayload != null) {
+                publishToS3(s3RequestPayload, vmbProperties.getS3BucketKey());
+                logger.debug("Save vmb-consumer message to s3 success ");
+            }
+
         } catch (Exception e) {
-            logger.error("Error creating JSON request payload", e);
-            return null;
+            throw new S3SaveException("saveMsgToS3 failed", e);
         }
     }
 
-    private NexusParser getParser(String deviceType) {
-        return switch (deviceType) {
-            case "1250" -> new Nexus1250Parser();
-            case "1450" -> new Nexus1450Parser();
-            case "1500" -> new Nexus1250Parser();
-            default -> throw new IllegalArgumentException("Unsupported device type: " + deviceType);
-        };
-    }
 
-    private void validateData(NexusData data) throws Exception {
-        if (data == null || data.getDeviceName() == null || data.getDeviceName().trim().isEmpty()) {
-            throw new Exception("Invalid Nexus data: missing device name");
+    public void publishToS3(JSONObject dataObject, String s3BucketKey) {
+        try {
+            logger.debug("publishToS3 s3BucketKey === {}", s3BucketKey);
+            logger.debug("publishToS3 dataObject.toJSONString() {}", dataObject.toString());
+            JSONObject s3reqObject = new JSONObject();
+            s3reqObject.put(Constants.S3_BUCKET_KEY, s3BucketKey);
+            s3reqObject.put(Constants.PAYLOAD, dataObject.toString());
+            DataWrapperDTO dataWrapperDTO = DataWrapperDTO.newBuilder().setPayload(s3reqObject.toString()).build();
+            Iterator<LoadToS3ApiResponse> s3Response = s3GrpcClient.getStub().saveToS3(dataWrapperDTO);
+            while (s3Response.hasNext()) {
+                LoadToS3ApiResponse response = s3Response.next();
+                logger.debug("Response: " + response.getResMessage());
+            }
+        } catch (Throwable t) {
+            logger.error("publishToS3 failed", t);
         }
     }
-}
 
 
----
-
-3. RetryConfig.java
-
-Improved retry logging.
-
-
-package com.verizon.ucs.config;
-
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.retry.policy.SimpleRetryPolicy;
-import org.springframework.retry.support.RetryTemplate;
-
-@Configuration
-public class RetryConfig {
-    @Bean
-    public RetryTemplate retryTemplate() {
-        RetryTemplate retryTemplate = new RetryTemplate();
-        retryTemplate.setRetryPolicy(new SimpleRetryPolicy(3));
-        return retryTemplate;
+    /**
+     * Setting 24 hour utc timestamp
+     */
+    private String getUtcTimeStamp() {
+        ZonedDateTime now = ZonedDateTime.now(ZoneId.of("UTC"));
+        DateTimeFormatter dateTimeFormatter = new DateTimeFormatterBuilder().appendPattern("yyyy-MM-dd'T'HH:mm:ss.SSS").appendOffset("+HH:MM", "+00:00").toFormatter();
+        return now.format(dateTimeFormatter);
     }
-}
 
-
----
-
-4. PulsarConfig.java
-
-Improved exception handling.
-
-
-package com.verizon.ucs.config;
-
-import com.verizon.eclipse.pulsar.producer.EclipsePulsarProducerNr;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Bean;
-import org.springframework.stereotype.Component;
-
-@Component
-public class PulsarConfig {
-
-    private static final Logger logger = LoggerFactory.getLogger(PulsarConfig.class);
-
-    @Autowired
-    private PulsarProperties pulsarProperties;
-
-    private static EclipsePulsarProducerNr pulsarProducer;
-
-    @Bean
-    public EclipsePulsarProducerNr getPulsarClient() {
-        if (pulsarProducer == null) {
-            pulsarProducer = new EclipsePulsarProducerNr(true, pulsarProperties.getServiceUrl(),
-                    pulsarProperties.getTlsTrustCertsFile(), pulsarProperties.getTlsKeyFile(),
-                    pulsarProperties.getTlsCertFile(), pulsarProperties.getTopicName());
-        }
-        return pulsarProducer;
+    public void saveMsgToS3(JSONObject s3RequestPayload) {
+    	try{
+    		logger.debug("saveMsgToS3 with ucgId: " + s3RequestPayload.toJSONString());
+    		logger.debug("saveMsgToS3 with vmbProperties.getS3BucketKey() : " + vmbProperties.getS3BucketKey());
+    		publishToS3(s3RequestPayload,vmbProperties.getS3BucketKey());
+    	}
+    	catch (Exception ex){
+    		logger.error("Exception while calling s3 api. Error: " + ex.getMessage());
+    		ex.printStackTrace();
+    	}
     }
+
 }
-
-
----
-
-Summary of Fixes
-
-✔ Removed hardcoded values
-✔ Improved validation & logging
-✔ Optimized retry logic
-✔ Properly handled exceptions
-
-Let me know if you need further modifications!
-
