@@ -1,434 +1,289 @@
-{{- $top := . -}}
-{{- $datacenter := include "app.datacenter" $top -}}
-{{- $cluster := include "app.cluster" $top -}}
-{{- $env := include "app.env" $top -}}
-{{- range $consumers_k, $consumers_v := (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS") -}}
-{{- $consumer :=   $consumers_k -}}
-{{- $consumers_name := (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "NAME") -}}
-{{- $replicas := (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "REPLICAS") -}}
-{{- $enabled := (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "ENABLED") -}}
-{{- $topicurl := (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "TOPICURL") -}}
-{{- $s3json := (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "S3JSON") -}}
-{{- $resources:= toYaml (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "RESOURCES") -}}
-{{- $resources_default:= toYaml (index $top.Values "resources_default"  $env) -}}
-{{- $subscription_name:= toYaml (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer "SUBSCRIPTIONNAME") -}}
-{{- if $enabled -}}
----
+<project
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
+	xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+	<modelVersion>4.0.0</modelVersion>
+	<groupId>com.verizon.ucs</groupId>
+	<artifactId>ms-hpov-s2im-inventory</artifactId>
+	<version>develop</version>
+	<packaging>jar</packaging>
+	
+	<name>ms-hpov-s2im-inventory</name>
+	<url>http://maven.apache.org</url>
+	<parent>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-parent</artifactId>
+		<version>3.3.3</version>
+		<relativePath /> <!-- lookup parent from repository -->
+	</parent>
+	<properties>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+		<java.version>17</java.version>
+		<lombok.version>1.18.24</lombok.version>
+	</properties>
 
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: {{ $consumers_name }}-consumer
-spec:
-  selector:
-    matchLabels:
-      app: {{ $consumers_name }}-consumer
-  replicas: {{ $replicas }}
-  revisionHistoryLimit: 0
-  template:
-    metadata:
-      annotations:
-        traffic.sidecar.istio.io/excludeOutboundIPRanges: {{ include "app.excludeOutboundIPRanges" $top }}
-        traffic.sidecar.istio.io/excludeOutboundPorts: {{ include "app.excludeOutboundPorts" $top }}
-        traffic.sidecar.istio.io/excludeInboundPorts: {{ include "app.excludeInboundPorts" $top }}
-      labels:
-        app: {{ $consumers_name }}-consumer
-    spec:
-      topologySpreadConstraints:
-      - maxSkew: 1
-        topologyKey: kubernetes.io/hostname
-        whenUnsatisfiable: ScheduleAnyway
-        labelSelector:
-          matchLabels:
-            app: {{ $consumers_name }}-consumer
-      containers:
-        - name: {{ $consumers_name }}-consumer
-          imagePullPolicy: Always
-          image: {{ include "app.image" $top | quote }}
-          env:
-            - name: POD_NAMESPACE
-              valueFrom:
-                fieldRef:
-                  apiVersion: v1
-                  fieldPath: metadata.namespace
-            - name: POD_NAME
-              valueFrom:
-                fieldRef:
-                  apiVersion: v1
-                  fieldPath: metadata.name
-            - name: VMB_SERVICE_URL 
-              value: {{ include "app.vmb.url" $top }}             
-            - name: LOG_APPENDER
-              value: {{ include "app.log.appender" $top }}
-            - name: LOG_LEVEL
-              value: {{ include "app.log.level" $top }} 
-            - name: LOG_TRUNCATE
-              value: {{ include "app.log.truncate" $top | quote }}
-            - name: S3API_SERVICE_URL
-              value: {{ include "app.s3api.url" $top }}
-            - name: S3OVERRIDEAUTH
-              value: {{ include "app.s3OverrideAuth" $top }}
-            - name: S3BUCKETKEY
-              value: {{ include "app.s3bucketkey" $top}}
-            - name: APP_NAME
-              value: {{ include "app.name" $top | quote }}
-            - name: TOPIC_NAME
-              value: {{ $consumers_name }}   
-            - name: TOPIC_URL
-              value: {{ $topicurl }}
-            - name: S3_JSON
-              value: {{ $s3json | toJson | quote }}
-            - name: SUBSCRIPTION_NAME
-              value: {{ $subscription_name }}
-            - name: REGION
-              value: {{ include "app.region" $top | quote }}
-            - name: VMB_TLS_CERT_FILE
-              valueFrom:
-                configMapKeyRef:
-                  name: {{ $top.Values.global.configmap.vmb }}
-                  key: VMB_TLS_CERT_FILE
-            - name: VMB_TLS_KEY_FILE
-              valueFrom:
-                configMapKeyRef:
-                  name: {{ $top.Values.global.configmap.vmb }}
-                  key: VMB_TLS_KEY_FILE
-            - name: VMB_TRUST_CERTS_FILE
-              valueFrom:
-                configMapKeyRef:
-                  name: {{ $top.Values.global.configmap.vmb }}
-                  key: VMB_TRUST_CERTS_FILE
-            - name: APPENV
-              valueFrom:
-                configMapKeyRef:
-                    name: {{ $top.Values.global.configmap.commons }}
-                    key: APPENV
-            - name: APP_NAME_SUFFIX
-              value: {{ $top.Values.app.namesuffix | quote }}
-            - name: NRAPPENV
-              valueFrom:
-                configMapKeyRef:
-                  name: {{ $top.Values.global.configmap.commons }}
-                  key: NRAPPENV
-            - name: NRLICENSEKEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $top.Values.global.secret.newrelic }}
-                  key: NRLICENSEKEY
-            - name: NRLABELS
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $top.Values.global.secret.newrelic }}
-                  key: NRLABELS
-  
-          resources:
-{{ if (hasKey (index $top.Values "kube" $datacenter $cluster $env "CONSUMERS" $consumer) "RESOURCES")}}
-{{ $resources | indent 12 }}
-{{ else }}
-{{ $resources_default | indent 12 }}
-{{ end }}
-          volumeMounts:
-          - name: tmp
-            mountPath: /tmp
-          - name: vmb-certs
-            mountPath: "/prod/eclapp/vmb/ssl"
-      imagePullSecrets:
-       - name: oneartifactory-secret  
-      volumes:
-        - name: tmp
-          emptyDir: {}
-        - name: vmb-certs
-          secret:
-            secretName: {{ $top.Values.global.secret.vmb }}
+	<dependencies>
+    <!-- Spring Boot Starter Web -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
 
-{{ end }}
-{{ end }}
+    <!-- Custom Dependencies -->
+    <dependency>
+        <groupId>com.verizon.ucs</groupId>
+        <artifactId>ms-common</artifactId>
+        <version>develop</version>
+    </dependency>
 
+    <!-- Javax Annotation API -->
+    <dependency>
+        <groupId>javax.annotation</groupId>
+        <artifactId>javax.annotation-api</artifactId>
+        <version>1.3.2</version>
+    </dependency>
 
-{{- /* vim: set filetype=mustache: */}}
-{{- /*
-Expand the name of the chart.
-*/}}
-{{- define "app.name" -}}
-{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
-{{- end -}}
+    <!-- JAXB API -->
+    <dependency>
+        <groupId>javax.xml.bind</groupId>
+        <artifactId>jaxb-api</artifactId>
+        <version>2.3.1</version>
+    </dependency>
 
-{{- define "app.env" -}}
-{{ (split "-" .Release.Namespace)._3 }}
-{{- end -}}
+    <!-- Activation API -->
+    <dependency>
+        <groupId>javax.activation</groupId>
+        <artifactId>activation</artifactId>
+        <version>1.1.1</version>
+    </dependency>
 
-{{- define "app.datacenter" -}}
-{{ (split "-" .Release.Namespace)._0 }}
-{{- end -}}
+    <!-- Other Dependencies -->
+    <dependency>
+        <groupId>org.projectlombok</groupId>
+        <artifactId>lombok</artifactId>
+        <scope>provided</scope>
+    </dependency>
+    <!-- Add other dependencies as needed -->
+		<!-- Dependency for RedisMQ -->
+		<dependency>
+			<groupId>com.verizon.ucs.common.redismq</groupId>
+			<artifactId>ms-common-redismq</artifactId>
+			<version>develop</version>
+		</dependency>
+		<!-- Apache HttpClient -->
+		<dependency>
+			<groupId>org.apache.httpcomponents.client5</groupId>
+			<artifactId>httpclient5</artifactId>
+		</dependency>
 
-{{- define "app.cluster" -}}
-{{ (split "-" .Release.Name)._0 }}
-{{- end -}}
+		<!-- Pulsar-->
+		<dependency>
+			<groupId>eclipse</groupId>
+			<artifactId>ms_common_pulsar</artifactId>
+			<version>develop</version>
+			<exclusions>
+				<exclusion>
+					<groupId>org.apache.avro</groupId>
+					<artifactId>avro</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>pulsar-client-original</groupId>
+					<artifactId>*</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>pulsar-common*</groupId>
+					<artifactId>*</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>pulsar-client-admin*</groupId>
+					<artifactId>*</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>io.netty</groupId>
+					<artifactId>*</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>pulsar-client-api</groupId>
+					<artifactId>*</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>pulsar-function-api</groupId>
+					<artifactId>*</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>pulsar-io-core</groupId>
+					<artifactId>*</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>pulsar-io-netty</groupId>
+					<artifactId>*</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>org.slf4j</groupId>
+					<artifactId>*</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>log4j</groupId>
+					<artifactId>*</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+		<dependency>
+			<groupId>com.squareup.okhttp3</groupId>
+			<artifactId>okhttp</artifactId>
+		</dependency>
+		<dependency>
+            <groupId>com.jcraft</groupId>
+            <artifactId>jsch</artifactId>
+            <version>0.1.55</version>
+        </dependency>
+        <dependency>
+			<groupId>com.newrelic.agent.java</groupId>
+			<artifactId>newrelic-agent</artifactId>
+			<version>7.5.0</version>
+			<scope>provided</scope>
+		</dependency>
+		<dependency>
+			<groupId>com.newrelic.agent.java</groupId>
+			<artifactId>newrelic-api</artifactId>
+			<version>7.5.0</version>
+			<scope>compile</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.json</groupId>
+			<artifactId>json</artifactId>
+			<version>20250107</version>
+		</dependency>
+	</dependencies>
+	
+	<!-- <pluginRepositories>
+		<pluginRepository>
+			<snapshots>
+				<enabled>false</enabled>
+			</snapshots>
+			<id>central</id>
+			<name>plugins-release</name>
+			<url>
+				https://oneartifactoryci.verizon.com/artifactory/plugins-release</url>
+		</pluginRepository>
+	</pluginRepositories>
+	
+	<repositories>
+		<repository>
+			<id>central</id>
+			<name>libs-release</name>
+			<url>https://oneartifactoryci.verizon.com/artifactory/libs-release</url>
+		</repository>
+		<repository>
+			<snapshots />
+			<id>snapshots</id>
+			<name>libs-snapshot</name>
+			<url>
+				https://oneartifactoryci.verizon.com/artifactory/libs-snapshot</url>
+		</repository>
+		<repository>
+			<id>spring-releases</id>
+			<url>https://repo.spring.io/libs-release</url>
+		</repository>
+	</repositories>-->
+	
+	<build>
+		<sourceDirectory>${basedir}/src/main/java</sourceDirectory>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-compiler-plugin</artifactId>
+				<configuration>
+					<source>${java.version}</source>
+					<target>${java.version}</target>
+					<includes>
+						<include>**/*.java</include>
+					</includes>
+				</configuration>
+			</plugin>
 
-{{- define "app.region" -}}
-{{ printf "%s-%s"  (split "-" .Release.Name)._0 (split "-" .Release.Name)._1 -}}
-{{- end -}}
-
-{{- define "app.vmb.topic" -}}
-{{- $datacenter := include "app.datacenter" . }}
-{{- $cluster := include "app.cluster" . }}
-{{- $env := include "app.env" . }}
-{{-  printf "%s" (index .Values "kube" $datacenter $cluster $env "VMB_TOPIC")  -}}
-{{- end -}}
-
-{{- define "app.vmb.url" -}}
-{{- $datacenter := include "app.datacenter" . }}
-{{- $cluster := include "app.cluster" . }}
-{{- $env := include "app.env" . }}
-{{-  printf "%s" (index .Values "kube" $datacenter $cluster $env "VMB_SERVICE_URL")  -}}
-{{- end -}}
-
-{{- define "app.image" -}}
-{{- $datacenter := include "app.datacenter" . }}
-{{- $cluster := include "app.cluster" . }}
-{{- $env := include "app.env" . }}
-{{- $repository := printf "%s" (index .Values "kube" $datacenter $cluster $env "REPOSITORY")  -}}
-{{- $tag := printf "%s" (index .Values "kube" $datacenter $cluster $env "IMAGE_TAG")  -}}
-{{- printf "%s%s%s%s%s" $repository "/" .Values.app.image.name ":" $tag   -}}
-{{- end -}}
-
-{{- define "app.poll.perform" -}}
-{{- $datacenter := include "app.datacenter" . }}
-{{- $cluster := include "app.cluster" . }}
-{{- $env := include "app.env" . }}
-{{-  printf "%s" (index .Values "kube" $datacenter $cluster $env "PERFORM_POLL")  -}}
-{{- end -}}
-
-{{- define "app.inventory" -}}
-{{- $datacenter := include "app.datacenter" . }}
-{{- $cluster := include "app.cluster" . }}
-{{- $env := include "app.env" . }}
-{{-  printf "%s" (index .Values "kube" $datacenter $cluster $env "INVENTORY_TYPE")  -}}
-{{- end -}}
-
-{{- define "app.log.appender" -}}
-{{- $datacenter := include "app.datacenter" . }}
-{{- $cluster := include "app.cluster" . }}
-{{- $env := include "app.env" . }}
-{{-  printf "%s" (index .Values "kube" $datacenter $cluster $env "LOG_APPENDER")  -}}
-{{- end -}}
-
-{{- define "app.log.level" -}}
-{{- $datacenter := include "app.datacenter" . }}
-{{- $cluster := include "app.cluster" . }}
-{{- $env := include "app.env" . }}
-{{-  printf "%s" (index .Values "kube" $datacenter $cluster $env "LOG_LEVEL")  -}}
-{{- end -}}
-
-{{- define "app.log.truncate" -}}
-{{- $datacenter := include "app.datacenter" . }}
-{{- $cluster := include "app.cluster" . }}
-{{- $env := include "app.env" . }}
-{{-  printf "%s" (index .Values "kube" $datacenter $cluster $env "LOG_TRUNCATE")  -}}
-{{- end -}}
-
-#S3API service url
-{{- define "app.s3api.url" -}}
-{{- $datacenter := include "app.datacenter" . }}
-{{- $cluster := include "app.cluster" . }}
-{{- $env := include "app.env" . }}
-{{-  printf "%s" (index .Values "kube" $datacenter $cluster $env "S3API_SERVICE_URL")  -}}
-{{- end -}}
-
-#S3API s3OverrideAuth
-{{- define "app.s3OverrideAuth" -}}
-{{- $datacenter := include "app.datacenter" . }}
-{{- $cluster := include "app.cluster" . }}
-{{- $env := include "app.env" . }}
-{{-  printf "%s" (index .Values "kube" $datacenter $cluster $env "S3OVERRIDEAUTH")  -}}
-{{- end -}}
-
-# s3bucketkey
-{{- define "app.s3bucketkey" -}}
-{{- $datacenter := include "app.datacenter" . }}
-{{- $cluster := include "app.cluster" . }}
-{{- $env := include "app.env" . }}
-{{-  printf "%s" (index .Values "kube" $datacenter $cluster $env "S3BUCKETKEY")  -}}
-{{- end -}}
-
-{{- define "app.excludeOutboundIPRanges" -}}
-{{-  printf "%s" (index .Values.app.istio.excludeOutboundIPRanges) -}}
-{{- end -}}
-
-{{- define "app.excludeInboundPorts" -}}
-{{-  printf "%s" (index .Values.app.istio.excludeInboundPorts) -}}
-{{- end -}}
-
-{{- define "app.excludeOutboundPorts" -}}
-{{-  printf "%s" (index .Values.app.istio.excludeOutboundPorts) -}}
-{{- end -}}
+			<!--<plugin>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-maven-plugin</artifactId>
+			</plugin>-->
+			<plugin>
+			<artifactId>maven-jar-plugin</artifactId>
+			<configuration>
+				<archive>
+					<manifest>
+						<addClasspath>false</addClasspath>
+						<mainClass>com.verizon.ucs.UCSApplication</mainClass>
+					</manifest>
+					<manifestEntries>
+						<Class-Path></Class-Path>
+					</manifestEntries>
+				</archive>
+				<excludes>
+					<exclude>lib/*</exclude>
+				</excludes>
+			</configuration>
+		</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-dependency-plugin</artifactId>
+				<executions>
+					<execution>
+						<id>copy-dependencies</id>
+						<phase>prepare-package</phase>
+						<goals>
+							<goal>copy-dependencies</goal>
+						</goals>
+						<configuration>
+							<outputDirectory>${project.build.directory}/lib</outputDirectory>
+							<excludeArtifactIds>pulsar-client-original,pulsar-client-api,
+								pulsar-io-core,pulsar-io-netty,pulsar-functions-api,pulsar-common,circe-checksum</excludeArtifactIds>
+							<overWriteReleases>false</overWriteReleases>
+							<overWriteSnapshots>false</overWriteSnapshots>
+							<overWriteIfNewer>true</overWriteIfNewer>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
+</project>
 
 
-nameOverride: ""
-
-global:  
-  configmap:
-    vmb: vmb-config
-    commons: common-config
-    services: services-config
-  secret:
-    vmb: vmb-certs-secret
-    newrelic: newrelic-secret
-app:
-  name: ms-vmb-consumer
-  namesuffix: generic
-  replicas: 1
-  pod:
-    labels:
-      vcmp-log-target: alm
-      alm-log-topic: seca_prd_app_logs_enmv
-  istio:
-    excludeOutboundIPRanges:  63.21.0.0/16,162.247.0.0/16,148.131.0.0/16,140.108.0.0/16,151.205.42.98/32,65.230.0.0/32,166.39.0.0/32,144.8.0.0/16,10.118.0.0/16,165.122.0.0/16,159.98.0.0/16,138.83.0.0/16,10.134.0.0/16,10.136.0.0/16,165.122.0.0/32,100.5.90.45/16,100.5.0.0/16,63.91.0.0/16,192.168.0.0/32,169.254.0.0/16,63.29.0.0/16,63.25.0.0/16,63.57.32.121/32,198.223.101.103/32,137.188.135.0/24,162.115.91.0/24,166.34.0.0/16,10.11.0.0/16,153.114.0.0/16
-    excludeInboundPorts: 9997,6651,9998
-    excludeOutboundPorts: 9997,6651,9998
-
-  image:
-    name: ms-vmb-consumer
-
-resources_default:
-  npapp:
-    limits:
-      cpu: 1
-      memory: 2Gi
-    requests:
-      cpu: 250m
-      memory: 1Gi
-  plapp:
-    limits:
-      cpu: 1
-      memory: 2Gi
-    requests:
-      cpu: 250m
-      memory: 1Gi
-  prapp:
-    limits:
-      cpu: 3
-      memory: 4Gi
-    requests:
-      cpu: 250m
-      memory: 2Gi
-
-kube:
-  twbgohaavzbcucs: 
-    kub14: 
-      npapp:
-        REPOSITORY: enmv-docker-np.oneartifactoryci.verizon.com
-        VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-west-2-nonprod.verizon.com:6651
-        IMAGE_TAG: feature-vs-0923
-        LOG_APPENDER: STDOUT_JSON_PATTERN
-        LOG_LEVEL: INFO
-        LOG_TRUNCATE: "false"
-        S3OVERRIDEAUTH: ucs-tunnel-np.enmv.ebiz.verizon.com
-        S3BUCKETKEY: HPOV-TRAP-CONSUMER
-        S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.twbgohaavzbcucs-y-vz-npapp-enmv.svc.cluster.local:9998
-        CONSUMERS:
-          HPOV-TRAP:
-            NAME: hpov-trap
-            ENABLED: false
-            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
-            REPLICAS: 1
-            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap
-            S3JSON: { "mode": "OFF","s3Logging": "true","persistenceTimestampFlag": "true","retentionType": "","retentionValue": "5","ucgId": "ucgIdEnabled"}
-      plapp: 
-       REPOSITORY: enmv-docker-prod.oneartifactoryci.verizon.com
-       VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-east-1-ple.verizon.com:6651
-       IMAGE_TAG: develop-2024-10-01T18-19-17
-       LOG_APPENDER: STDOUT_JSON_PATTERN
-       LOG_LEVEL: INFO
-       LOG_TRUNCATE: "true"
-       S3OVERRIDEAUTH: ucs-tunnel-np.enmv.ebiz.verizon.com
-       S3BUCKETKEY: HPOV-TRAP-CONSUMER
-       S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.twbgohaavzbcucs-y-vz-plapp-enmv.svc.cluster.local:9998
-       CONSUMERS:
-          HPOV-TRAP:
-            NAME: hpov-trap
-            ENABLED: false
-            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
-            REPLICAS: 1
-            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap-filtered
-            S3JSON: { "mode": "OFF","s3Logging": "true","persistenceTimestampFlag": "true","retentionType": "","retentionValue": "5","ucgId": "ucgIdEnabled"}
-
-      prapp: 
-       REPOSITORY: enmv-docker-prod.oneartifactoryci.verizon.com
-       VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-west-2-prod.verizon.com:6651
-       IMAGE_TAG: master-2025-02-03T22-49-17
-       LOG_APPENDER: STDOUT_JSON_PATTERN
-       LOG_LEVEL: INFO
-       LOG_TRUNCATE: "true"
-       S3OVERRIDEAUTH: ucs-tunnel-pr.enmv.vcp.vzwnet.com
-       S3BUCKETKEY: HPOV-TRAP-CONSUMER
-       S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.twbgohaavzbcucs-y-vz-prapp-enmv.svc.cluster.local:9998
-       CONSUMERS:
-        HPOV-TRAP:
-            NAME: hpov-trap
-            ENABLED: true
-            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
-            REPLICAS: 1
-            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap-filtered
-            S3JSON: {"mode":"I","s3Logging":"true","persistenceTimestampFlag":"true","retentionType": "","retentionValue": "5","ucgId": "ucgIdEnabled"}
-
-  bbtpnj33vzbcucs:
-    kub84: 
-      npapp:
-        REPOSITORY: enmv-docker-np.oneartifactoryci.verizon.com
-        VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-east-1-nonprod.verizon.com:6651
-        IMAGE_TAG: s3-update-with-ucgid
-        LOG_APPENDER: STDOUT_JSON_PATTERN
-        LOG_LEVEL: INFO
-        LOG_TRUNCATE: "true"
-        S3OVERRIDEAUTH: ucs-tunnel-np.enmv.ebiz.verizon.com
-        S3BUCKETKEY: HPOV-TRAP-CONSUMER
-        S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.bbtpnj33vzbcucs-y-vz-npapp-enmv.svc.cluster.local:9998
-        CONSUMERS:
-          HPOV-TRAP:
-            NAME: hpov-trap
-            ENABLED: true
-            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
-            REPLICAS: 1
-            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap
-            S3JSON: {"mode":"I","s3Logging":"true","persistenceTimestampFlag":"true","retentionType": "","retentionValue": "5","ucgId": "ucgIdEnabled"}
 
 
-      plapp: 
-        REPOSITORY: enmv-docker-prod.oneartifactoryci.verizon.com
-        VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-east-1-ple.verizon.com:6651
-        IMAGE_TAG: develop-2024-10-01T18-19-17
-        LOG_APPENDER: STDOUT_JSON_PATTERN
-        LOG_LEVEL: INFO
-        LOG_TRUNCATE: "true"
-        S3OVERRIDEAUTH: ucs-tunnel-np.enmv.ebiz.verizon.com
-        S3BUCKETKEY: HPOV-TRAP-CONSUMER
-        S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.bbtpnj33vzbcucs-y-vz-plapp-enmv.svc.cluster.local:9998
-        CONSUMERS:
-          HPOV-TRAP:
-            NAME: hpov-trap
-            ENABLED: false
-            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
-            REPLICAS: 1
-            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap-filtered
-            S3JSON: {"mode":"OFF","s3Logging":"true","persistenceTimestampFlag":"true","retentionType": "","retentionValue": "5","ucgId": "ucgIdEnabled"}
+                    PACKAGE                    TYPE          VERSION           SUGGESTED FIX  CRITICAL  HIGH  MEDIUM  LOW  NEGLIGIBLE  EXPLOIT  
+  org.apache.tomcat.embed:tomcat-embed-core    java          10.1.28              10.1.40        3       5      1      0       0          2     
+  commons-beanutils:commons-beanutils          java           1.9.3               1.11.0         1       2      0      0       0          2     
+  org.owasp.esapi:esapi                        java          2.2.0.0              2.3.0.0        1       0      1      0       0          0     
+  org.apache.avro:avro                         java           1.11.3              1.11.4         1       0      0      0       0          0     
+  commons-fileupload:commons-fileupload        java           1.3.3                 1.5          0       2      0      0       0          0     
+  org.springframework:spring-webmvc            java           6.1.12              6.1.13         0       2      0      0       0          0     
+  org.owasp.antisamy:antisamy                  java           1.5.8                1.6.6         0       1      5      0       0          0     
+  commons-io:commons-io                        java            2.6                2.14.0         0       1      1      0       0          0     
+  python3-unbound                               os      1.16.2-5.8.el8_10            -           0       1      0      4       0          0     
+  sqlite-libs                                   os       3.26.0-19.el8_9             -           0       1      0      4       0          0     
+  unbound-libs                                  os      1.16.2-5.8.el8_10            -           0       1      0      4       0          0     
+  ch.qos.logback:logback-core                  java           1.5.7               1.5.13         0       1      0      1       0          0     
+  com.fasterxml.jackson.core:jackson-core      java           2.14.2              2.15.0         0       1      0      0       0          0     
+  com.google.protobuf:protobuf-java            java           3.19.6              3.25.5         0       1      0      0       0          0     
+  commons-configuration:commons-configuration  java            1.10                  -           0       1      0      0       0          0     
+  commons-configuration:commons-configuration  java            1.10                  -           0       1      0      0       0          0     
+  commons-io:commons-io                        java           2.8.0               2.14.0         0       1      0      0       0          0     
+  commons-lang:commons-lang                    java            2.6                   -           0       1      0      0       0          0     
+  commons-lang:commons-lang                    java            2.6                   -           0       1      0      0       0          0     
+  io.airlift:aircompressor                     java            0.20                0.27          0       1      0      0       0          0     
+  io.airlift:aircompressor                     java            0.20                0.27          0       1      0      0       0          0     
+  io.netty:netty-handler                       java       4.1.112.Final        4.1.118.Final     0       1      0      0       0          0     
+  io.netty:netty-handler                       java       4.1.111.Final        4.1.118.Final     0       1      0      0       0          0     
+  net.minidev:json-smart                       java           2.5.1                2.5.2         0       1      0      0       0          0     
+  org.apache.commons:commons-lang3             java           3.14.0              3.18.0         0       1      0      0       0          0     
+  org.apache.commons:commons-lang3             java            3.11               3.18.0         0       1      0      0       0          0     
+  org.apache.xmlgraphics:batik-util            java            1.11                1.14          0       1      0      0       0          0     
+  org.apache.xmlgraphics:xmlgraphics-commons   java            2.3                  2.6          0       1      0      0       0          0     
+  org.asynchttpclient:async-http-client        java           2.12.1              2.12.4         0       1      0      0       0          0     
+  org.asynchttpclient:async-http-client        java           2.12.1              2.12.4         0       1      0      0       0          0     
+  org.springframework.boot:spring-boot         java           3.3.3               3.3.11         0       1      0      0       0          0     
+  xalan:xalan                                  java           2.7.2                2.7.3         0       1      0      0       0          1     
 
-      prapp: 
-        REPOSITORY: enmv-docker-prod.oneartifactoryci.verizon.com
-        VMB_SERVICE_URL: pulsar+ssl://vmb-aws-us-east-1-prod.verizon.com:6651
-        IMAGE_TAG: master-2025-02-03T22-49-17
-        LOG_APPENDER: STDOUT_JSON_PATTERN
-        LOG_LEVEL: INFO
-        LOG_TRUNCATE: "false"
-        S3OVERRIDEAUTH: ucs-tunnel-pr.enmv.vcp.vzwnet.com
-        S3BUCKETKEY: HPOV-TRAP-CONSUMER
-        S3API_SERVICE_URL: ms-sthreeapi-idnipv4-service.bbtpnj33vzbcucs-y-vz-prapp-enmv.svc.cluster.local:9998
-        CONSUMERS:
-          HPOV-TRAP:
-            NAME: hpov-trap
-            ENABLED: true
-            SUBSCRIPTIONNAME: ENMV_HPOV_TRAP_SUBSCRIPTION
-            REPLICAS: 1
-            TOPICURL: persistent://enmv/hpov-alarm/hpov-snmp-trap-filtered
-            S3JSON: {"mode":"I","s3Logging":"true","persistenceTimestampFlag":"true","retentionType": "","retentionValue": "5","ucgId": "ucgIdEnabled"}
 
-These are the without added s3 full message just add only including s3 full message configurations for this files
+
