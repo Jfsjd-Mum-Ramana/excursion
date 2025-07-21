@@ -1,409 +1,264 @@
-FROM enmv-docker-np.oneartifactoryci.verizon.com/ubi8/ubi8:8.9-1136
-
-# Update all OS packages to latest to reduce vulnerabilities
-RUN yum update -y && yum clean all
-
-ARG http_proxy=http://vzproxy.verizon.com:80
-ARG https_proxy=http://vzproxy.verizon.com:80
-ARG no_proxy=.verizon.com
-
-RUN rpm -ivh https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
-RUN yum install -y java-17-openjdk-headless procps-ng java-17-openjdk-devel nc net-tools && \
-    yum clean all
-
-# Update system packages and install Java 17 with security updates
-RUN yum update -y && \
-    yum install -y java-17-openjdk-headless \
-                   java-17-openjdk-devel \
-                   procps-ng \
-                   nc \
-                   net-tools && \
-    # Update specific vulnerable packages
-    yum update -y python3-unbound \
-                  sqlite-libs \
-                  unbound-libs && \
-    yum clean all && \
-    rm -rf /var/cache/yum
-
-ENV JAVA_LIB_DIR=/prod/eclapp/lib/* \
-	JAVA_MAIN_CLASS=com.verizon.ucs.UCSApplication
-
-RUN mkdir -p /prod/eclapp/etc  && \
-    mkdir -p /prod/eclapp/bin && \
-    mkdir -p /prod/eclapp/lib
-
-RUN chgrp -R 0 /prod/eclapp && chmod -R g=u /prod/eclapp
-
-COPY src/main/resources/start.sh /prod/eclapp/bin/
-COPY target/ms-hpov-s2im-inventory-develop.jar /prod/eclapp/lib/
-COPY target/lib/* /prod/eclapp/lib/
-COPY src/main/resources/newrelic.yml /prod/eclapp/lib/
-
-# Verify that secure JAR versions are present in the image
-RUN echo "=== VERIFYING SECURE DEPENDENCIES IN DOCKER IMAGE ===" && \
-    find /prod/eclapp/lib -name "*jackson-core*" -exec ls -la {} \; && \
-    find /prod/eclapp/lib -name "*avro*" -exec ls -la {} \; && \
-    find /prod/eclapp/lib -name "*commons-lang3*" -exec ls -la {} \; && \
-    find /prod/eclapp/lib -name "*commons-io*" -exec ls -la {} \; && \
-    echo "=== DEPENDENCIES VERIFIED ==="
-
-RUN chmod +x /prod/eclapp/bin/start.sh
-RUN chmod +x /prod/eclapp/lib/ms-hpov-s2im-inventory-develop.jar
-
-ENTRYPOINT ["sh","/prod/eclapp/bin/start.sh"]
-
-
-
-
 <project xmlns="http://maven.apache.org/POM/4.0.0"
-		 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-		 xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-	<modelVersion>4.0.0</modelVersion>
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
 
-	<groupId>com.verizon.ucs</groupId>
-	<artifactId>ms-hpov-s2im-inventory</artifactId>
-	<version>develop</version>
-	<packaging>jar</packaging>
+    <groupId>com.verizon.ucs</groupId>
+    <artifactId>ms-hpov-s2im-inventory</artifactId>
+    <version>develop</version>
+    <packaging>jar</packaging>
+    <name>ms-hpov-s2im-inventory</name>
 
-	<name>ms-hpov-s2im-inventory</name>
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.3.3</version>
+        <relativePath/>
+    </parent>
 
-	<parent>
-		<groupId>org.springframework.boot</groupId>
-		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>3.3.3</version>
-		<relativePath/>
-	</parent>
+    <properties>
+        <java.version>17</java.version>
+        <lombok.version>1.18.24</lombok.version>
+    </properties>
 
-	<properties>
-		<java.version>17</java.version>
-		<lombok.version>1.18.24</lombok.version>
-	</properties>
+    <dependencies>
 
-	<dependencies>
+        <!-- Core Spring Dependencies -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
 
-		<!-- Spring Boot Web -->
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-web</artifactId>
-		</dependency>
+        <!-- Internal Modules -->
+        <dependency>
+            <groupId>com.verizon.ucs</groupId>
+            <artifactId>ms-common</artifactId>
+            <version>develop</version>
+        </dependency>
 
-		<!-- Common Module -->
-		<dependency>
-			<groupId>com.verizon.ucs</groupId>
-			<artifactId>ms-common</artifactId>
-			<version>develop</version>
-		</dependency>
+        <dependency>
+            <groupId>com.verizon.ucs.common.redismq</groupId>
+            <artifactId>ms-common-redismq</artifactId>
+            <version>develop</version>
+        </dependency>
 
-		<!-- Javax APIs -->
-		<dependency>
-			<groupId>javax.annotation</groupId>
-			<artifactId>javax.annotation-api</artifactId>
-			<version>1.3.2</version>
-		</dependency>
+        <!-- Pulsar with Avro exclusion -->
+        <dependency>
+            <groupId>eclipse</groupId>
+            <artifactId>ms_common_pulsar</artifactId>
+            <version>develop</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.avro</groupId>
+                    <artifactId>avro</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
 
-		<dependency>
-			<groupId>javax.xml.bind</groupId>
-			<artifactId>jaxb-api</artifactId>
-			<version>2.3.1</version>
-		</dependency>
+        <!-- Explicitly Secured Dependencies -->
+        <dependency>
+            <groupId>org.apache.avro</groupId>
+            <artifactId>avro</artifactId>
+            <version>1.11.4</version>
+        </dependency>
 
-		<dependency>
-			<groupId>javax.activation</groupId>
-			<artifactId>activation</artifactId>
-			<version>1.1.1</version>
-		</dependency>
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
+            <version>3.18.0</version>
+        </dependency>
 
-		<!-- Lombok -->
-		<dependency>
-			<groupId>org.projectlombok</groupId>
-			<artifactId>lombok</artifactId>
-			<scope>provided</scope>
-		</dependency>
+        <dependency>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
+            <version>2.14.0</version>
+        </dependency>
 
-		<!-- RedisMQ -->
-		<dependency>
-			<groupId>com.verizon.ucs.common.redismq</groupId>
-			<artifactId>ms-common-redismq</artifactId>
-			<version>develop</version>
-		</dependency>
+        <dependency>
+            <groupId>commons-fileupload</groupId>
+            <artifactId>commons-fileupload</artifactId>
+            <version>1.6.0</version>
+        </dependency>
 
-		<!-- Pulsar (with exclusions) -->
-		<dependency>
-			<groupId>eclipse</groupId>
-			<artifactId>ms_common_pulsar</artifactId>
-			<version>develop</version>
-			<exclusions>
-				<exclusion>
-					<groupId>org.apache.avro</groupId>
-					<artifactId>avro</artifactId>
-				</exclusion>
-			</exclusions>
-		</dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-core</artifactId>
+            <version>2.15.0</version>
+        </dependency>
 
-		<!-- Manually override Avro -->
-		<dependency>
-			<groupId>org.apache.avro</groupId>
-			<artifactId>avro</artifactId>
-			<version>1.11.4</version>
-		</dependency>
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-handler</artifactId>
+            <version>4.1.118.Final</version>
+        </dependency>
 
-		<!-- JSCH SSH -->
-		<dependency>
-			<groupId>com.jcraft</groupId>
-			<artifactId>jsch</artifactId>
-			<version>0.1.55</version>
-		</dependency>
+        <!-- Other Required Libraries -->
+        <dependency>
+            <groupId>org.owasp.antisamy</groupId>
+            <artifactId>antisamy</artifactId>
+            <version>1.6.7</version>
+        </dependency>
 
-		<!-- New Relic -->
-		<dependency>
-			<groupId>com.newrelic.agent.java</groupId>
-			<artifactId>newrelic-agent</artifactId>
-			<version>7.5.0</version>
-			<scope>provided</scope>
-		</dependency>
-		<dependency>
-			<groupId>com.newrelic.agent.java</groupId>
-			<artifactId>newrelic-api</artifactId>
-			<version>7.5.0</version>
-		</dependency>
+        <dependency>
+            <groupId>org.owasp.esapi</groupId>
+            <artifactId>esapi</artifactId>
+            <version>2.3.0.0</version>
+        </dependency>
 
-		<!-- JSON -->
-		<dependency>
-			<groupId>org.json</groupId>
-			<artifactId>json</artifactId>
-			<version>20250107</version>
-		</dependency>
+        <dependency>
+            <groupId>org.json</groupId>
+            <artifactId>json</artifactId>
+            <version>20250107</version>
+        </dependency>
 
-		<!-- Secured Libraries -->
-		<dependency>
-			<groupId>commons-beanutils</groupId>
-			<artifactId>commons-beanutils</artifactId>
-			<version>1.11.0</version>
-		</dependency>
+        <!-- Javax APIs -->
+        <dependency>
+            <groupId>javax.xml.bind</groupId>
+            <artifactId>jaxb-api</artifactId>
+            <version>2.3.1</version>
+        </dependency>
 
-		<dependency>
-			<groupId>org.owasp.esapi</groupId>
-			<artifactId>esapi</artifactId>
-			<version>2.3.0.0</version>
-		</dependency>
+        <dependency>
+            <groupId>javax.annotation</groupId>
+            <artifactId>javax.annotation-api</artifactId>
+            <version>1.3.2</version>
+        </dependency>
 
-		<dependency>
-			<groupId>commons-fileupload</groupId>
-			<artifactId>commons-fileupload</artifactId>
-			<version>1.5</version>
-		</dependency>
+        <!-- Logging -->
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-core</artifactId>
+            <version>1.5.13</version>
+        </dependency>
 
-		<dependency>
-			<groupId>org.springframework</groupId>
-			<artifactId>spring-webmvc</artifactId>
-			<version>6.1.13</version>
-		</dependency>
+        <!-- New Relic (provided at runtime) -->
+        <dependency>
+            <groupId>com.newrelic.agent.java</groupId>
+            <artifactId>newrelic-agent</artifactId>
+            <version>7.5.0</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.newrelic.agent.java</groupId>
+            <artifactId>newrelic-api</artifactId>
+            <version>7.5.0</version>
+        </dependency>
 
-		<dependency>
-			<groupId>org.owasp.antisamy</groupId>
-			<artifactId>antisamy</artifactId>
-			<version>1.6.6</version>
-		</dependency>
+        <!-- SSH -->
+        <dependency>
+            <groupId>com.jcraft</groupId>
+            <artifactId>jsch</artifactId>
+            <version>0.1.55</version>
+        </dependency>
 
-		<dependency>
-			<groupId>commons-io</groupId>
-			<artifactId>commons-io</artifactId>
-			<version>2.14.0</version>
-		</dependency>
+        <!-- Lombok -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <version>${lombok.version}</version>
+            <scope>provided</scope>
+        </dependency>
 
-		<dependency>
-			<groupId>ch.qos.logback</groupId>
-			<artifactId>logback-core</artifactId>
-			<version>1.5.13</version>
-		</dependency>
+    </dependencies>
 
-		<dependency>
-			<groupId>com.fasterxml.jackson.core</groupId>
-			<artifactId>jackson-core</artifactId>
-			<version>2.15.0</version>
-		</dependency>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>${java.version}</source>
+                    <target>${java.version}</target>
+                </configuration>
+            </plugin>
 
-		<dependency>
-			<groupId>com.google.protobuf</groupId>
-			<artifactId>protobuf-java</artifactId>
-			<version>3.25.5</version>
-		</dependency>
+            <plugin>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <mainClass>com.verizon.ucs.UCSApplication</mainClass>
+                        </manifest>
+                    </archive>
+                    <excludes>
+                        <exclude>lib/*</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
 
-	</dependencies>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-dependencies</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>copy-dependencies</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.directory}/lib</outputDirectory>
+                            <excludeArtifactIds>log4j,commons-lang</excludeArtifactIds>
+                            <overWriteIfNewer>true</overWriteIfNewer>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 
-	<build>
-		<plugins>
-			<plugin>
-				<groupId>org.apache.maven.plugins</groupId>
-				<artifactId>maven-compiler-plugin</artifactId>
-				<configuration>
-					<source>${java.version}</source>
-					<target>${java.version}</target>
-				</configuration>
-			</plugin>
-
-			<plugin>
-				<artifactId>maven-jar-plugin</artifactId>
-				<configuration>
-					<archive>
-						<manifest>
-							<mainClass>com.verizon.ucs.UCSApplication</mainClass>
-						</manifest>
-					</archive>
-					<excludes>
-						<exclude>lib/*</exclude>
-					</excludes>
-				</configuration>
-			</plugin>
-
-			<plugin>
-				<groupId>org.apache.maven.plugins</groupId>
-				<artifactId>maven-dependency-plugin</artifactId>
-				<executions>
-					<execution>
-						<id>copy-dependencies</id>
-						<phase>prepare-package</phase>
-						<goals>
-							<goal>copy-dependencies</goal>
-						</goals>
-						<configuration>
-							<outputDirectory>${project.build.directory}/lib</outputDirectory>
-							<excludeArtifactIds>pulsar-client-original,pulsar-client-api,pulsar-io-core,pulsar-io-netty,pulsar-functions-api,pulsar-common,circe-checksum</excludeArtifactIds>
-							<overWriteReleases>false</overWriteReleases>
-							<overWriteSnapshots>false</overWriteSnapshots>
-							<overWriteIfNewer>true</overWriteIfNewer>
-						</configuration>
-					</execution>
-				</executions>
-			</plugin>
-		</plugins>
-	</build>
 </project>
 
 
 
 
 
-429 vulnerabilities found
-4 Critical (2 fixable)
-29 High (19 fixable)
-132 Medium (15 fixable)
-259 Low (1 fixable)
-5 Negligible (0 fixable)
 
 
-                    PACKAGE                    TYPE          VERSION           SUGGESTED FIX  CRITICAL  HIGH  MEDIUM  LOW  NEGLIGIBLE  EXPLOIT  
-  log4j:log4j                                  java           1.2.17                2.0          2       4      0      1       0          1     
-  org.apache.tomcat.embed:tomcat-embed-core    java          10.1.40              10.1.42        1       2      0      0       0          0     
-  org.apache.avro:avro                         java           1.11.3              1.11.4         1       0      0      0       0          0     
-  net.sourceforge.htmlunit:neko-htmlunit       java            2.24                2.27          0       2      0      0       0          0     
-  python3-unbound                               os      1.16.2-5.8.el8_10            -           0       1      0      4       0          0     
-  sqlite-libs                                   os       3.26.0-19.el8_9             -           0       1      0      4       0          0     
-  unbound-libs                                  os      1.16.2-5.8.el8_10            -           0       1      0      4       0          0     
-  com.fasterxml.jackson.core:jackson-core      java           2.14.2              2.15.0         0       1      0      0       0          0     
-  commons-configuration:commons-configuration  java            1.10                  -           0       1      0      0       0          0     
-  commons-configuration:commons-configuration  java            1.10                  -           0       1      0      0       0          0     
-  commons-fileupload:commons-fileupload        java            1.5                 1.6.0         0       1      0      0       0          0     
-  commons-io:commons-io                        java           2.8.0               2.14.0         0       1      0      0       0          0     
-  commons-lang:commons-lang                    java            2.6                   -           0       1      0      0       0          0     
-  commons-lang:commons-lang                    java            2.6                   -           0       1      0      0       0          0     
-  io.airlift:aircompressor                     java            0.20                0.27          0       1      0      0       0          0     
-  io.airlift:aircompressor                     java            0.20                0.27          0       1      0      0       0          0     
-  io.netty:netty-handler                       java       4.1.112.Final        4.1.118.Final     0       1      0      0       0          0     
-  io.netty:netty-handler                       java       4.1.111.Final        4.1.118.Final     0       1      0      0       0          0     
-  net.minidev:json-smart                       java           2.5.1                2.5.2         0       1      0      0       0          0     
-  org.apache.commons:commons-lang3             java           3.14.0              3.18.0         0       1      0      0       0          0     
-  org.apache.commons:commons-lang3             java            3.11               3.18.0         0       1      0      0       0          0     
-  org.asynchttpclient:async-http-client        java           2.12.1              2.12.4         0       1      0      0       0          0     
-  org.asynchttpclient:async-http-client        java           2.12.1              2.12.4         0       1      0      0       0          0     
-  org.springframework.boot:spring-boot         java           3.3.3               3.3.11         0       1      0      0       0          0     
-  org.springframework:spring-webmvc            java           6.1.13              6.1.14         0       1      0      0       0          0     
-  libtiff                                       os       4.0.9-34.el8_10             -           0       0      27     8       0          1     
-  jasper-libs                                   os       2.0.14-6.el8_10             -           0       0      8     14       0          2     
-  gnutls                                        os      3.6.16-8.el8_10.3            -           0       0      4      1       0          0     
-  libssh                                        os         0.9.6-14.el8              -           0       0      4      1       0          0     
-  libssh-config                                 os         0.9.6-14.el8              -           0       0      4      1       0          0     
-  vim-minimal                                   os    2:8.0.1763-19.el8_6.4          -           0       0      3     85       0          0     
-  platform-python                               os       3.6.8-70.el8_10             -           0       0      3      4       0          0     
-  python3-libs                                  os       3.6.8-70.el8_10             -           0       0      3      4       0          0     
-  libsoup                                       os       2.62.3-9.el8_10             -           0       0      3      2       0          0     
-  cairo                                         os        1.15.12-6.el8              -           0       0      3      1       0          2     
-  cairo-gobject                                 os        1.15.12-6.el8              -           0       0      3      1       0          2     
-  platform-python-pip                           os         9.0.3-24.el8              -           0       0      3      1       0          0     
-  python3-pip-wheel                             os         9.0.3-24.el8              -           0       0      3      1       0          0     
-  org.owasp.antisamy:antisamy                  java           1.6.6                1.6.7         0       0      3      0       0          0     
-  org.springframework:spring-context           java           6.1.12              6.1.14         0       0      3      0       0          0     
-  libarchive                                    os         3.3.3-5.el8               -           0       0      2      9       0          0     
-  tar                                           os       2:1.30-10.el8_10            -           0       0      2      3       0          0     
-  avahi-libs                                    os       0.7-27.el8_10.1             -           0       0      2      1       0          0     
-  systemd                                       os       239-82.el8_10.5             -           0       0      2      1       0          0     
-  systemd-libs                                  os       239-82.el8_10.5             -           0       0      2      1       0          0     
-  systemd-pam                                   os       239-82.el8_10.5             -           0       0      2      1       0          0     
-  io.netty:netty-common                        java       4.1.112.Final        4.1.115.Final     0       0      2      0       0          0     
-  io.netty:netty-common                        java       4.1.111.Final        4.1.115.Final     0       0      2      0       0          0     
-  libgcrypt                                     os        1.8.5-7.el8_6              -           0       0      2      0       0          0     
-  org.springframework:spring-web               java           6.1.12              6.1.14         0       0      2      0       0          0     
-  gdb-gdbserver                                 os          8.2-20.el8               -           0       0      1      9       1          0     
-  ncurses-base                                  os     6.1-10.20180224.el8           -           0       0      1      9       0          0     
-  ncurses-libs                                  os     6.1-10.20180224.el8           -           0       0      1      9       0          0     
-  openssl                                       os      1:1.1.1k-14.el8_6            -           0       0      1      8       0          0     
-  openssl-libs                                  os      1:1.1.1k-14.el8_6            -           0       0      1      8       0          0     
-  libxml2                                       os      2.9.7-21.el8_10.1            -           0       0      1      4       0          0     
-  cups-libs                                     os      1:2.2.6-62.el8_10            -           0       0      1      1       0          0     
-  elfutils-debuginfod-client                    os         0.190-2.el8               -           0       0      1      1       0          0     
-  elfutils-default-yama-scope                   os         0.190-2.el8               -           0       0      1      1       0          0     
-  elfutils-libelf                               os         0.190-2.el8               -           0       0      1      1       0          0     
-  elfutils-libs                                 os         0.190-2.el8               -           0       0      1      1       0          0     
-  file-libs                                     os         5.33-26.el8               -           0       0      1      1       0          0     
-  gdk-pixbuf2                                   os       2.36.12-6.el8_10            -           0       0      1      1       0          0     
-  gdk-pixbuf2-modules                           os       2.36.12-6.el8_10            -           0       0      1      1       0          0     
-  libX11                                        os        1.6.8-9.el8_10             -           0       0      1      1       0          0     
-  libX11-common                                 os        1.6.8-9.el8_10             -           0       0      1      1       0          0     
-  libjpeg-turbo                                 os       1.5.3-14.el8_10             -           0       0      1      1       0          0     
-  libzstd                                       os         1.4.4-1.el8               -           0       0      1      1       0          0     
-  coreutils-single                              os         8.30-15.el8               -           0       0      1      0       0          0     
-  dnf-plugin-subscription-manager               os       1.28.44-1.el8_10            -           0       0      1      0       0          0     
-  expat                                         os       2.2.5-17.el8_10             -           0       0      1      0       0          0     
-  glib-networking                               os        2.56.1-1.1.el8             -           0       0      1      0       0          0     
-  krb5-libs                                     os       1.18.2-32.el8_10            -           0       0      1      0       0          0     
-  lcms2                                         os          2.9-2.el8                -           0       0      1      0       0          0     
-  libproxy                                      os      0.4.15-5.5.el8_10            -           0       0      1      0       0          0     
-  net-tools                                     os   2.0-0.52.20160912git.el8        -           0       0      1      0       0          0     
-  org.springframework:spring-beans             java           6.1.12              6.1.14         0       0      1      0       0          0     
-  org.springframework:spring-core              java           6.1.12              6.1.14         0       0      1      0       0          0     
-  org.springframework:spring-expression        java           6.1.12              6.1.14         0       0      1      0       0          0     
-  python3-cloud-what                            os       1.28.44-1.el8_10            -           0       0      1      0       0          0     
-  python3-requests                              os       2.20.0-5.el8_10             -           0       0      1      0       0          0     
-  python3-subscription-manager-rhsm             os       1.28.44-1.el8_10            -           0       0      1      0       0          0     
-  python3-syspurpose                            os       1.28.44-1.el8_10            -           0       0      1      0       0          0     
-  shadow-utils                                  os         2:4.6-22.el8              -           0       0      1      0       0          0     
-  subscription-manager                          os       1.28.44-1.el8_10            -           0       0      1      0       0          0     
-  glib2                                         os      2.56.4-166.el8_10            -           0       0      0      5       0          0     
-  curl                                          os      7.61.1-34.el8_10.3           -           0       0      0      3       0          0     
-  libcurl                                       os      7.61.1-34.el8_10.3           -           0       0      0      3       0          0     
-  libgcc                                        os       8.5.0-26.el8_10             -           0       0      0      3       0          1     
-  libstdc++                                     os       8.5.0-26.el8_10             -           0       0      0      3       0          1     
-  gnupg2                                        os        2.2.20-3.el8_6             -           0       0      0      2       0          0     
-  libpng                                        os        2:1.6.34-5.el8             -           0       0      0      2       0          0     
-  nss                                           os       3.101.0-11.el8_8            -           0       0      0      2       0          0     
-  nss-softokn                                   os       3.101.0-11.el8_8            -           0       0      0      2       0          0     
-  nss-softokn-freebl                            os       3.101.0-11.el8_8            -           0       0      0      2       0          0     
-  nss-sysinit                                   os       3.101.0-11.el8_8            -           0       0      0      2       0          0     
-  nss-util                                      os       3.101.0-11.el8_8            -           0       0      0      2       0          0     
-  java-17-openjdk                               os     1:17.0.16.0.8-2.el8           -           0       0      0      1       1          0     
-  java-17-openjdk-devel                         os     1:17.0.16.0.8-2.el8           -           0       0      0      1       1          0     
-  java-17-openjdk-headless                      os     1:17.0.16.0.8-2.el8           -           0       0      0      1       1          0     
-  dbus                                          os       1:1.12.8-26.el8             -           0       0      0      1       0          0     
-  dbus-common                                   os       1:1.12.8-26.el8             -           0       0      0      1       0          0     
-  dbus-daemon                                   os       1:1.12.8-26.el8             -           0       0      0      1       0          0     
-  dbus-libs                                     os       1:1.12.8-26.el8             -           0       0      0      1       0          0     
-  dbus-tools                                    os       1:1.12.8-26.el8             -           0       0      0      1       0          0     
-  gawk                                          os         4.2.1-4.el8               -           0       0      0      1       0          0     
-  libpkgconf                                    os         1.4.2-1.el8               -           0       0      0      1       0          0     
-  libtasn1                                      os        4.13-5.el8_10              -           0       0      0      1       0          0     
-  pcre2                                         os        10.32-3.el8_6              -           0       0      0      1       0          1     
-  pkgconf                                       os         1.4.2-1.el8               -           0       0      0      1       0          0     
-  pkgconf-m4                                    os         1.4.2-1.el8               -           0       0      0      1       0          0     
-  pkgconf-pkg-config                            os         1.4.2-1.el8               -           0       0      0      1       0          0     
-  procps-ng                                     os        3.3.15-14.el8              -           0       0      0      1       0          1     
-  freetype                                      os       2.9.1-10.el8_10             -           0       0      0      0       1          0     
+ 
+FROM registry.access.redhat.com/ubi8/ubi:latest
+
+ARG http_proxy=http://vzproxy.verizon.com:80
+ARG https_proxy=http://vzproxy.verizon.com:80
+ARG no_proxy=.verizon.com
+
+# Enable EPEL and install required tools
+RUN yum update -y && \
+    yum install -y epel-release && \
+    yum install -y \
+        java-17-openjdk-headless \
+        java-17-openjdk-devel \
+        procps-ng \
+        nc \
+        net-tools \
+        unzip && \
+    yum clean all && rm -rf /var/cache/yum
+
+ENV JAVA_LIB_DIR=/prod/eclapp/lib/* \
+    JAVA_MAIN_CLASS=com.verizon.ucs.UCSApplication
+
+# Create directory structure
+RUN mkdir -p /prod/eclapp/{etc,bin,lib}
+
+# Fix permissions
+RUN chgrp -R 0 /prod/eclapp && chmod -R g=u /prod/eclapp
+
+# Copy files
+COPY src/main/resources/start.sh /prod/eclapp/bin/
+COPY target/ms-hpov-s2im-inventory-develop.jar /prod/eclapp/lib/
+
+# CLEAN: delete pre-existing jars to avoid duplicates
+RUN rm -rf /prod/eclapp/lib/*.jar
+COPY target/lib/*.jar /prod/eclapp/lib/
+COPY src/main/resources/newrelic.yml /prod/eclapp/lib/
+
+# Verify and log important JAR versions
+RUN echo "=== VERIFYING DEPENDENCIES ===" && \
+    find /prod/eclapp/lib -name "*.jar" -exec echo "== {} ==" \; -exec unzip -p {} META-INF/MANIFEST.MF | grep -i "version" || true \; && \
+    echo "=== DONE ==="
+
+# Permissions
+RUN chmod +x /prod/eclapp/bin/start.sh
+RUN chmod +x /prod/eclapp/lib/ms-hpov-s2im-inventory-develop.jar
+
+ENTRYPOINT ["sh", "/prod/eclapp/bin/start.sh"]
