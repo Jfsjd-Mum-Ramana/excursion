@@ -1,289 +1,243 @@
-<project
-	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
-	xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-	<modelVersion>4.0.0</modelVersion>
-	<groupId>com.verizon.ucs</groupId>
-	<artifactId>ms-hpov-s2im-inventory</artifactId>
-	<version>develop</version>
-	<packaging>jar</packaging>
-	
-	<name>ms-hpov-s2im-inventory</name>
-	<url>http://maven.apache.org</url>
-	<parent>
-		<groupId>org.springframework.boot</groupId>
-		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>3.3.3</version>
-		<relativePath /> <!-- lookup parent from repository -->
-	</parent>
-	<properties>
-		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
-		<java.version>17</java.version>
-		<lombok.version>1.18.24</lombok.version>
-	</properties>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
 
-	<dependencies>
-    <!-- Spring Boot Starter Web -->
-    <dependency>
+    <groupId>com.verizon.ucs</groupId>
+    <artifactId>ms-hpov-s2im-inventory</artifactId>
+    <version>develop</version>
+    <packaging>jar</packaging>
+
+    <name>ms-hpov-s2im-inventory</name>
+
+    <parent>
         <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-web</artifactId>
-    </dependency>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.3.3</version>
+        <relativePath/>
+    </parent>
 
-    <!-- Custom Dependencies -->
-    <dependency>
-        <groupId>com.verizon.ucs</groupId>
-        <artifactId>ms-common</artifactId>
-        <version>develop</version>
-    </dependency>
+    <properties>
+        <java.version>17</java.version>
+        <lombok.version>1.18.24</lombok.version>
+    </properties>
 
-    <!-- Javax Annotation API -->
-    <dependency>
-        <groupId>javax.annotation</groupId>
-        <artifactId>javax.annotation-api</artifactId>
-        <version>1.3.2</version>
-    </dependency>
+    <dependencies>
 
-    <!-- JAXB API -->
-    <dependency>
-        <groupId>javax.xml.bind</groupId>
-        <artifactId>jaxb-api</artifactId>
-        <version>2.3.1</version>
-    </dependency>
+        <!-- Spring Boot Web -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
 
-    <!-- Activation API -->
-    <dependency>
-        <groupId>javax.activation</groupId>
-        <artifactId>activation</artifactId>
-        <version>1.1.1</version>
-    </dependency>
+        <!-- Fixed Tomcat Version -->
+        <dependency>
+            <groupId>org.apache.tomcat.embed</groupId>
+            <artifactId>tomcat-embed-core</artifactId>
+            <version>10.1.40</version>
+        </dependency>
 
-    <!-- Other Dependencies -->
-    <dependency>
-        <groupId>org.projectlombok</groupId>
-        <artifactId>lombok</artifactId>
-        <scope>provided</scope>
-    </dependency>
-    <!-- Add other dependencies as needed -->
-		<!-- Dependency for RedisMQ -->
-		<dependency>
-			<groupId>com.verizon.ucs.common.redismq</groupId>
-			<artifactId>ms-common-redismq</artifactId>
-			<version>develop</version>
-		</dependency>
-		<!-- Apache HttpClient -->
-		<dependency>
-			<groupId>org.apache.httpcomponents.client5</groupId>
-			<artifactId>httpclient5</artifactId>
-		</dependency>
+        <!-- Common Module -->
+        <dependency>
+            <groupId>com.verizon.ucs</groupId>
+            <artifactId>ms-common</artifactId>
+            <version>develop</version>
+        </dependency>
 
-		<!-- Pulsar-->
-		<dependency>
-			<groupId>eclipse</groupId>
-			<artifactId>ms_common_pulsar</artifactId>
-			<version>develop</version>
-			<exclusions>
-				<exclusion>
-					<groupId>org.apache.avro</groupId>
-					<artifactId>avro</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>pulsar-client-original</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>pulsar-common*</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>pulsar-client-admin*</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>io.netty</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>pulsar-client-api</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>pulsar-function-api</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>pulsar-io-core</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>pulsar-io-netty</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>org.slf4j</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>log4j</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-			</exclusions>
-		</dependency>
-		<dependency>
-			<groupId>com.squareup.okhttp3</groupId>
-			<artifactId>okhttp</artifactId>
-		</dependency>
-		<dependency>
+        <!-- Javax APIs -->
+        <dependency>
+            <groupId>javax.annotation</groupId>
+            <artifactId>javax.annotation-api</artifactId>
+            <version>1.3.2</version>
+        </dependency>
+
+        <dependency>
+            <groupId>javax.xml.bind</groupId>
+            <artifactId>jaxb-api</artifactId>
+            <version>2.3.1</version>
+        </dependency>
+
+        <dependency>
+            <groupId>javax.activation</groupId>
+            <artifactId>activation</artifactId>
+            <version>1.1.1</version>
+        </dependency>
+
+        <!-- Lombok -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- RedisMQ -->
+        <dependency>
+            <groupId>com.verizon.ucs.common.redismq</groupId>
+            <artifactId>ms-common-redismq</artifactId>
+            <version>develop</version>
+        </dependency>
+
+        <!-- Apache HttpClient -->
+        <dependency>
+            <groupId>org.apache.httpcomponents.client5</groupId>
+            <artifactId>httpclient5</artifactId>
+        </dependency>
+
+        <!-- Pulsar (with exclusions) -->
+        <dependency>
+            <groupId>eclipse</groupId>
+            <artifactId>ms_common_pulsar</artifactId>
+            <version>develop</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.avro</groupId>
+                    <artifactId>avro</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
+        <!-- Manually override Avro -->
+        <dependency>
+            <groupId>org.apache.avro</groupId>
+            <artifactId>avro</artifactId>
+            <version>1.11.4</version>
+        </dependency>
+
+        <!-- OkHttp -->
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>okhttp</artifactId>
+        </dependency>
+
+        <!-- JSCH SSH -->
+        <dependency>
             <groupId>com.jcraft</groupId>
             <artifactId>jsch</artifactId>
             <version>0.1.55</version>
         </dependency>
+
+        <!-- New Relic -->
         <dependency>
-			<groupId>com.newrelic.agent.java</groupId>
-			<artifactId>newrelic-agent</artifactId>
-			<version>7.5.0</version>
-			<scope>provided</scope>
-		</dependency>
-		<dependency>
-			<groupId>com.newrelic.agent.java</groupId>
-			<artifactId>newrelic-api</artifactId>
-			<version>7.5.0</version>
-			<scope>compile</scope>
-		</dependency>
-		<dependency>
-			<groupId>org.json</groupId>
-			<artifactId>json</artifactId>
-			<version>20250107</version>
-		</dependency>
-	</dependencies>
-	
-	<!-- <pluginRepositories>
-		<pluginRepository>
-			<snapshots>
-				<enabled>false</enabled>
-			</snapshots>
-			<id>central</id>
-			<name>plugins-release</name>
-			<url>
-				https://oneartifactoryci.verizon.com/artifactory/plugins-release</url>
-		</pluginRepository>
-	</pluginRepositories>
-	
-	<repositories>
-		<repository>
-			<id>central</id>
-			<name>libs-release</name>
-			<url>https://oneartifactoryci.verizon.com/artifactory/libs-release</url>
-		</repository>
-		<repository>
-			<snapshots />
-			<id>snapshots</id>
-			<name>libs-snapshot</name>
-			<url>
-				https://oneartifactoryci.verizon.com/artifactory/libs-snapshot</url>
-		</repository>
-		<repository>
-			<id>spring-releases</id>
-			<url>https://repo.spring.io/libs-release</url>
-		</repository>
-	</repositories>-->
-	
-	<build>
-		<sourceDirectory>${basedir}/src/main/java</sourceDirectory>
-		<plugins>
-			<plugin>
-				<groupId>org.apache.maven.plugins</groupId>
-				<artifactId>maven-compiler-plugin</artifactId>
-				<configuration>
-					<source>${java.version}</source>
-					<target>${java.version}</target>
-					<includes>
-						<include>**/*.java</include>
-					</includes>
-				</configuration>
-			</plugin>
+            <groupId>com.newrelic.agent.java</groupId>
+            <artifactId>newrelic-agent</artifactId>
+            <version>7.5.0</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.newrelic.agent.java</groupId>
+            <artifactId>newrelic-api</artifactId>
+            <version>7.5.0</version>
+        </dependency>
 
-			<!--<plugin>
-				<groupId>org.springframework.boot</groupId>
-				<artifactId>spring-boot-maven-plugin</artifactId>
-			</plugin>-->
-			<plugin>
-			<artifactId>maven-jar-plugin</artifactId>
-			<configuration>
-				<archive>
-					<manifest>
-						<addClasspath>false</addClasspath>
-						<mainClass>com.verizon.ucs.UCSApplication</mainClass>
-					</manifest>
-					<manifestEntries>
-						<Class-Path></Class-Path>
-					</manifestEntries>
-				</archive>
-				<excludes>
-					<exclude>lib/*</exclude>
-				</excludes>
-			</configuration>
-		</plugin>
-			<plugin>
-				<groupId>org.apache.maven.plugins</groupId>
-				<artifactId>maven-dependency-plugin</artifactId>
-				<executions>
-					<execution>
-						<id>copy-dependencies</id>
-						<phase>prepare-package</phase>
-						<goals>
-							<goal>copy-dependencies</goal>
-						</goals>
-						<configuration>
-							<outputDirectory>${project.build.directory}/lib</outputDirectory>
-							<excludeArtifactIds>pulsar-client-original,pulsar-client-api,
-								pulsar-io-core,pulsar-io-netty,pulsar-functions-api,pulsar-common,circe-checksum</excludeArtifactIds>
-							<overWriteReleases>false</overWriteReleases>
-							<overWriteSnapshots>false</overWriteSnapshots>
-							<overWriteIfNewer>true</overWriteIfNewer>
-						</configuration>
-					</execution>
-				</executions>
-			</plugin>
-		</plugins>
-	</build>
+        <!-- JSON -->
+        <dependency>
+            <groupId>org.json</groupId>
+            <artifactId>json</artifactId>
+            <version>20250107</version>
+        </dependency>
+
+        <!-- Secured Libraries -->
+        <dependency>
+            <groupId>commons-beanutils</groupId>
+            <artifactId>commons-beanutils</artifactId>
+            <version>1.11.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.owasp.esapi</groupId>
+            <artifactId>esapi</artifactId>
+            <version>2.3.0.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>commons-fileupload</groupId>
+            <artifactId>commons-fileupload</artifactId>
+            <version>1.5</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-webmvc</artifactId>
+            <version>6.1.13</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.owasp.antisamy</groupId>
+            <artifactId>antisamy</artifactId>
+            <version>1.6.6</version>
+        </dependency>
+
+        <dependency>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
+            <version>2.14.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-core</artifactId>
+            <version>1.5.13</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-core</artifactId>
+            <version>2.15.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.google.protobuf</groupId>
+            <artifactId>protobuf-java</artifactId>
+            <version>3.25.5</version>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>${java.version}</source>
+                    <target>${java.version}</target>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <mainClass>com.verizon.ucs.UCSApplication</mainClass>
+                        </manifest>
+                    </archive>
+                    <excludes>
+                        <exclude>lib/*</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-dependencies</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>copy-dependencies</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.directory}/lib</outputDirectory>
+                            <excludeArtifactIds>pulsar-client-original,pulsar-client-api,pulsar-io-core,pulsar-io-netty,pulsar-functions-api,pulsar-common,circe-checksum</excludeArtifactIds>
+                            <overWriteReleases>false</overWriteReleases>
+                            <overWriteSnapshots>false</overWriteSnapshots>
+                            <overWriteIfNewer>true</overWriteIfNewer>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 </project>
-
-
-
-
-                    PACKAGE                    TYPE          VERSION           SUGGESTED FIX  CRITICAL  HIGH  MEDIUM  LOW  NEGLIGIBLE  EXPLOIT  
-  org.apache.tomcat.embed:tomcat-embed-core    java          10.1.28              10.1.40        3       5      1      0       0          2     
-  commons-beanutils:commons-beanutils          java           1.9.3               1.11.0         1       2      0      0       0          2     
-  org.owasp.esapi:esapi                        java          2.2.0.0              2.3.0.0        1       0      1      0       0          0     
-  org.apache.avro:avro                         java           1.11.3              1.11.4         1       0      0      0       0          0     
-  commons-fileupload:commons-fileupload        java           1.3.3                 1.5          0       2      0      0       0          0     
-  org.springframework:spring-webmvc            java           6.1.12              6.1.13         0       2      0      0       0          0     
-  org.owasp.antisamy:antisamy                  java           1.5.8                1.6.6         0       1      5      0       0          0     
-  commons-io:commons-io                        java            2.6                2.14.0         0       1      1      0       0          0     
-  python3-unbound                               os      1.16.2-5.8.el8_10            -           0       1      0      4       0          0     
-  sqlite-libs                                   os       3.26.0-19.el8_9             -           0       1      0      4       0          0     
-  unbound-libs                                  os      1.16.2-5.8.el8_10            -           0       1      0      4       0          0     
-  ch.qos.logback:logback-core                  java           1.5.7               1.5.13         0       1      0      1       0          0     
-  com.fasterxml.jackson.core:jackson-core      java           2.14.2              2.15.0         0       1      0      0       0          0     
-  com.google.protobuf:protobuf-java            java           3.19.6              3.25.5         0       1      0      0       0          0     
-  commons-configuration:commons-configuration  java            1.10                  -           0       1      0      0       0          0     
-  commons-configuration:commons-configuration  java            1.10                  -           0       1      0      0       0          0     
-  commons-io:commons-io                        java           2.8.0               2.14.0         0       1      0      0       0          0     
-  commons-lang:commons-lang                    java            2.6                   -           0       1      0      0       0          0     
-  commons-lang:commons-lang                    java            2.6                   -           0       1      0      0       0          0     
-  io.airlift:aircompressor                     java            0.20                0.27          0       1      0      0       0          0     
-  io.airlift:aircompressor                     java            0.20                0.27          0       1      0      0       0          0     
-  io.netty:netty-handler                       java       4.1.112.Final        4.1.118.Final     0       1      0      0       0          0     
-  io.netty:netty-handler                       java       4.1.111.Final        4.1.118.Final     0       1      0      0       0          0     
-  net.minidev:json-smart                       java           2.5.1                2.5.2         0       1      0      0       0          0     
-  org.apache.commons:commons-lang3             java           3.14.0              3.18.0         0       1      0      0       0          0     
-  org.apache.commons:commons-lang3             java            3.11               3.18.0         0       1      0      0       0          0     
-  org.apache.xmlgraphics:batik-util            java            1.11                1.14          0       1      0      0       0          0     
-  org.apache.xmlgraphics:xmlgraphics-commons   java            2.3                  2.6          0       1      0      0       0          0     
-  org.asynchttpclient:async-http-client        java           2.12.1              2.12.4         0       1      0      0       0          0     
-  org.asynchttpclient:async-http-client        java           2.12.1              2.12.4         0       1      0      0       0          0     
-  org.springframework.boot:spring-boot         java           3.3.3               3.3.11         0       1      0      0       0          0     
-  xalan:xalan                                  java           2.7.2                2.7.3         0       1      0      0       0          1     
-
-
-
