@@ -1,264 +1,322 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
+478 vulnerabilities found
+0 Critical (0 fixable)
+26 High (23 fixable)
+186 Medium (75 fixable)
+261 Low (21 fixable)
+5 Negligible (0 fixable)
 
-    <groupId>com.verizon.ucs</groupId>
-    <artifactId>ms-hpov-s2im-inventory</artifactId>
-    <version>develop</version>
-    <packaging>jar</packaging>
-    <name>ms-hpov-s2im-inventory</name>
 
-    <parent>
+                    PACKAGE                    TYPE             VERSION                      SUGGESTED FIX            CRITICAL  HIGH  MEDIUM  LOW  NEGLIGIBLE  EXPLOIT  
+  platform-python                               os         3.6.8-56.el8_9.3                0:3.6.8-70.el8_10             0       4      10     5       0          0     
+  python3-libs                                  os         3.6.8-56.el8_9.3                0:3.6.8-70.el8_10             0       4      10     5       0          0     
+  libxml2                                       os          2.9.7-18.el8_9                0:2.9.7-21.el8_10.1            0       4      5      4       0          0     
+  glibc                                         os         2.28-236.el8_9.12              0:2.28-251.el8_10.2            0       2      3      2       0          1     
+  glibc-common                                  os         2.28-236.el8_9.12              0:2.28-251.el8_10.2            0       2      3      2       0          1     
+  glibc-minimal-langpack                        os         2.28-236.el8_9.12              0:2.28-251.el8_10.2            0       2      3      2       0          1     
+  pam                                           os           1.3.1-27.el8                  0:1.3.1-36.el8_10             0       2      2      0       0          0     
+  krb5-libs                                     os          1.18.2-26.el8_9                0:1.18.2-30.el8_10            0       1      4      2       0          0     
+  platform-python-setuptools                    os           39.2.0-7.el8                  0:39.2.0-8.el8_10             0       1      1      0       0          0     
+  python3-setuptools-wheel                      os           39.2.0-7.el8                  0:39.2.0-8.el8_10             0       1      1      0       0          0     
+  sqlite-libs                                   os          3.26.0-19.el8_9                        -                     0       1      0      4       0          0     
+  commons-configuration:commons-configuration  java              1.10                              -                     0       1      0      0       0          0     
+  commons-lang:commons-lang                    java               2.6                              -                     0       1      0      0       0          0     
+
+
+
+
+
+
+<project
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
+	xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+	<modelVersion>4.0.0</modelVersion>
+	<groupId>com.verizon.ucs</groupId>
+	<artifactId>ms-hpov-s2im-inventory</artifactId>
+	<version>develop</version>
+	<packaging>jar</packaging>
+	
+	<name>ms-hpov-s2im-inventory</name>
+	<url>http://maven.apache.org</url>
+	<parent>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-parent</artifactId>
+		<version>3.3.3</version>
+		<relativePath /> <!-- lookup parent from repository -->
+	</parent>
+	<properties>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+		<java.version>17</java.version>
+		<lombok.version>1.18.24</lombok.version>
+	</properties>
+
+	<dependencies>
+    <!-- Spring Boot Starter Web -->
+    <dependency>
         <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.3.3</version>
-        <relativePath/>
-    </parent>
+        <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    <!-- Custom Dependencies -->
+    <dependency>
+        <groupId>com.verizon.ucs</groupId>
+        <artifactId>ms-common</artifactId>
+        <version>develop</version>
+    </dependency>
 
-    <properties>
-        <java.version>17</java.version>
-        <lombok.version>1.18.24</lombok.version>
-    </properties>
+    <!-- Javax Annotation API -->
+    <dependency>
+        <groupId>javax.annotation</groupId>
+        <artifactId>javax.annotation-api</artifactId>
+        <version>1.3.2</version>
+    </dependency>
 
-    <dependencies>
+    <!-- JAXB API -->
+    <dependency>
+        <groupId>javax.xml.bind</groupId>
+        <artifactId>jaxb-api</artifactId>
+        <version>2.3.1</version>
+    </dependency>
 
-        <!-- Core Spring Dependencies -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
+    <!-- Activation API -->
+    <dependency>
+        <groupId>javax.activation</groupId>
+        <artifactId>activation</artifactId>
+        <version>1.1.1</version>
+    </dependency>
+
+    <!-- Other Dependencies -->
+    <dependency>
+        <groupId>org.projectlombok</groupId>
+        <artifactId>lombok</artifactId>
+        <scope>provided</scope>
+    </dependency>
+    <!-- Add other dependencies as needed -->
+		<!-- Dependency for RedisMQ -->
+		<dependency>
+			<groupId>com.verizon.ucs.common.redismq</groupId>
+			<artifactId>ms-common-redismq</artifactId>
+			<version>develop</version>
+		</dependency>
+		<!-- Apache HttpClient -->
+		<dependency>
+			<groupId>org.apache.httpcomponents</groupId>
+			<artifactId>httpclient</artifactId>
+			<version>4.5.13</version>
+		</dependency>
+
+		<dependency>
+			<groupId>com.squareup.okhttp3</groupId>
+			<artifactId>okhttp</artifactId>
+		</dependency>
+		<dependency>
+            <groupId>com.jcraft</groupId>
+            <artifactId>jsch</artifactId>
+            <version>0.1.55</version>
         </dependency>
-
-        <!-- Internal Modules -->
         <dependency>
-            <groupId>com.verizon.ucs</groupId>
-            <artifactId>ms-common</artifactId>
-            <version>develop</version>
+			<groupId>com.newrelic.agent.java</groupId>
+			<artifactId>newrelic-agent</artifactId>
+			<version>7.5.0</version>
+			<scope>provided</scope>
+		</dependency>
+		<dependency>
+			<groupId>com.newrelic.agent.java</groupId>
+			<artifactId>newrelic-api</artifactId>
+			<version>7.5.0</version>
+			<scope>compile</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.json</groupId>
+			<artifactId>json</artifactId>
+			<version>20250107</version>
+		</dependency>
+		<dependency>
+            <groupId>org.apache.tomcat.embed</groupId>
+            <artifactId>tomcat-embed-core</artifactId>
+            <version>10.1.42</version>
         </dependency>
-
-        <dependency>
-            <groupId>com.verizon.ucs.common.redismq</groupId>
-            <artifactId>ms-common-redismq</artifactId>
-            <version>develop</version>
-        </dependency>
-
-        <!-- Pulsar with Avro exclusion -->
-        <dependency>
-            <groupId>eclipse</groupId>
-            <artifactId>ms_common_pulsar</artifactId>
-            <version>develop</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.apache.avro</groupId>
-                    <artifactId>avro</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-
-        <!-- Explicitly Secured Dependencies -->
-        <dependency>
-            <groupId>org.apache.avro</groupId>
-            <artifactId>avro</artifactId>
-            <version>1.11.4</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.apache.commons</groupId>
-            <artifactId>commons-lang3</artifactId>
-            <version>3.18.0</version>
-        </dependency>
-
-        <dependency>
-            <groupId>commons-io</groupId>
-            <artifactId>commons-io</artifactId>
-            <version>2.14.0</version>
-        </dependency>
-
         <dependency>
             <groupId>commons-fileupload</groupId>
             <artifactId>commons-fileupload</artifactId>
             <version>1.6.0</version>
         </dependency>
-
         <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-core</artifactId>
-            <version>2.15.0</version>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-webmvc</artifactId>
+            <version>6.1.14</version>
         </dependency>
-
+        <dependency>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
+            <version>2.14.0</version>
+        </dependency>
+		<dependency>
+			<groupId>commons-beanutils</groupId>
+			<artifactId>commons-beanutils</artifactId>
+			<version>1.11.0</version>
+		</dependency>
+		
         <dependency>
             <groupId>io.netty</groupId>
             <artifactId>netty-handler</artifactId>
             <version>4.1.118.Final</version>
         </dependency>
-
-        <!-- Other Required Libraries -->
         <dependency>
-            <groupId>org.owasp.antisamy</groupId>
-            <artifactId>antisamy</artifactId>
-            <version>1.6.7</version>
+            <groupId>net.minidev</groupId>
+            <artifactId>json-smart</artifactId>
+            <version>2.5.2</version>
         </dependency>
-
         <dependency>
-            <groupId>org.owasp.esapi</groupId>
-            <artifactId>esapi</artifactId>
-            <version>2.3.0.0</version>
+            <groupId>org.apache.xmlgraphics</groupId>
+            <artifactId>batik-util</artifactId>
+            <version>1.14</version>
         </dependency>
-
         <dependency>
-            <groupId>org.json</groupId>
-            <artifactId>json</artifactId>
-            <version>20250107</version>
+            <groupId>org.apache.xmlgraphics</groupId>
+            <artifactId>xmlgraphics-commons</artifactId>
+            <version>2.6</version>
         </dependency>
-
-        <!-- Javax APIs -->
         <dependency>
-            <groupId>javax.xml.bind</groupId>
-            <artifactId>jaxb-api</artifactId>
-            <version>2.3.1</version>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot</artifactId>
+            <version>3.3.11</version>
         </dependency>
-
         <dependency>
-            <groupId>javax.annotation</groupId>
-            <artifactId>javax.annotation-api</artifactId>
-            <version>1.3.2</version>
+            <groupId>xalan</groupId>
+            <artifactId>xalan</artifactId>
+            <version>2.7.3</version>
         </dependency>
-
-        <!-- Logging -->
+		<!-- Update neko-htmlunit to suggested fix version -->
         <dependency>
+            <groupId>net.sourceforge.htmlunit</groupId>
+            <artifactId>neko-htmlunit</artifactId>
+            <version>2.61.0</version>
+        </dependency>
+		<dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-beans</artifactId>
+            <version>6.1.14</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-core</artifactId>
+            <version>6.1.14</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-expression</artifactId>
+            <version>6.1.14</version>
+        </dependency>
+		<dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-core</artifactId>
             <version>1.5.13</version>
         </dependency>
-
-        <!-- New Relic (provided at runtime) -->
         <dependency>
-            <groupId>com.newrelic.agent.java</groupId>
-            <artifactId>newrelic-agent</artifactId>
-            <version>7.5.0</version>
-            <scope>provided</scope>
+            <groupId>org.owasp.antisamy</groupId>
+            <artifactId>antisamy</artifactId>
+            <version>1.6.6</version>
         </dependency>
         <dependency>
-            <groupId>com.newrelic.agent.java</groupId>
-            <artifactId>newrelic-api</artifactId>
-            <version>7.5.0</version>
+            <groupId>xerces</groupId>
+            <artifactId>xercesImpl</artifactId>
+            <version>2.12.0</version>
         </dependency>
+		<!-- Ensure only log4j 2.x is present, remove any log4j 1.x references -->
+	</dependencies>
+	
+	<!-- <pluginRepositories>
+		<pluginRepository>
+			<snapshots>
+				<enabled>false</enabled>
+			</snapshots>
+			<id>central</id>
+			<name>plugins-release</name>
+			<url>
+				https://oneartifactoryci.verizon.com/artifactory/plugins-release</url>
+		</pluginRepository>
+	</pluginRepositories>
+	
+	<repositories>
+		<repository>
+			<id>central</id>
+			<name>libs-release</name>
+			<url>https://oneartifactoryci.verizon.com/artifactory/libs-release</url>
+		</repository>
+		<repository>
+			<snapshots />
+			<id>snapshots</id>
+			<name>libs-snapshot</name>
+			<url>
+				https://oneartifactoryci.verizon.com/artifactory/libs-snapshot</url>
+		</repository>
+		<repository>
+			<id>spring-releases</id>
+			<url>https://repo.spring.io/libs-release</url>
+		</repository>
+	</repositories>-->
+	
+	<build>
+		<sourceDirectory>${basedir}/src/main/java</sourceDirectory>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-compiler-plugin</artifactId>
+				<configuration>
+					<source>${java.version}</source>
+					<target>${java.version}</target>
+					<includes>
+						<include>**/*.java</include>
+					</includes>
+				</configuration>
+			</plugin>
 
-        <!-- SSH -->
-        <dependency>
-            <groupId>com.jcraft</groupId>
-            <artifactId>jsch</artifactId>
-            <version>0.1.55</version>
-        </dependency>
-
-        <!-- Lombok -->
-        <dependency>
-            <groupId>org.projectlombok</groupId>
-            <artifactId>lombok</artifactId>
-            <version>${lombok.version}</version>
-            <scope>provided</scope>
-        </dependency>
-
-    </dependencies>
-
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <configuration>
-                    <source>${java.version}</source>
-                    <target>${java.version}</target>
-                </configuration>
-            </plugin>
-
-            <plugin>
-                <artifactId>maven-jar-plugin</artifactId>
-                <configuration>
-                    <archive>
-                        <manifest>
-                            <mainClass>com.verizon.ucs.UCSApplication</mainClass>
-                        </manifest>
-                    </archive>
-                    <excludes>
-                        <exclude>lib/*</exclude>
-                    </excludes>
-                </configuration>
-            </plugin>
-
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-dependency-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <id>copy-dependencies</id>
-                        <phase>prepare-package</phase>
-                        <goals>
-                            <goal>copy-dependencies</goal>
-                        </goals>
-                        <configuration>
-                            <outputDirectory>${project.build.directory}/lib</outputDirectory>
-                            <excludeArtifactIds>log4j,commons-lang</excludeArtifactIds>
-                            <overWriteIfNewer>true</overWriteIfNewer>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
-        </plugins>
-    </build>
-
+			<!--<plugin>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-maven-plugin</artifactId>
+			</plugin>-->
+			<plugin>
+			<artifactId>maven-jar-plugin</artifactId>
+			<configuration>
+				<archive>
+					<manifest>
+						<addClasspath>false</addClasspath>
+						<mainClass>com.verizon.ucs.UCSApplication</mainClass>
+					</manifest>
+					<manifestEntries>
+						<Class-Path></Class-Path>
+					</manifestEntries>
+				</archive>
+				<excludes>
+					<exclude>lib/*</exclude>
+				</excludes>
+			</configuration>
+		</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-dependency-plugin</artifactId>
+				<executions>
+					<execution>
+						<id>copy-dependencies</id>
+						<phase>prepare-package</phase>
+						<goals>
+							<goal>copy-dependencies</goal>
+						</goals>
+						<configuration>
+							<outputDirectory>${project.build.directory}/lib</outputDirectory>
+							<excludeArtifactIds>pulsar-client-original,pulsar-client-api,
+    pulsar-io-core,pulsar-io-netty,pulsar-functions-api,pulsar-common,circe-checksum,
+    commons-configuration,commons-lang
+    platform-python,python3-libs,esapi,libxml2,log4j,glibc,glibc-common,glibc-minimal-langpack,pam,krb5-libs,platform-python-setuptools,python3-setuptools-wheel,sqlite-libs,libtiff,jasper-libs,expat,gnutls,libssh,libssh-config,vim-minimal,glib2,libsoup,cairo,cairo-gobject,python3-pip-wheel,systemd,systemd-libs,systemd-pam,org.owasp.antisamy,org.springframework:spring-context,libarchive,curl,libcurl,tar,avahi-libs,io.netty:netty-common,libgcrypt,org.springframework:spring-web,python3-requests,xerces:xercesImpl,gdb-gdbserver,ncurses-base,ncurses-libs,openssl-libs,libgcc,libstdc++,cups-libs,elfutils-default-yama-scope,elfutils-libelf,elfutils-libs,file-libs,gdk-pixbuf2,gdk-pixbuf2-modules,libX11,libX11-common,libjpeg-turbo,libtasn1,libzstd,bzip2-libs,coreutils-single,dnf-plugin-subscription-manager,glib-networking,gmp,lcms2,libnghttp2,libproxy,lz4-libs,net-tools,python3-cloud-what,python3-idna,python3-subscription-manager-rhsm,python3-syspurpose,python3-urllib3,shadow-utils,subscription-manager,gnupg2,libpng,nss,nss-softokn,nss-softokn-freebl,nss-sysinit,nss-util,java-17-openjdk,java-17-openjdk-devel,java-17-openjdk-headless,ca-certificates,dbus,dbus-common,dbus-daemon,dbus-libs,dbus-tools,gawk,libpkgconf,openldap,pcre2,pkgconf,pkgconf-m4,pkgconf-pkg-config,procps-ng,freetype</excludeArtifactIds>
+							<overWriteReleases>false</overWriteReleases>
+							<overWriteSnapshots>false</overWriteSnapshots>
+							<overWriteIfNewer>true</overWriteIfNewer>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
 </project>
 
 
-
-
-
-
-
- 
-FROM registry.access.redhat.com/ubi8/ubi:latest
-
-ARG http_proxy=http://vzproxy.verizon.com:80
-ARG https_proxy=http://vzproxy.verizon.com:80
-ARG no_proxy=.verizon.com
-
-# Enable EPEL and install required tools
-RUN yum update -y && \
-    yum install -y epel-release && \
-    yum install -y \
-        java-17-openjdk-headless \
-        java-17-openjdk-devel \
-        procps-ng \
-        nc \
-        net-tools \
-        unzip && \
-    yum clean all && rm -rf /var/cache/yum
-
-ENV JAVA_LIB_DIR=/prod/eclapp/lib/* \
-    JAVA_MAIN_CLASS=com.verizon.ucs.UCSApplication
-
-# Create directory structure
-RUN mkdir -p /prod/eclapp/{etc,bin,lib}
-
-# Fix permissions
-RUN chgrp -R 0 /prod/eclapp && chmod -R g=u /prod/eclapp
-
-# Copy files
-COPY src/main/resources/start.sh /prod/eclapp/bin/
-COPY target/ms-hpov-s2im-inventory-develop.jar /prod/eclapp/lib/
-
-# CLEAN: delete pre-existing jars to avoid duplicates
-RUN rm -rf /prod/eclapp/lib/*.jar
-COPY target/lib/*.jar /prod/eclapp/lib/
-COPY src/main/resources/newrelic.yml /prod/eclapp/lib/
-
-# Verify and log important JAR versions
-RUN echo "=== VERIFYING DEPENDENCIES ===" && \
-    find /prod/eclapp/lib -name "*.jar" -exec echo "== {} ==" \; -exec unzip -p {} META-INF/MANIFEST.MF | grep -i "version" || true \; && \
-    echo "=== DONE ==="
-
-# Permissions
-RUN chmod +x /prod/eclapp/bin/start.sh
-RUN chmod +x /prod/eclapp/lib/ms-hpov-s2im-inventory-develop.jar
-
-ENTRYPOINT ["sh", "/prod/eclapp/bin/start.sh"]
